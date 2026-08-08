@@ -37,7 +37,6 @@ interface Liens {
   compte_activation: string | null;
   inscription: string | null;
   helloasso: string | null;
-  test_autonomie: string | null;
 }
 interface ContexteEmail {
   destinataire: string;
@@ -64,7 +63,6 @@ export const contexteEmail = internalQuery({
         compte_activation: await getConfigValeur(ctx, "compte_activation_lien"),
         inscription: await getConfigValeur(ctx, "inscription_lien"),
         helloasso: await getConfigValeur(ctx, "helloasso_lien"),
-        test_autonomie: await getConfigValeur(ctx, "test_autonomie_lien"),
       },
     };
   },
@@ -117,7 +115,9 @@ function lignesLiens(liens: Liens): string {
   if (liens.compte_activation) items.push(`• Activer votre compte sur le site du club :\n  ${liens.compte_activation}`);
   if (liens.inscription) items.push(`• Vous inscrire au créneau autonome :\n  ${liens.inscription}`);
   if (liens.helloasso) items.push(`• Régler votre abonnement (HelloAsso) :\n  ${liens.helloasso}`);
-  if (liens.test_autonomie) items.push(`• Test d'autonomie (si nécessaire) :\n  ${liens.test_autonomie}`);
+  items.push(
+    "• Test d'autonomie (si nécessaire) : reconnectez-vous au site pour réserver un créneau afin de passer le test d'autonomie.",
+  );
   return items.length ? items.join("\n") : "Les liens de finalisation vous seront communiqués prochainement.";
 }
 
