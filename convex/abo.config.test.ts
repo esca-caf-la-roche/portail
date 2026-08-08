@@ -232,6 +232,34 @@ describe("autorisation du reset annuel Abonnements", () => {
       nouveauLien:
         "https://www.helloasso.com/associations/club-escalade/adhesions/abonnements-2026",
     };
+    const redirectionId = await t.run(async (ctx) => {
+      const dossierId = await ctx.db.insert("abo_dossiers", {
+        email: "canonique-reset@example.test", owner_id: adminAutorise,
+        statut_dossier: "nouvelle_demande", date_soumission: "2026-08-08T00:00:00.000Z",
+      });
+      const personneId = await ctx.db.insert("abo_personnes", {
+        dossier_id: dossierId, nom: "RESET", prenom: "Test", nom_prenom_normalise: "RESET TEST",
+        licence: "123456789012", licence_statut: "saisie", etape_demande: true,
+        etape_validation: "en_attente", etape_licence: true, etape_inscription_site: false,
+        etape_photo: false, etape_paiement: false, etape_abonnement_valide: false,
+      });
+      const fusionId = await ctx.db.insert("abo_fusions_dossiers", {
+        licence_declencheur: "123456789012", mode_resolution: "conserver_b",
+        dossier_a_id: dossierId, dossier_b_id: dossierId,
+        owner_a_id: adminAutorise, owner_b_id: adminAutorise,
+        email_a: "ancienne-reset@example.test", email_b: "canonique-reset@example.test",
+        dossier_supprime_id: dossierId, personne_a_doublon_id: personneId,
+        personne_b_doublon_id: personneId, personne_conservee_id: personneId,
+        affectations_json: "[]", personnes_reaffectees: 0, reservations_reaffectees: 0,
+        messages_reaffectes: 0, logs_reaffectes: 0, historiques_reaffectes: 0,
+        compte_a: "staff_conserve", compte_b: "conserve",
+        resolue_le: "2026-08-08T00:00:00.000Z", resolue_par: adminAutorise,
+      });
+      return await ctx.db.insert("abo_fusion_redirections_email", {
+        email_supprime: "ancienne-reset@example.test", email_destination: "canonique-reset@example.test",
+        dossier_destination_id: dossierId, fusion_id: fusionId, created_at: "2026-08-08T00:00:00.000Z",
+      });
+    });
 
     await expect(
       t.withIdentity({ subject: staffSansDroit }).mutation(api.abo.config.resetSaison, args),
@@ -242,5 +270,6 @@ describe("autorisation du reset annuel Abonnements", () => {
     await expect(
       t.withIdentity({ subject: adminAutorise }).mutation(api.abo.config.resetSaison, args),
     ).resolves.toBe(0);
+    expect(await t.run(async (ctx) => ctx.db.get(redirectionId))).toBeNull();
   });
 });

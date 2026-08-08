@@ -172,6 +172,8 @@ export const validerLicence = authenticatedMutation({
       statut: v.literal("conflit"),
       licence: v.string(),
       personneExistanteId: v.id("abo_personnes"),
+      personneCibleDossierId: v.id("abo_dossiers"),
+      personneExistanteDossierId: v.id("abo_dossiers"),
       personneExistanteNom: v.string(),
       personneExistantePrenom: v.string(),
       personneExistanteEmail: v.union(v.string(), v.null()),
@@ -202,6 +204,8 @@ export const validerLicence = authenticatedMutation({
         statut: "conflit" as const,
         licence,
         personneExistanteId: porteuse._id,
+        personneCibleDossierId: personne.dossier_id,
+        personneExistanteDossierId: porteuse.dossier_id,
         personneExistanteNom: porteuse.nom,
         personneExistantePrenom: porteuse.prenom,
         personneExistanteEmail: dossierPorteuse?.email ?? null,
@@ -293,10 +297,9 @@ export const getConflitsLicences = authenticatedQuery({
   },
 });
 
-// Fusion ciblée d'une personne dans une autre. Les dossiers, comptes et messages
-// restent séparés : leur propriétaire peut être différent. Seules les réservations
-// de test, qui sont les seules dépendances directes, sont réaffectées. Le
-// dossier source n'est supprimé que s'il devient réellement vide.
+// Compatibilité temporaire avec les anciens clients déjà chargés. La fusion
+// partielle est désactivée : le nouveau parcours fusionne le dossier complet via
+// `abo/fusionsDossiers.ts`.
 export const fusionnerPersonnesLicence = authenticatedMutation({
   args: {
     personneSourceId: v.id("abo_personnes"),
@@ -307,86 +310,15 @@ export const fusionnerPersonnesLicence = authenticatedMutation({
     reservationsReaffectees: v.number(),
     dossierSourceSupprime: v.boolean(),
   }),
-  handler: async (ctx, args) => {
+  handler: async (ctx) => {
     await requireAboAdmin(ctx);
-    if (args.personneSourceId === args.personneCibleId) {
-      throw new ConvexError({ code: "FUSION_IDENTIQUE", message: "Choisissez deux personnes distinctes." });
-    }
-    const source = await ctx.db.get(args.personneSourceId);
-    const cible = await ctx.db.get(args.personneCibleId);
-    if (!source || !cible || !source.licence || (cible.licence && source.licence !== cible.licence)) {
-      throw new ConvexError({ code: "FUSION_LICENCE_INVALIDE", message: "La personne source doit porter la licence à conserver ; la personne cible ne doit pas porter une autre licence." });
-    }
-    const [dossierSource, dossierCible] = await Promise.all([
-      ctx.db.get(source.dossier_id),
-      ctx.db.get(cible.dossier_id),
-    ]);
-    if (!dossierSource || !dossierCible) {
-      throw new ConvexError({ code: "FUSION_DOSSIER_INTRouvable", message: "Un dossier lié à la fusion est introuvable." });
-    }
-    const [reservationsSource, reservationsCible] = await Promise.all([
-      ctx.db.query("abo_test_reservations").withIndex("by_personne", (q) => q.eq("personne_id", source._id)).take(20),
-      ctx.db.query("abo_test_reservations").withIndex("by_personne", (q) => q.eq("personne_id", cible._id)).take(20),
-    ]);
-    if (reservationsSource.some((reservation) => reservation.statut === "active") && reservationsCible.some((reservation) => reservation.statut === "active")) {
-      throw new ConvexError({ code: "FUSION_RESERVATIONS_ACTIVES", message: "Les deux personnes ont une réservation de test active. Annulez ou traitez d'abord l'une des réservations avant la fusion." });
-    }
-    for (const reservation of reservationsSource) {
-      await ctx.db.patch(reservation._id, { personne_id: cible._id });
-    }
-    await ctx.db.insert("abo_licence_fusions", {
-      licence: source.licence,
-      personne_source_id: source._id,
-      personne_cible_id: cible._id,
-      dossier_source_id: dossierSource._id,
-      dossier_cible_id: dossierCible._id,
-      source_nom: source.nom,
-      source_prenom: source.prenom,
-      fusionnee_le: new Date().toISOString(),
-      fusionnee_par: ctx.userId,
+    // DEPRECATED: l'ancienne fusion partielle ne gérait ni comptes, ni famille,
+    // ni audit complet. Elle reste temporairement déclarée pour ne pas casser
+    // un ancien client déjà chargé, mais aucune écriture n'est désormais permise.
+    throw new ConvexError({
+      code: "FUSION_ENDPOINT_OBSOLETE",
+      message: "Cette fusion n'est plus disponible. Rechargez la page pour utiliser la fusion complète des dossiers.",
     });
-    await ctx.db.delete(source._id);
-    const [personneRestante, messageRestant, emailRestant] = await Promise.all([
-      ctx.db
-        .query("abo_personnes")
-        .withIndex("by_dossier", (q) => q.eq("dossier_id", dossierSource._id))
-        .take(1),
-      ctx.db
-        .query("abo_messages")
-        .withIndex("by_dossier", (q) => q.eq("dossier_id", dossierSource._id))
-        .take(1),
-      ctx.db
-        .query("abo_email_log")
-        .withIndex("by_dossier", (q) => q.eq("dossier_id", dossierSource._id))
-        .take(1),
-    ]);
-    const dossierSourceSupprime =
-      personneRestante.length === 0 &&
-      messageRestant.length === 0 &&
-      emailRestant.length === 0;
-    if (dossierSourceSupprime) {
-      await ctx.db.delete(dossierSource._id);
-    }
-    if (!cible.licence) {
-      const fiche = await ctx.db
-        .query("abo_licences")
-        .withIndex("by_licence", (q) => q.eq("licence", source.licence!))
-        .first();
-      const nom = fiche?.nom ?? cible.nom;
-      const prenom = fiche?.prenom ?? cible.prenom;
-      await ctx.db.patch(cible._id, {
-        licence: source.licence,
-        licence_statut: "annuaire_valide",
-        nom,
-        prenom,
-        nom_prenom_normalise: normaliserNomPrenom(nom, prenom),
-      });
-    }
-    return {
-      personneCibleId: cible._id,
-      reservationsReaffectees: reservationsSource.length,
-      dossierSourceSupprime,
-    };
   },
 });
 

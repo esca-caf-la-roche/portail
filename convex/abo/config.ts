@@ -17,6 +17,8 @@ import { internal } from "../_generated/api";
 import { requireAboAdmin, requireAboSeasonReset } from "./auth";
 import { parseHa, poserLienAbo, trouverLienAbo } from "./paiements";
 
+const MAX_REDIRECTIONS_PAR_CAMPAGNE = 1_000;
+
 // ── Lecture d'une clé de config ──────────────────────────────────────
 export async function getConfigValeur(
   ctx: QueryCtx | MutationCtx,
@@ -387,6 +389,22 @@ export const resetSaison = authenticatedMutation({
     }
     for (const l of await ctx.db.query("abo_email_log").collect()) {
       await ctx.db.delete(l._id);
+    }
+    // Les anciennes adresses ne sont tombstonées que pendant la campagne : au
+    // reset, elles doivent pouvoir déposer une nouvelle demande normalement.
+    // IO-BOUNDED: une campagne est limitée à 1 000 redirections ; au-delà, le
+    // reset échoue atomiquement et exige un nettoyage supervisé par lots.
+    const redirections = await ctx.db
+      .query("abo_fusion_redirections_email")
+      .take(MAX_REDIRECTIONS_PAR_CAMPAGNE + 1);
+    if (redirections.length > MAX_REDIRECTIONS_PAR_CAMPAGNE) {
+      throw new ConvexError({
+        code: "ABO_RESET_TROP_DE_REDIRECTIONS",
+        message: "Plus de 1 000 redirections de dossiers sont à nettoyer. Contactez un administrateur technique.",
+      });
+    }
+    for (const redirection of redirections) {
+      await ctx.db.delete(redirection._id);
     }
 
     // 3) Vide le cache et le suivi de TOUS les formulaires Abonnements connus

@@ -20,6 +20,53 @@ tuiles compta ; le `Layout` le redirige vers `/abonnements`. Un staff qui dépos
 une demande conserve ses droits staff ; au reset, seules ses données publiques
 de campagne et son profil public sont purgés.
 
+### Résolution d'un conflit de licence entre deux dossiers
+
+Un conflit peut être détecté lors de l'association manuelle d'une licence ou
+relu dans la liste des conflits. L'admin ouvre directement un écran unique avec
+les deux e-mails et, pour chaque dossier, uniquement les noms, prénoms et
+licences des personnes. Les informations du site du club ne sont jamais
+arbitrées : la licence reste la clé de rapprochement avec le snapshot externe.
+
+L'admin choisit de conserver les deux dossiers, seulement le dossier A ou
+seulement le dossier B, puis affecte chaque personne finale à un dossier
+conservé. La personne présente deux fois pour la même licence n'apparaît qu'une
+fois dans la répartition finale. Chaque personne doit appartenir à exactement un
+dossier et chaque dossier conservé doit contenir au moins une personne.
+
+Si les deux dossiers restent, leurs messages, journaux d'e-mails et comptes
+restent séparés. Si un dossier est supprimé, ses personnes et ses dépendances
+liées au dossier sont transférées vers l'autre. L'historique attaché au
+propriétaire reste avec lui lorsque son compte staff est conservé. Une ligne durable de
+`abo_fusions_dossiers` conserve le mode de résolution, la répartition, les
+volumes déplacés et l'identité du staff, sans snapshot complet.
+
+Le compte d'un dossier supprimé suit une règle de sécurité liée à sa population :
+
+- pour un compte exclusivement public devenu inutile, le dossier, les sessions
+  et les identités d'authentification sont supprimés. Le profil public est
+  supprimé ; seul le `user` reste comme ancre technique inactive jusqu'à la
+  purge du reset annuel. Son ancien e-mail est inscrit dans
+  `abo_fusion_redirections_email`.
+  Cette entrée est une
+  interdiction de connexion `abo-otp`, pas un alias d'authentification : la
+  tentative est refusée par un message générique, sans révéler l'e-mail
+  de destination ni ouvrir l'autre compte. L'adresse à utiliser est communiquée dans
+  l'email de résolution. Lors d'une chaîne A → B → C, les entrées qui pointaient
+  vers B sont mises à jour en interne vers C ;
+- un compte qui possède des accès staff est conservé avec `userSettings`, ses
+  sessions et ses comptes d'authentification. La résolution ne doit jamais dégrader
+  ses droits staff.
+
+Deux notifications indépendantes, une par e-mail de dossier, sont planifiées et
+suivies dans `abo_fusion_notifications`. Le statut, le nombre de tentatives et
+un éventuel échec sont conservés pour le suivi interne ; aucun endpoint
+applicatif ne propose de relance. L'audit et les notifications restent hors
+saison. Le marqueur d'ancien e-mail, lui, est limité à la campagne courante et
+est purgé lors du reset Abonnements — sans dépendre de la saison comptable.
+Enfin, aucune écriture ni action distante n'est effectuée sur le site du club :
+son snapshot demeure une source externe strictement en lecture seule.
+
 ## Règles de campagne et site du club
 
 Le portail et le site du club sont séparés. Le portail lit le snapshot
@@ -241,7 +288,13 @@ déploiement `npx convex dev` actif.
   toujours être choisis manuellement.
 - [ ] **Licences** : importer un annuaire de test → personne sans licence obtient
   des candidats ; résolution auto (match exact) + validation manuelle la retirent
-  de la file.
+  de la file. Créer aussi un conflit entre deux dossiers : vérifier l'écran
+  unique, répartir les personnes en conservant les deux dossiers, puis répéter en
+  supprimant A et en supprimant B. Contrôler l'unicité de la licence, l'absence
+  de personne sans dossier, les réservations et les dépendances de dossier.
+  Couvrir l'accès public supprimé puis refusé par `abo-otp`, le compte staff
+  conservé et les deux notifications planifiées,
+  sans aucune modification du site club.
 - [ ] **Test d'autonomie** : créer des créneaux (plusieurs admins) → tranches
   40/60 min à capacité cumulée ; une demande validée, sans licence, âge ni
   autonomie connus, réserve un RDV provisoire ; réserver/annuler ; supprimer un

@@ -889,10 +889,86 @@ textarea.abo-input {
 .abo-admin-capacity-actions { display: flex; flex-wrap: wrap; gap: 0.65rem; }
 .abo-admin-capacity-actions .abo-admin-button { flex: 1 1 14rem; }
 
+/* Fusion manuelle de deux dossiers portant la même licence. */
+.abo-admin-fusion-modal { width: min(100%, 74rem); }
+.abo-admin-fusion-body { display: grid; gap: 1.25rem; }
+.abo-admin-fusion-loading { min-height: 12rem; display: grid; place-items: center; font-weight: 800; }
+.abo-admin-fusion-split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.abo-admin-fusion-modes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.65rem; }
+.abo-admin-fusion-mode {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  min-width: 0;
+  padding: 0.75rem;
+  border: 2px solid var(--border-color);
+  background: var(--card);
+  font-weight: 800;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.abo-admin-fusion-mode:has(input:checked) { background: var(--warning); box-shadow: 3px 3px 0 var(--border-color); }
+.abo-admin-fusion-mode input { flex: 0 0 auto; margin-top: 0.2rem; }
+.abo-admin-fusion-dossier {
+  display: grid;
+  align-content: start;
+  gap: 0.75rem;
+  min-width: 0;
+  padding: 1rem;
+  border: var(--border-width) solid var(--border-color);
+  background: var(--background);
+  box-shadow: 4px 4px 0 var(--border-color);
+}
+.abo-admin-fusion-dossier--supprime { background: var(--danger); }
+.abo-admin-fusion-dossier-header { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.abo-admin-fusion-dossier-header > span:first-child { font-weight: 900; text-transform: uppercase; }
+.abo-admin-fusion-dossier-header .abo-admin-fusion-email { flex: 1 1 12rem; }
+.abo-admin-fusion-email { overflow-wrap: anywhere; font-size: 1rem; }
+.abo-admin-fusion-family { display: grid; gap: 0.5rem; }
+.abo-admin-fusion-person {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.65rem;
+  border: 2px solid var(--border-color);
+  background: var(--card);
+}
+.abo-admin-fusion-person--doublon { border-width: var(--border-width); background: var(--info); }
+.abo-admin-fusion-person-identity { display: grid; flex: 1 1 12rem; gap: 0.2rem; min-width: 0; overflow-wrap: anywhere; }
+.abo-admin-fusion-person-meta { font-size: 0.75rem; font-weight: 700; }
+.abo-admin-fusion-person-destination { display: flex; flex: 0 0 auto; gap: 0.4rem; margin: 0; padding: 0.35rem; border: 2px solid var(--border-color); }
+.abo-admin-fusion-person-destination legend { padding: 0 0.25rem; font-size: 0.68rem; font-weight: 900; text-transform: uppercase; }
+.abo-admin-fusion-person-destination label { display: flex; align-items: center; gap: 0.2rem; padding: 0.2rem 0.35rem; font-weight: 900; cursor: pointer; }
+.abo-admin-fusion-person-destination label:has(input:checked) { background: var(--success); }
+.abo-admin-fusion-person-destination input:disabled + span { opacity: 1; }
+.abo-admin-fusion-unassigned { display: grid; gap: 0.65rem; padding: 1rem; border: var(--border-width) solid var(--border-color); background: var(--warning); box-shadow: 4px 4px 0 var(--border-color); }
+.abo-admin-fusion-empty { padding: 0.75rem; border: 2px dashed var(--border-color); font-weight: 700; text-align: center; }
+.abo-admin-fusion-fieldset {
+  display: grid;
+  gap: 0.65rem;
+  min-width: 0;
+  margin: 0;
+  padding: 1rem;
+  border: var(--border-width) solid var(--border-color);
+}
+.abo-admin-fusion-fieldset legend { padding: 0 0.4rem; font-weight: 900; text-transform: uppercase; }
+.abo-admin-fusion-summary { display: grid; gap: 0.65rem; padding: 1rem; border: var(--border-width) solid var(--border-color); background: var(--card); }
+.abo-admin-fusion-summary h4,
+.abo-admin-fusion-summary p { margin: 0; }
+.abo-admin-fusion-confirm { display: grid; gap: 0.4rem; font-weight: 800; }
+.abo-admin-fusion-confirm input { width: 100%; }
+.abo-admin-fusion-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.65rem; }
+.abo-admin-fusion-result { display: grid; gap: 0.75rem; }
+
 @media (max-width: 640px) {
   .abo-admin-payment-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .abo-admin-payment-comment-form { grid-template-columns: 1fr; }
   .abo-admin-modal { padding: 1rem; box-shadow: 4px 4px 0 var(--border-color); }
   .abo-admin-step { align-items: flex-start; }
   .abo-admin-step-state { max-width: 8rem; text-align: right; }
+  .abo-admin-fusion-split,
+  .abo-admin-fusion-modes { grid-template-columns: 1fr; }
+  .abo-admin-fusion-modal { max-height: calc(100vh - 1rem); padding: 0.8rem; box-shadow: 4px 4px 0 var(--border-color); }
+  .abo-admin-fusion-actions { display: grid; }
 }

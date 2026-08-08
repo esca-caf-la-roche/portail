@@ -18,6 +18,7 @@ import { trouverLienAbo, estRemboursement } from "./paiements";
 import { champsModifies } from "../dbUtils";
 import { abonnementEstValide } from "./statutAbonnement";
 import { internal } from "../_generated/api";
+import type { Doc } from "../_generated/dataModel";
 
 // ── upsertAbonnesScrapBatch : miroir brut de la page club (par licence) ──
 // Comme le scrap Supabase, on n'écrit QUE les lignes ayant une licence (clé
@@ -111,6 +112,25 @@ function testAutonomieDepuisScrap(
   }
 }
 
+// Projection unique du snapshot local du site vers les champs matérialisés
+// d'une personne. `etape_paiement` reste pilotée par HelloAsso et n'est donc
+// incluse que lorsque l'appelant a effectué ce rapprochement séparément.
+export function champsPersonneDepuisScrap(
+  scrap: Doc<"abo_abonnes_scrap">,
+  etapePaiement?: boolean,
+): Record<string, unknown> {
+  const patch: Record<string, unknown> = {
+    age: scrap.age,
+    etape_licence: scrap.adhesion === "OK",
+    etape_inscription_site: true,
+    etape_photo: scrap.photo === "OK",
+    etape_abonnement_valide: abonnementEstValide(scrap.abonnement_valide),
+    etape_test_autonomie: testAutonomieDepuisScrap(scrap.autonomie),
+  };
+  if (etapePaiement !== undefined) patch.etape_paiement = etapePaiement;
+  return patch;
+}
+
 // ── matcherScrapPersonnes : met à jour les etape_* des personnes ─────────
 // Un seul balayage borné. Renvoie le nombre de personnes mises à jour.
 export const matcherScrapPersonnes = internalMutation({
@@ -184,15 +204,7 @@ export const matcherScrapPersonnes = internalMutation({
         continue;
       }
 
-      const patch: Record<string, unknown> = {
-        age: s.age,
-        etape_licence: s.adhesion === "OK",
-        etape_inscription_site: true,
-        etape_photo: s.photo === "OK",
-        etape_abonnement_valide: abonnementEstValide(s.abonnement_valide),
-        etape_test_autonomie: testAutonomieDepuisScrap(s.autonomie),
-        etape_paiement: etapePaiement,
-      };
+      const patch = champsPersonneDepuisScrap(s, etapePaiement);
       if (licenceResolue) {
         patch.licence = licenceResolue;
         patch.licence_statut = "annuaire_auto";

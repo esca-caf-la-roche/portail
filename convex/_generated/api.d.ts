@@ -15,6 +15,7 @@ import type * as abo_demandes from "../abo/demandes.js";
 import type * as abo_demo from "../abo/demo.js";
 import type * as abo_emails from "../abo/emails.js";
 import type * as abo_emailsRappel from "../abo/emailsRappel.js";
+import type * as abo_fusionsDossiers from "../abo/fusionsDossiers.js";
 import type * as abo_identity from "../abo/identity.js";
 import type * as abo_lib from "../abo/lib.js";
 import type * as abo_licences from "../abo/licences.js";
@@ -74,6 +75,7 @@ declare const fullApi: ApiFromModules<{
   "abo/demo": typeof abo_demo;
   "abo/emails": typeof abo_emails;
   "abo/emailsRappel": typeof abo_emailsRappel;
+  "abo/fusionsDossiers": typeof abo_fusionsDossiers;
   "abo/identity": typeof abo_identity;
   "abo/lib": typeof abo_lib;
   "abo/licences": typeof abo_licences;

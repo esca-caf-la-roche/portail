@@ -567,6 +567,85 @@ export default defineSchema({
     .index("by_personne_source", ["personne_source_id"])
     .index("by_personne_cible", ["personne_cible_id"]),
 
+  // SAISON-EXEMPT: audit administratif permanent des résolutions de doublons
+  // entre dossiers Abonnements, conservé au-delà des campagnes et suppressions.
+  abo_fusions_dossiers: defineTable({
+    licence_declencheur: v.string(),
+    mode_resolution: v.union(
+      v.literal("conserver_les_deux"),
+      v.literal("conserver_a"),
+      v.literal("conserver_b"),
+    ),
+    dossier_a_id: v.id("abo_dossiers"),
+    dossier_b_id: v.id("abo_dossiers"),
+    owner_a_id: v.id("users"),
+    owner_b_id: v.id("users"),
+    email_a: v.string(),
+    email_b: v.string(),
+    dossier_supprime_id: v.optional(v.id("abo_dossiers")),
+    personne_a_doublon_id: v.id("abo_personnes"),
+    personne_b_doublon_id: v.id("abo_personnes"),
+    personne_conservee_id: v.id("abo_personnes"),
+    affectations_json: v.string(),
+    personnes_reaffectees: v.number(),
+    reservations_reaffectees: v.number(),
+    messages_reaffectes: v.number(),
+    logs_reaffectes: v.number(),
+    historiques_reaffectes: v.number(),
+    compte_a: v.union(
+      v.literal("conserve"),
+      v.literal("desactive"),
+      v.literal("staff_conserve"),
+    ),
+    compte_b: v.union(
+      v.literal("conserve"),
+      v.literal("desactive"),
+      v.literal("staff_conserve"),
+    ),
+    resolue_le: v.string(),
+    resolue_par: v.id("users"),
+  })
+    .index("by_licence_declencheur", ["licence_declencheur"])
+    .index("by_dossier_a_id", ["dossier_a_id"])
+    .index("by_dossier_b_id", ["dossier_b_id"])
+    .index("by_owner_a_id", ["owner_a_id"])
+    .index("by_owner_b_id", ["owner_b_id"]),
+
+  // SAISON-EXEMPT: suivi durable et idempotent des deux notifications de
+  // résolution, indépendant de la campagne et d'une éventuelle suppression.
+  abo_fusion_notifications: defineTable({
+    fusion_id: v.id("abo_fusions_dossiers"),
+    destinataire: v.string(),
+    role_destinataire: v.union(
+      v.literal("dossier_a"),
+      v.literal("dossier_b"),
+    ),
+    sujet: v.string(),
+    contenu: v.string(),
+    statut: v.union(
+      v.literal("a_envoyer"),
+      v.literal("envoye"),
+      v.literal("echec"),
+    ),
+    tentatives: v.number(),
+    envoye_le: v.optional(v.string()),
+    derniere_erreur: v.optional(v.string()),
+  })
+    .index("by_fusion_id", ["fusion_id"])
+    .index("by_statut", ["statut"]),
+
+  // SAISON-EXEMPT: redirection limitée à la campagne Abonnements courante,
+  // créée uniquement lorsqu'un dossier est supprimé et purgée au reset.
+  abo_fusion_redirections_email: defineTable({
+    email_supprime: v.string(),
+    email_destination: v.string(),
+    dossier_destination_id: v.id("abo_dossiers"),
+    fusion_id: v.id("abo_fusions_dossiers"),
+    created_at: v.string(),
+  })
+    .index("by_email_supprime", ["email_supprime"])
+    .index("by_dossier_destination_id", ["dossier_destination_id"]),
+
   // Fil de discussion par dossier (un fil partagé user ↔ admins), temps réel.
   abo_messages: defineTable({
     dossier_id: v.id("abo_dossiers"),

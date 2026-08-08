@@ -52,6 +52,21 @@ async function trouverUtilisateurParEmailCanonique(
   return { ...legacy, email };
 }
 
+// Une ancienne adresse issue d'une fusion est une tombstone, jamais un alias
+// d'authentification : retourner le compte canonique donnerait à cette boîte
+// l'accès à un autre compte (potentiellement staff). google-otp n'appelle pas
+// ce garde et continue donc à ouvrir le compte staff source conservé.
+async function estEmailFusionneAbo(
+  ctx: MutationCtx,
+  sourceEmail: string,
+): Promise<boolean> {
+  const redirections = await ctx.db
+    .query("abo_fusion_redirections_email")
+    .withIndex("by_email_supprime", (q) => q.eq("email_supprime", sourceEmail))
+    .take(2);
+  return redirections.length > 0;
+}
+
 // Génère un code OTP à 6 chiffres.
 export function genererCode(): string {
   const plage = 900_000;
@@ -115,22 +130,44 @@ export const { auth, signIn, signOut, store } = convexAuth({
       // rétablit les index applicatifs sans affaiblir les requêtes en scans.
       const appCtx = ctx as MutationCtx;
       const db = appCtx.db;
-      const existingUser = await trouverUtilisateurParEmailCanonique(appCtx, email);
-
+      const emailFusionne = args.provider.id === "abo-otp"
+        ? await estEmailFusionneAbo(appCtx, email)
+        : false;
       // Cette phase "email" s'exécute dans auth:store AVANT l'écriture du
       // nouveau code. Le quota doit être consommé ici : le faire dans
       // sendVerificationRequest ferait tourner un code qui ne serait pas envoyé.
       if (args.type === "email") {
         if (args.provider.id === "abo-otp") {
           await consommerDemandeAboOtp(appCtx, email);
-        } else if (args.provider.id === "google-otp") {
+        }
+      }
+      const existingUser = await trouverUtilisateurParEmailCanonique(appCtx, email);
+
+      if (emailFusionne) {
+        if (args.type === "verification") {
+          throw new ConvexError({
+            code: "AUTH_ABO_EMAIL_FUSIONNE",
+            // L'adresse canonique est communiquée uniquement par l'email de
+            // fusion envoyé à l'ancienne boîte.
+            message: "Ce compte a été regroupé. Consultez le message envoyé par la commission escalade.",
+          });
+        }
+        // La demande initiale d'OTP reste indistinguable d'une demande normale
+        // et consomme son quota. Le compte technique source est conservé sans
+        // dossier jusqu'au reset, mais aucune session ne pourra être créée.
+        if (!existingUser) {
+          throw new Error("Code incorrect ou expiré.");
+        }
+        return existingUser._id;
+      }
+
+      if (args.type === "email" && args.provider.id === "google-otp") {
           const demande = await consommerDemandeOtpStaff(
             appCtx,
             email,
             existingUser !== null,
           );
           if (!demande.autorise) throw new Error("Code incorrect ou expiré.");
-        }
       }
 
       // --- Abonnés publics (provider abo-otp) : find-or-create sans gate ni

@@ -233,19 +233,52 @@ sont résolues automatiquement. Les cas restants exigent un arbitrage humain.
 ### Conflit de licence
 
 Si une licence est déjà affectée à une autre personne, l'association est
-arrêtée avant toute écriture. La carte de la personne en cours affiche alors
-la personne déjà porteuse de la licence et propose, après confirmation, de la
-fusionner dans le dossier que l'administrateur souhaite conserver. Les doublons
-déjà présents apparaissent aussi dans **Conflits de licence**. Vérifier les deux
-personnes, leurs e-mails et leurs réservations de test avant de choisir la
-personne à conserver.
+arrêtée. Le conflit est proposé immédiatement pendant l'association et reste
+aussi visible dans la liste **Conflits de licence** : il peut donc être repris
+plus tard sans recommencer la recherche.
 
-La fusion déplace uniquement les réservations de test de la personne écartée et
-conserve une trace administrative. Si son dossier ne contient alors plus aucune
-personne, aucun message et aucun journal d'e-mail, ce dossier vide est supprimé.
-Sinon il est conservé : la fusion ne supprime jamais automatiquement comptes,
-messages, paiements ou inscriptions du site du club. Si les deux personnes ont
-une réservation active, traiter d'abord ce doublon de rendez-vous.
+La résolution s'effectue dans un seul écran :
+
+1. vérifier les deux e-mails, qui représentent les deux dossiers ;
+2. choisir **Conserver les deux dossiers**, **Conserver seulement le dossier A**
+   ou **Conserver seulement le dossier B** ;
+3. si les deux restent, choisir le dossier de chaque personne. L'écran affiche
+   uniquement son nom, son prénom et sa licence ;
+4. vérifier que chaque dossier conservé contient au moins une personne et
+   qu'aucune personne n'est sans dossier ;
+5. confirmer la répartition. En cas de suppression, retaper l'e-mail du dossier
+   supprimé.
+
+La personne portant la licence en doublon n'existe qu'une fois après la
+résolution. Les autres informations sont retrouvées par la licence lors du
+rapprochement avec le snapshot du site du club : elles ne sont pas mélangées ni
+arbitrées dans cet écran.
+
+Si les deux dossiers restent, leurs comptes, messages et historiques restent
+séparés. Si un dossier est supprimé, son ancien accès public est désactivé. Une
+ancre technique inactive reste jusqu'à la remise à zéro annuelle afin que la
+demande de code ne permette pas de détecter l'existence d'une résolution. Une
+tentative de connexion Abonnements avec son ancienne adresse est ensuite
+refusée par un message générique :
+elle ne révèle pas l'e-mail du dossier conservé et ne connecte jamais directement à
+l'autre compte. L'adresse à utiliser figure dans l'email de résolution envoyé à
+l'ancienne boîte. Ce repère ne vaut que pour la campagne en cours et disparaît
+lors de la remise à zéro. Si le
+compte écarté appartient aussi à un membre du staff, il est au contraire
+conservé avec ses accès staff ; seule son ancienne séparation côté Abonnements
+disparaît.
+
+Une notification est préparée pour chacune des deux adresses. Lorsque les deux
+dossiers restent, chaque adresse reçoit seulement la composition finale de son
+propre dossier. Lorsqu'un dossier disparaît, son adresse reçoit l'adresse à
+utiliser et l'adresse conservée reçoit sa composition finale.
+La confirmation indique que
+les deux notifications sont planifiées. Un éventuel échec est conservé dans le
+suivi interne ; il n'existe pas d'action de relance dans l'écran admin.
+
+> La résolution ne touche jamais le site du club. Elle n'y modifie, n'y supprime et
+> n'y bloque aucune inscription. Toute correction nécessaire sur ce site reste
+> une action manuelle distincte.
 
 ## 6. Tests
 

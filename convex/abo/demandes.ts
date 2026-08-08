@@ -26,6 +26,7 @@ import { requireAboIdentity, requireAboAdmin } from "./auth";
 import { canoniserLicence, normaliserNomPrenom } from "./lib";
 import { vagueCourante } from "./config";
 import { abonnementEstValide } from "./statutAbonnement";
+import { canoniserEmailUnique } from "../emailValidation";
 import {
   calculerCompteur,
   lirePlacesMax,
@@ -481,6 +482,25 @@ export const creerDemandeInterne = internalMutation({
   returns: v.id("abo_dossiers"),
   handler: async (ctx, args) => {
     const identity = await requireAboIdentity(ctx);
+    let emailCanonique: string;
+    try {
+      emailCanonique = canoniserEmailUnique(identity.email);
+    } catch {
+      throw new ConvexError({
+        code: "AUTH_ABO_COMPTE_INVALIDE",
+        message: "Impossible de traiter ce compte.",
+      });
+    }
+    const compteFusionne = await ctx.db
+      .query("abo_fusion_redirections_email")
+      .withIndex("by_email_supprime", (q) => q.eq("email_supprime", emailCanonique))
+      .first();
+    if (compteFusionne) {
+      throw new ConvexError({
+        code: "AUTH_ABO_EMAIL_FUSIONNE",
+        message: "Ce compte a été regroupé. Consultez le message envoyé par la commission escalade.",
+      });
+    }
     await limiterEcritureDemande(ctx, identity.userId);
 
     if (args.personnes.length === 0 || args.personnes.length > MAX_PERSONNES_PAR_DOSSIER) {

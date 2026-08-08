@@ -70,6 +70,51 @@ Pour le module Abonnements, utiliser la checklist e2e de
    consultable après rechargement ; retirer ensuite la tuile à un compte staff
    et vérifier le refus de route et du compteur backend.
 
+### Scénarios ciblés — Résolution de conflits entre dossiers Abonnements
+
+Ces scénarios sont hors saison et doivent être joués avec un compte staff ayant
+la tuile `abonnements` :
+
+1. créer deux dossiers familiaux distincts contenant une personne portant la
+   même licence ; vérifier que le conflit apparaît lors de l'association et dans
+   la liste **Conflits de licence**, sans modification préalable des dossiers ;
+2. ouvrir la résolution depuis chacun des deux points d'entrée et contrôler
+   l'écran unique : les deux e-mails et chaque personne sous la forme nom,
+   prénom, licence doivent être présents ; la personne doublon n'apparaît qu'une
+   fois ;
+3. conserver les deux dossiers et déplacer des personnes dans les deux sens.
+   Vérifier qu'aucune personne ne peut rester sans dossier, que chaque dossier
+   conservé reste non vide et qu'une seule personne porte la licence ;
+4. placer des réservations, des messages et des entrées d'historique d'e-mails
+   dans les deux dossiers. Lorsque les deux restent, les messages et journaux
+   restent dans leur dossier ; les réservations suivent leur personne ;
+5. répéter en conservant seulement A puis seulement B. Le
+   dossier, les sessions et les identités d'authentification de l'ancien compte
+   public doivent être supprimés ; son ancre technique inactive reste jusqu'au
+   reset annuel. Une connexion `abo-otp` avec son ancien
+   e-mail doit être refusée par un message générique, sans révéler l'adresse
+   du dossier conservé, sans ouvrir ce compte et sans créer de nouveau dossier. L'adresse
+   à utiliser doit figurer uniquement dans l'email de résolution ;
+6. répéter avec le compte du dossier supprimé possédant aussi des accès staff. Vérifier que
+   son compte, ses sessions, son `userSettings` et ses tuiles restent intacts,
+   tandis que son profil et son ancien dossier publics disparaissent. Son
+   historique attaché au propriétaire doit rester relié au compte staff ;
+7. vérifier qu'une notification est préparée pour chacune des deux adresses :
+   si les deux dossiers restent, chacune reçoit uniquement sa composition
+   finale ; si un dossier disparaît, son adresse reçoit l'adresse conservée.
+   Simuler l'échec d'un envoi et contrôler dans le suivi interne son statut, son
+   nombre de tentatives et son erreur ; aucun bouton ni endpoint applicatif de
+   relance ne doit être annoncé ;
+8. comparer le snapshot du site club avant et après la résolution : aucune ligne,
+   inscription ni statut externe ne doit être modifié, supprimé ou bloqué ;
+9. enchaîner une résolution A → B puis B → C. Les connexions `abo-otp` avec A et B
+   doivent être refusées par le même message générique, sans indiquer C ni
+   authentifier sur C ;
+10. changer la saison comptable puis recharger : le module et l'audit restent
+    hors saison. Déclencher ensuite le reset Abonnements sur un jeu de test : les
+    marqueurs d'e-mails de la campagne doivent être purgés, tandis que l'audit
+    minimal des résolutions reste conservé.
+
 ### Scénarios ciblés — Contacts des cours
 
 Ces scénarios sont manuels tant qu'aucune suite navigateur n'est installée :

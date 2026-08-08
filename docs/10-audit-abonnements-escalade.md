@@ -258,6 +258,42 @@ L'état final affiché provient des données ramenées du site du club et de
 l'annuaire des licences. Cela explique qu'une action réalisée sur le site
 externe ne soit pas toujours visible immédiatement dans le portail.
 
+### Résolution d'un conflit entre deux dossiers
+
+Lorsqu'une même licence relie deux personnes de dossiers distincts, le conflit
+est exposé à deux endroits : au moment de l'association et dans la liste des
+conflits persistants. La résolution est volontairement humaine. Un écran unique
+montre les deux e-mails et les personnes sous la forme nom, prénom, licence.
+L'admin conserve les deux dossiers ou seulement A/B, puis affecte chaque
+personne à un dossier conservé. Une seule fiche subsiste pour la licence en
+doublon ; aucun autre champ personnel ou issu du site n'est arbitré.
+
+Si les deux dossiers restent, leurs messages, journaux d'e-mails et comptes
+restent séparés. Si un dossier disparaît, ses dépendances liées au dossier sont
+transférées vers l'autre ; l'historique attaché au propriétaire reste avec lui
+si son compte staff est conservé. Les réservations suivent toujours leur personne. L'audit durable reste
+minimal : mode, répartition, identifiants, e-mails, volumes et auteur staff.
+
+Le traitement de l'identité d'un dossier supprimé dépend de ses droits : pour un compte public
+pur, le dossier, les sessions et les identités d'authentification sont supprimés.
+Le profil public est supprimé ; seul le `user` reste comme ancre technique
+inactive jusqu'à la purge du reset annuel, et son e-mail devient un marqueur de refus pour `abo-otp`. Une
+tentative avec cette ancienne adresse échoue avec un message générique, sans
+révéler l'e-mail de destination ni authentifier l'ancien demandeur sur l'autre
+compte. L'adresse à utiliser est communiquée par l'email de résolution ;
+un compte portant aussi un `userSettings` est conservé avec ses accès, sessions
+et comptes d'authentification staff. Les deux notifications sont planifiées et
+suivies séparément. Leurs erreurs restent visibles dans le suivi interne ; aucun
+endpoint applicatif de relance n'est exposé.
+
+Le marqueur d'e-mail est limité à la campagne et supprimé au reset Abonnements.
+Dans une chaîne A → B → C, les marqueurs entrants vers B sont retargetés vers C
+pour conserver une destination interne cohérente sans l'exposer dans le refus de
+connexion.
+
+Cette opération reste interne au portail. Elle ne produit aucune mutation,
+suppression, blocage ni autre effet sur le site du club indépendant.
+
 ## 6. Données : ce qui est stocké et les liens entre les tables
 
 Le module est **hors saison au sens du sélecteur de saison de la comptabilité**.
@@ -273,6 +309,8 @@ erDiagram
   ABO_DOSSIERS ||--o{ ABO_MESSAGES : "discussion"
   ABO_DOSSIERS ||--o{ ABO_EMAIL_LOG : "mail history"
   ABO_PERSONNES ||--o{ ABO_TEST_RESERVATIONS : "books"
+  ABO_FUSIONS_DOSSIERS ||--o{ ABO_FUSION_NOTIFICATIONS : "notifies"
+  ABO_FUSIONS_DOSSIERS ||--o{ ABO_FUSION_REDIRECTIONS_EMAIL : "redirects"
   USERS ||--o{ ABO_TEST_CRENEAUX : "proposes"
 ```
 
@@ -280,7 +318,7 @@ erDiagram
 |---|---|---|
 | `users`, tables `auth*` | Comptes et sessions Convex Auth, partagés par staff et public. | Identité de connexion. |
 | `userSettings` | Permissions staff (`allowedTiles`) et rôle général. | Index par utilisateur ; source unique du droit admin Abonnements. |
-| `abo_profiles` | Profil des comptes publics ; rôle `utilisateur`. | Index par utilisateur et e-mail. Un staff n'en a normalement pas. |
+| `abo_profiles` | Profil du parcours public ; rôle `utilisateur`. | Index par utilisateur et e-mail. Il peut coexister avec `userSettings` lorsqu'un membre du staff dépose une demande personnelle. |
 | `abo_dossiers` | Dossier, propriétaire, e-mail, statut global et dates. | Index par propriétaire et e-mail. |
 | `abo_personnes` | Candidats du dossier et étapes (validation, licence, test, site, paiement). | Index par dossier, licence, nom normalisé. |
 | `abo_messages` | Discussion demandeur ↔ admins. | Index par dossier. |
@@ -293,6 +331,9 @@ erDiagram
 | `abo_licences` | Annuaire de licences pour aider au rapprochement. | Index par licence et nom normalisé. |
 | `abo_email_log` | Trace anti-doublon des emails transactionnels. | Index par dossier. |
 | `abo_demandes_supprimees` | Historique léger des dossiers retirés par leur auteur. | Index par propriétaire. |
+| `abo_fusions_dossiers` | Audit durable minimal d'une résolution : mode, dossiers A/B, répartition, fiche doublon conservée et volumes transférés, sans snapshot complet. | Index par licence, dossiers et propriétaires concernés. Hors saison. |
+| `abo_fusion_notifications` | État, nombre de tentatives et éventuelle erreur des notifications planifiées aux deux e-mails. | Index par fusion et statut ; suivi interne, sans endpoint applicatif de relance. Hors saison. |
+| `abo_fusion_redirections_email` | Marqueur créé seulement pour un dossier supprimé ; il refuse l'ancien e-mail dans `abo-otp`, sans révéler ni ouvrir le compte de destination. | Recherche par e-mail supprimé et retargeting interne. Limité à la campagne, purgé au reset. |
 
 ### Garanties de confidentialité
 
@@ -331,6 +372,11 @@ Elle effectue ensuite, dans cet ordre :
 - Deux connexions OTP distinctes empêchent l'auto-inscription publique de
   devenir un compte staff.
 - Le droit Abonnements est calculé sur la tuile, pas sur le rôle général.
+- La résolution exige un choix humain du ou des dossiers conservés et de
+  l'affectation de chaque personne ; elle n'arbitre aucun champ issu du site.
+- La suppression d'un compte est interdite dès qu'il possède des accès
+  staff ; l'ancien e-mail public pur est refusé par `abo-otp`, jamais connecté
+  au dossier conservé.
 - Les réservations vérifient propriétaire, validation préalable, unicité de la
   réservation active et capacité transactionnelle.
 - Les suppressions de créneau ne laissent pas de surbooking silencieux ; elles
@@ -406,6 +452,26 @@ Elle effectue ensuite, dans cet ordre :
    non sensible ou une sauvegarde validée.
 9. Répéter le reset sur une copie représentative et vérifier explicitement qu'un
    compte staff ne peut jamais être supprimé.
+10. Créer un conflit de licence entre deux dossiers familiaux ayant chacun des
+    messages, un historique d'e-mails et des réservations. Déclencher l'aperçu
+    depuis l'association, puis vérifier que le même conflit reste accessible
+    depuis la liste.
+11. Tester les trois choix sur des jeux de données distincts : conserver les
+    deux dossiers, conserver seulement A, puis conserver seulement B. Répartir
+    chaque personne, puis contrôler qu'aucune n'est sans dossier, que chaque
+    dossier conservé reste non vide et que la personne doublon n'existe plus
+    qu'une fois.
+12. Couvrir séparément un compte public pur et un compte également staff : le
+    dossier et l'authentification publique du premier doivent être désactivés, son
+    ancre technique conservée jusqu'au reset, puis l'adresse refusée par
+    `abo-otp` sans révéler l'e-mail du dossier conservé ni ouvrir ce compte ; le second doit conserver ses
+    accès et ses sessions. Vérifier les deux notifications planifiées, simuler
+    un échec et contrôler son statut interne, puis confirmer que le snapshot du
+    site club demeure strictement inchangé.
+13. Enchaîner A → B puis B → C : A et B doivent être refusés sans révéler C ;
+    seule la notification privée de résolution indique l'e-mail à utiliser. Après
+    le reset Abonnements, ces marqueurs de campagne doivent
+    être supprimés, tandis que l'audit minimal des résolutions reste conservé.
 
 ## 10. Sources de vérité dans le dépôt
 
