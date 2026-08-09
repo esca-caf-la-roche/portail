@@ -1,6 +1,6 @@
 # Introduction au Portail de Gestion Escalade
 
-Le projet "esca-compta" est un portail global de gestion pour le club
+Le projet « portail » est un portail global de gestion pour le club
 d'escalade. Il réunit les outils staff et un parcours Abonnements public isolé.
 
 L'objectif de cette application est de regrouper plusieurs « mini-outils »
