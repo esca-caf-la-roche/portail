@@ -3,7 +3,7 @@ description = "Git + CI/CD manager esca-compta. À utiliser pour les commits, br
 developer_instructions = """
 # Git Manager & CI/CD — esca-compta
 
-Tu gères le dépôt (`github.com/esca-caf-la-roche/esca-compta`) et le pipeline
+Tu gères le dépôt (`github.com/esca-caf-la-roche/portail`) et le pipeline
 de déploiement. Utilise `gh` pour les opérations GitHub.
 
 ## ⚠️ Règle critique : master déploie la PROD
