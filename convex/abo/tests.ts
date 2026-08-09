@@ -197,6 +197,85 @@ async function reservationActive(
   return rows.find((r) => r.statut === "active") ?? null;
 }
 
+type EligibiliteDirecte = {
+  autorisee: boolean;
+  motif: "eligible" | "eleve_en_cours" | "test_valide" | "age_insuffisant" | "inscription_introuvable" | "email_different" | "situation_incomplete";
+  message: string;
+  candidat: { licence: string; nom: string; prenom: string } | null;
+};
+
+// Une réservation directe est rattachée à une inscription actuellement visible
+// sur le site du club, par licence exacte puis e-mail du compte connecté. Le
+// rapprochement nom/prénom ne donne jamais le droit de réserver.
+async function eligibiliteDirecte(
+  ctx: QueryCtx | MutationCtx,
+  licence: string,
+): Promise<EligibiliteDirecte> {
+  const id = await requireAboIdentity(ctx);
+  const scrap = await ctx.db
+    .query("abo_abonnes_scrap")
+    .withIndex("by_licence", (q) => q.eq("licence", licence))
+    .first();
+  if (!scrap) return { autorisee: false, motif: "inscription_introuvable", message: "Cette licence ne correspond pas à une inscription actuelle sur le site du club.", candidat: null };
+  if (!scrap.email || scrap.email.trim().toLowerCase() !== id.email.trim().toLowerCase()) {
+    return { autorisee: false, motif: "email_different", message: "Connectez-vous avec l'adresse e-mail utilisée pour cette inscription sur le site du club.", candidat: null };
+  }
+  const eleve = await ctx.db
+    .query("abo_eleves_en_cours")
+    .withIndex("by_licence", (q) => q.eq("licence", licence))
+    .first();
+  if (eleve) return { autorisee: false, motif: "eleve_en_cours", message: "Vous êtes inscrit·e à un cours : demandez à votre moniteur de vous faire passer le test pendant le cours.", candidat: null };
+  if (scrap.autonomie === "OK") return { autorisee: false, motif: "test_valide", message: "Votre test d'autonomie est déjà validé.", candidat: null };
+  if (scrap.age === undefined || !scrap.nom || !scrap.prenom || !scrap.autonomie) return { autorisee: false, motif: "situation_incomplete", message: "Votre situation n'est pas encore complète dans les informations du club. Réessayez après la prochaine synchronisation ou contactez la commission.", candidat: null };
+  if (scrap.age < 16) return { autorisee: false, motif: "age_insuffisant", message: "Le test d'autonomie est accessible à partir de 16 ans.", candidat: null };
+  return { autorisee: true, motif: "eligible", message: "Vous pouvez réserver un créneau de test d'autonomie.", candidat: { licence, nom: scrap.nom, prenom: scrap.prenom } };
+}
+
+export const eligibiliteReservationDirecteTest = authenticatedQuery({
+  args: { licence: v.string() },
+  handler: async (ctx, args) => eligibiliteDirecte(ctx, args.licence.trim()),
+});
+
+export const getMesReservationsDirectes = authenticatedQuery({
+  args: {},
+  handler: async (ctx) => {
+    const id = await requireAboIdentity(ctx);
+    const rows = await ctx.db.query("abo_test_reservations")
+      .withIndex("by_candidat_user_id", (q) => q.eq("candidat_user_id", id.userId)).collect();
+    return rows.filter(estReservationActive).map((r) => ({ id: r._id, licence: r.candidat_licence ?? "", nom: r.candidat_nom ?? "", prenom: r.candidat_prenom ?? "", tranche: r.tranche, tranche_fin: r.tranche_fin ?? null }));
+  },
+});
+
+export const reserverTestDirect = authenticatedMutation({
+  args: { licence: v.string(), tranche: v.string() },
+  handler: async (ctx, args) => {
+    const id = await requireAboIdentity(ctx);
+    const licence = args.licence.trim();
+    const eligibilite = await eligibiliteDirecte(ctx, licence);
+    if (!eligibilite.autorisee || !eligibilite.candidat) throw new ConvexError({ code: "TEST_DIRECT_NON_ELIGIBLE", message: eligibilite.message });
+    const existantes = await ctx.db.query("abo_test_reservations")
+      .withIndex("by_candidat_licence", (q) => q.eq("candidat_licence", licence)).collect();
+    if (existantes.some(estReservationActive)) throw new ConvexError({ code: "P0011", message: "Cette personne a déjà une réservation. Annulez-la pour en changer." });
+    const cible = (await calculerTranches(ctx)).find((t) => t.tranche_debut === args.tranche);
+    if (!cible || new Date(cible.tranche_debut).getTime() <= Date.now()) throw new ConvexError({ code: "P0012", message: "Ce créneau n'existe pas, ou il est passé." });
+    const reserves = await reservationsActivesParTranche(ctx);
+    if ((reserves.get(args.tranche) ?? 0) >= cible.capacite) throw new ConvexError({ code: "P0013", message: "Ce créneau est complet, choisissez-en un autre." });
+    await ctx.db.insert("abo_test_reservations", { candidat_user_id: id.userId, candidat_licence: licence, candidat_nom: eligibilite.candidat.nom, candidat_prenom: eligibilite.candidat.prenom, candidat_email: id.email, tranche: cible.tranche_debut, tranche_fin: cible.tranche_fin, statut: "active", etat_confirmation: "confirmee" });
+    return null;
+  },
+});
+
+export const annulerMaReservationDirecte = authenticatedMutation({
+  args: { reservationId: v.id("abo_test_reservations") },
+  handler: async (ctx, args) => {
+    const id = await requireAboIdentity(ctx);
+    const reservation = await ctx.db.get(args.reservationId);
+    if (!reservation || reservation.candidat_user_id !== id.userId) throw new ConvexError({ code: "P0002", message: "Réservation introuvable." });
+    if (estReservationActive(reservation)) await ctx.db.patch(reservation._id, { statut: "annulee", annulee_le: new Date().toISOString(), annulee_raison: "candidat" });
+    return null;
+  },
+});
+
 // ── Candidat : réserver une tranche pour une de ses personnes ────────
 export const reserverTest = authenticatedMutation({
   args: { personneId: v.id("abo_personnes"), tranche: v.string() },
@@ -208,6 +287,11 @@ export const reserverTest = authenticatedMutation({
         code: "P0010",
         message: "La réservation du test est réservée aux demandes validées.",
       });
+    }
+    if (personne.licence) {
+      const eleve = await ctx.db.query("abo_eleves_en_cours")
+        .withIndex("by_licence", (q) => q.eq("licence", personne.licence!)).first();
+      if (eleve) throw new ConvexError({ code: "TEST_ELEVE_EN_COURS", message: "Vous êtes inscrit·e à un cours : demandez à votre moniteur de vous faire passer le test pendant le cours." });
     }
     if (await reservationActive(ctx, args.personneId)) {
       throw new ConvexError({
@@ -489,6 +573,7 @@ export const supprimerTestCreneau = authenticatedMutation({
         });
         // Notifie l'annulation (envoi réel via la boîte abo ; journalisation
         // dans abo_email_log faite par le pipeline, sans dedup pour test_annule).
+        if (!r.personne_id) continue;
         const personne = await ctx.db.get(r.personne_id);
         const dossier = personne ? await ctx.db.get(personne.dossier_id) : null;
         if (dossier) {
@@ -526,6 +611,7 @@ export const testInscritsAdmin = authenticatedQuery({
       email: string;
     }[] = [];
     for (const r of actives) {
+      if (!r.personne_id) continue;
       const personne = await ctx.db.get(r.personne_id);
       if (!personne) continue;
       const dossier = await ctx.db.get(personne.dossier_id);

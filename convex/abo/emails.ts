@@ -247,6 +247,10 @@ export const preparerRappelTest = internalMutation({
     ) {
       return null;
     }
+    if (!reservation.personne_id) {
+      if (!reservation.candidat_email || !reservation.candidat_nom || !reservation.candidat_prenom) return null;
+      return { destinataire: reservation.candidat_email, nom: reservation.candidat_nom, prenom: reservation.candidat_prenom, licence: reservation.candidat_licence ?? null, tranche: reservation.tranche };
+    }
     const personne = await ctx.db.get(reservation.personne_id);
     const dossier = personne ? await ctx.db.get(personne.dossier_id) : null;
     if (!personne || !dossier?.email) return null;
@@ -265,6 +269,10 @@ export const contexteReservationTest = internalQuery({
   handler: async (ctx, args): Promise<EmailReservationTest | null> => {
     const reservation = await ctx.db.get(args.reservationId);
     if (!reservation) return null;
+    if (!reservation.personne_id) {
+      if (!reservation.candidat_email || !reservation.candidat_nom || !reservation.candidat_prenom) return null;
+      return { destinataire: reservation.candidat_email, nom: reservation.candidat_nom, prenom: reservation.candidat_prenom, licence: reservation.candidat_licence ?? null, tranche: reservation.tranche };
+    }
     const personne = await ctx.db.get(reservation.personne_id);
     const dossier = personne ? await ctx.db.get(personne.dossier_id) : null;
     if (!personne || !dossier?.email) return null;

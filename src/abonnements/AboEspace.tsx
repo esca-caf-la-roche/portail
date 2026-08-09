@@ -5,6 +5,7 @@ import { api } from "../../convex/_generated/api";
 
 const Demande = lazy(() => import("./pages/Demande"));
 const Suivi = lazy(() => import("./pages/Suivi"));
+const TestAutonomieDirect = lazy(() => import("./pages/TestAutonomieDirect"));
 
 function ChargementContenu({ message }: { message: string }) {
   return (
@@ -40,7 +41,7 @@ export default function AboEspace() {
           <ChargementContenu message="Chargement de votre demande…" />
         ) : dossier === null ? (
           <Suspense fallback={<ChargementContenu message="Préparation du formulaire…" />}>
-            <Demande />
+            <TestAutonomieDirect demande={<Demande />} />
           </Suspense>
         ) : (
           <Suspense fallback={<ChargementContenu message="Préparation du suivi…" />}>

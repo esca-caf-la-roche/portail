@@ -195,6 +195,7 @@ export const listeReservationsPassees = authenticatedQuery({
 
     for (const reservation of reservations) {
       if (reservation.statut !== "active") continue;
+      if (!reservation.personne_id) continue;
       const personne = await ctx.db.get(reservation.personne_id);
       if (!personne || vus.has(personne._id)) continue;
       vus.add(personne._id);

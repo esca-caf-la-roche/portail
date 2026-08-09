@@ -854,7 +854,15 @@ export default defineSchema({
   // Réservation d'une tranche horaire de test par une personne (anonyme côté
   // encadrant). Une seule réservation "active" par personne (contrôlé en mutation).
   abo_test_reservations: defineTable({
-    personne_id: v.id("abo_personnes"),
+    // WIDEN: les réservations directes depuis une inscription club n'ont pas de
+    // dossier de demande. Une réservation contient soit personne_id, soit les
+    // champs candidat_* ci-dessous, jamais les deux.
+    personne_id: v.optional(v.id("abo_personnes")),
+    candidat_user_id: v.optional(v.id("users")),
+    candidat_licence: v.optional(v.string()),
+    candidat_nom: v.optional(v.string()),
+    candidat_prenom: v.optional(v.string()),
+    candidat_email: v.optional(v.string()),
     tranche: v.string(), // début de tranche, instant ISO (Europe/Paris)
     tranche_fin: v.optional(v.string()),
     statut: v.union(v.literal("active"), v.literal("annulee")),
@@ -877,6 +885,8 @@ export default defineSchema({
     rappel_envoye_le: v.optional(v.string()),
   })
     .index("by_personne", ["personne_id"])
+    .index("by_candidat_user_id", ["candidat_user_id"])
+    .index("by_candidat_licence", ["candidat_licence"])
     .index("by_tranche", ["tranche"]),
 
   // SAISON-EXEMPT: singleton du dernier compteur public calculé, transversal
