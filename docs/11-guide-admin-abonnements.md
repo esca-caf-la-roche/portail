@@ -96,6 +96,12 @@ Après une synchronisation réussie, traiter d'abord les nouveaux dossiers et
 les messages non lus ; puis passer les personnes ambiguës par l'onglet
 **Licences** avant de prendre une décision définitive.
 
+Dans la file **Nouvelles demandes**, l'ordre utile est celui de chaque
+personne encore en attente : la plus ancienne demande est affichée en premier,
+même lorsqu'une personne a été ajoutée plus tard à un dossier plus ancien. La
+date et l'heure affichées sur la carte indiquent donc concrètement qui traiter
+ensuite.
+
 ## 2. Messages
 
 ### À quoi sert cet onglet ?
@@ -118,6 +124,11 @@ détail d'une personne dans l'onglet **Dossiers**.
 3. Saisir la réponse et cliquer **Envoyer**. `Ctrl + Entrée` (ou `Cmd + Entrée`
    sur macOS) envoie également le message.
 4. Le demandeur voit la réponse en temps réel dans son portail.
+
+Les e-mails transactionnels liés aux Abonnements ne reçoivent pas les réponses
+par e-mail. Ils orientent explicitement le demandeur vers cette messagerie :
+pour une question ou une réponse, traiter le fil du dossier plutôt que la boîte
+d'envoi de l'association.
 
 ### À utiliser pour
 
@@ -422,6 +433,7 @@ HelloAsso. Elle :
 - archive le snapshot actuel des abonnés en N-1 ;
 - vide les snapshots, créneaux, réservations, cache de paiements et journal
   d'e-mails de la campagne ;
+- conserve les scans archivés de tests d'autonomie et leurs liens Drive ;
 - programme la suppression des demandes et comptes publics ;
 - conserve le compte, les sessions et l'authentification d'un staff qui a aussi
   utilisé le portail public, tout en purgeant ses données publiques de campagne ;

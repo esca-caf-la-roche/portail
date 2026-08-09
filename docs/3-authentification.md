@@ -15,12 +15,18 @@ crée aucun `userSettings` et ne donne accès à aucune tuile staff. Voir
 
 1. **Vérification de l'adresse email** :
    - L'utilisateur saisit son adresse email dans le formulaire de connexion.
-   - Le frontend appelle la query `api.users.checkEmailExists`. Si l'email n'est pas autorisé (c'est-à-dire absent de la table `users`), l'opération est bloquée directement avec un message d'erreur clair.
-   - Si l'email existe, le frontend appelle la méthode `signIn("google-otp", { email })` de `@convex-dev/auth`.
+   - Le frontend appelle directement `signIn("google-otp", { email })` de
+     `@convex-dev/auth`. Il ne vérifie pas publiquement si l'adresse appartient
+     au staff, afin de ne pas permettre l'énumération des comptes.
+   - Côté serveur, la demande est limitée par adresse canonique. Une adresse
+     absente ou au-delà du quota reçoit le même échec générique qu'un code
+     incorrect ou expiré.
 
 2. **Génération et envoi du code OTP** :
    - Le serveur génère un code OTP aléatoire sécurisé à 6 chiffres avec une validité de 10 minutes.
-   - La méthode `sendVerificationRequest` vérifie à nouveau côté serveur la présence de l'email dans la base (sécurité renforcée).
+   - La callback d'authentification vérifie côté serveur que l'adresse correspond
+     à un utilisateur staff avant de créer une session. La décision est prise
+     avant l'envoi, puis l'e-mail est planifié par une action interne.
    - L'action Node.js interne `internal.email.sendOTP` est exécutée pour envoyer l'e-mail :
      - **Mode Production / SMTP** : Si les variables d'environnement `EMAIL_SENDER` et `EMAIL_PASSWORD` (mot de passe d'application Google) sont définies, l'e-mail contenant l'OTP est envoyé directement via Gmail.
      - **Configuration absente** : Si les variables ne sont pas définies, l'envoi échoue explicitement. Le code OTP n'est jamais écrit dans les logs ; les secrets SMTP doivent donc être configurés aussi sur le déploiement DEV utilisé pour les essais d'authentification.
@@ -35,7 +41,11 @@ crée aucun `userSettings` et ne donne accès à aucune tuile staff. Voir
 
 Le provider `abo-otp` envoie également un code valable 10 minutes, avec la boîte
 mail dédiée aux abonnements. Sa callback crée ou retrouve l'utilisateur puis
-crée, si nécessaire, un profil `abo_profiles` de rôle `utilisateur`.
+crée, si nécessaire, un profil `abo_profiles` de rôle `utilisateur`. Son quota
+est distinct de celui du staff. Lorsqu'un ancien dossier public a été regroupé
+dans une résolution de conflit, l'ancienne adresse ne devient jamais un alias :
+la demande de code reste neutre, mais la vérification refuse ensuite l'accès et
+oriente vers l'e-mail privé de résolution.
 
 L'absence de `userSettings` empêche ce compte d'accéder au tableau de bord et
 aux modules staff. Les autorisations du domaine Abonnements sont dérivées côté

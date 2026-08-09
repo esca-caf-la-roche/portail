@@ -22,20 +22,23 @@ fichiers modifiés.
 
 ```bash
 npm install
-npx convex dev
+npx.cmd convex dev
 npm run dev
 ```
 
 Avant livraison :
 
 ```bash
+npm run check:convex
+npm test
 npm run lint
 npm run build
 ```
 
-Le build exécute `tsc -b` avant Vite. Il constitue donc aussi le contrôle de
-types de référence. L'absence actuelle de tests automatisés est documentée dans
-[9-tests.md](9-tests.md).
+Le build exécute `tsc -b` avant Vite et contrôle le frontend. Il ne remplace pas
+`npm run check:convex`, qui typecheck aussi les fonctions et tests Convex.
+`npm test` exécute les tests Vitest actuels ; leur périmètre et les scénarios
+manuels complémentaires sont documentés dans [9-tests.md](9-tests.md).
 
 ## Garde-fous du dépôt
 
@@ -50,6 +53,8 @@ Les hooks activent les contrôles suivants lors des modifications :
 | `check-access-control.mjs` | Bloque un endpoint public injustifié et les passe-droits admin sur les tuiles |
 | `check-saison-config.mjs` | Vérifie index et suppression des données saisonnières |
 | `check-cron-justification.mjs` | Exige une justification pour tout nouveau cron |
+| `check-convex-cloud-dev.mjs` | Empêche d'utiliser un déploiement DEV cloud comme simple contrôle de types |
+| `check-convex-io.mjs` | Signale les écritures et parcours Convex à risque pour le budget I/O |
 | `check-eslint.mjs` | Exécute ESLint sur les fichiers TypeScript modifiés |
 | `check-prod-deploy.mjs` | Demande confirmation avant une mutation Convex en production |
 
@@ -63,7 +68,7 @@ Le workflow `.github/workflows/deploy.yml` se déclenche à chaque push sur
 
 ```text
 Checkout
-  -> Node.js 20 + cache npm
+  -> Node.js 24 + cache npm
   -> npm ci
   -> npx convex deploy
   -> npm run build
@@ -104,8 +109,10 @@ répertoire ni changer son classement alphabétique.
 2. Tester les droits avec chaque population et chaque tuile concernée.
 3. Vérifier le changement de saison si le domaine est saisonnier.
 4. Contrôler les appels et écritures Convex pour éviter une amplification I/O.
-5. Exécuter lint et build.
-6. Mettre à jour uniquement les sections documentaires affectées.
+5. Exécuter `npm run check:convex`, les tests pertinents, lint et build.
+6. Mesurer DEV et PROD séparément avec `npm run audit:convex-io` lorsque le
+   changement peut modifier les lectures ou écritures Convex.
+7. Mettre à jour uniquement les sections documentaires affectées.
 
 Les scénarios manuels propres aux Abonnements sont détaillés dans
 [5-module-abonnements.md](5-module-abonnements.md).

@@ -271,7 +271,7 @@ sont HTTPS ; `inscription_lien` est limité au domaine officiel
 ## Checklist de validation e2e (à exécuter en dev une fois les secrets posés)
 
 Cocher au fur et à mesure. La plupart nécessitent des secrets et/ou un
-déploiement `npx convex dev` actif.
+déploiement `npx.cmd convex dev` actif.
 
 - [ ] **Auth/isolation 🔒** : configurer le SMTP DEV, puis email non-staff → OTP abo → n'ouvre
   QUE `/abonnements` ; `/` et les endpoints admin refusent. Staff avec tuile
@@ -317,8 +317,9 @@ déploiement `npx convex dev` actif.
   les abonnés (`abo_abonnes_scrap`) et fait avancer les `etape_*` ; import élèves
   alimente `abo_eleves_en_cours` (badge « en cours »).
 - [ ] **Reset saison** : archive N-1, vide scrap/paiements-abo/élèves/créneaux,
-  purge les comptes publics par lots, conserve les staff ; nouveau lien + vagues
-  réinitialisées.
+  réservations et journal d'e-mails, purge les comptes publics par lots,
+  conserve les staff **et l'archive permanente des scans de tests** ; nouveau
+  lien + vagues réinitialisées.
 - [ ] **Emails** : validation → email `validation` unique (pas de renvoi au
   re-scrap) ; demande → `accuse` ; création/annulation de créneau → `test_annule`.
 - [ ] **Messagerie 🔒** : message instantané des deux côtés (réactivité Convex) ;

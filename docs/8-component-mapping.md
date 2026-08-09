@@ -13,7 +13,7 @@ le détail métier de chaque module.
 | Autorisation par tuile | `src/components/RequireAccess.tsx` | `convex/access.ts` |
 | Saison courante | `src/contexts/SeasonContext.tsx` | `convex/saisons.ts`, `convex/saisonUtils.ts` |
 | Utilisateurs et tuiles | `src/pages/Configurations.tsx` | `convex/users.ts` |
-| Authentification | `src/pages/Login.tsx` | `convex/auth.ts`, `convex/auth.config.ts`, `convex/http.ts` |
+| Authentification | `src/pages/Login.tsx` | `convex/auth.ts`, `convex/auth.config.ts`, `convex/http.ts`, `convex/staffOtp.ts`, `convex/aboOtp.ts` |
 | Schéma | — | `convex/schema.ts` |
 | Wrappers sécurisés | — | `convex/customFunctions.ts` |
 
@@ -45,8 +45,8 @@ La documentation fonctionnelle complète est dans
 | Messagerie | `src/abonnements/FilDiscussion.tsx` | `convex/abo/messages.ts`, `convex/abo/emails.ts` |
 | Administration | `src/abonnements/admin/` | `convex/abo/` |
 | Paiements | `src/abonnements/admin/Paiements.tsx` | `convex/abo/paiements.ts`, `convex/helloasso.ts` |
-| Licences | `src/abonnements/admin/Licences.tsx` | `convex/abo/licences.ts`, `convex/abo/matching.ts` |
-| Tests d'autonomie | `src/abonnements/admin/Tests.tsx` | `convex/abo/tests.ts` |
+| Licences et conflits | `src/abonnements/admin/Licences.tsx`, `src/abonnements/admin/FusionDossiersModal.tsx` | `convex/abo/licences.ts`, `convex/abo/matching.ts`, `convex/abo/fusionsDossiers.ts` |
+| Tests d'autonomie | `src/abonnements/admin/Tests.tsx`, `src/abonnements/pages/Suivi.tsx` | `convex/abo/tests.ts`, `convex/abo/testDocuments.ts`, `convex/abo/testDocumentsDrive.ts`, `convex/abo/testAutonomiePdf.ts` |
 | Compteur public | `src/abonnements/Compteur.tsx` | `convex/abo/compteur.ts` |
 | Synchronisations | chargement des pages concernées | `convex/abo/sync.ts`, `convex/abo/scrap.ts` |
 
@@ -70,10 +70,10 @@ La documentation fonctionnelle complète est dans
 | Service | Point d'intégration |
 |---|---|
 | Email staff | `convex/email.ts` |
-| Email Abonnements | `convex/abo/emails.ts` |
+| Email Abonnements et notifications de fusion | `convex/abo/emails.ts`, `convex/abo/fusionsDossiers.ts`, `convex/email.ts` |
 | HelloAsso | `convex/helloasso.ts`, `convex/abo/paiements.ts` |
 | HelloAsso — remboursements élèves | `convex/remboursementsHelloAsso.ts` |
-| Google Drive | `convex/drive.ts` |
+| Google Drive | `convex/drive.ts`, `convex/abo/testDocumentsDrive.ts` |
 | Site du club et snapshot des élèves en cours | `convex/abo/scrap.ts`, `convex/abo/sync.ts` |
 | Annuaire des licences | `convex/abo/licences.ts` |
 

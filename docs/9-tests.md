@@ -241,7 +241,7 @@ production.
 
 ## Critère de fin
 
-Une fonctionnalité est prête lorsque lint et build passent, que ses scénarios
-manuels à risque ont été exécutés et que la documentation reflète les limites
-réelles. Dès qu'une suite automatisée sera ajoutée, sa commande et son périmètre
-devront être reportés dans ce document et dans le README.
+Une fonctionnalité est prête lorsque `npm run check:convex`, les tests
+pertinents, lint et build passent, que ses scénarios manuels à risque ont été
+exécutés et que la documentation reflète les limites réelles. Toute nouvelle
+suite automatisée doit ajouter ici sa commande et son périmètre.

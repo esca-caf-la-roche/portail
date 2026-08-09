@@ -360,6 +360,10 @@ Elle effectue ensuite, dans cet ordre :
    messages, réservations et sessions ;
 6. conserve les comptes staff, y compris leurs droits.
 
+L'archive permanente des scans de tests d'autonomie n'est pas concernée : elle
+reste disponible d'une campagne à l'autre, avec ses liens Google Drive et son
+statut interne de traitement.
+
 > **Décision opérationnelle :** cette action efface les données publiques de
 > campagne après n'avoir conservé qu'une archive limitée des abonnés issus du
 > site. Elle doit donc être précédée d'une sauvegarde/validation métier et

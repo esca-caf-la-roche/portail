@@ -36,7 +36,7 @@ tâches internes. Il n'existe pas de serveur HTTP applicatif séparé.
 | Build | Vite 8 |
 | Routage | React Router 7, `HashRouter` |
 | Styles | CSS natif, Flexbox et Grid |
-| Backend et base | Convex 1.41 |
+| Backend et base | Convex 1.43 |
 | Authentification | `@convex-dev/auth` |
 | Icônes | `lucide-react` |
 | Intégrations | HelloAsso, SMTP, Google Drive, exports du site club |
@@ -80,6 +80,12 @@ réparties en cinq domaines :
 - synchronisations et intégrations externes ;
 - inscriptions, licences, tests et messagerie du module Abonnements.
 
+Le domaine Abonnements comprend notamment l'archive permanente
+`abo_tests_autonomie_archive` (métadonnées et lien Drive des scans) et les
+tables de résolution de conflits de licence. Les scans restent dans Google
+Drive ; Convex conserve leur référence, leur identité gelée et leur état de
+traitement interne.
+
 Les fichiers à la racine de `convex/` portent les domaines partagés ou staff.
 `convex/abo/` isole le domaine Abonnements. Les fonctions réutilisables de
 contrôle d'accès sont dans `convex/access.ts`, `convex/abo/auth.ts` et
@@ -118,6 +124,11 @@ active jusqu'à son paiement ou son annulation, puis demeure consultable dans
 les archives. Les bénéficiaires conservent un instantané autonome de l'élève :
 les archives ne dépendent donc pas de la présence future de celui-ci dans
 `abo_eleves_en_cours`.
+
+Le module Abonnements a son propre cycle de campagne, distinct de la saison
+comptable. En particulier, l'archive des tests d'autonomie est permanente et
+n'est pas supprimée lors de la réinitialisation de campagne ; seuls les créneaux
+et réservations courants sont réinitialisés.
 
 Les relations et index sont définis dans `convex/schema.ts`. Les collections
 potentiellement volumineuses doivent être bornées, paginées ou parcourues par

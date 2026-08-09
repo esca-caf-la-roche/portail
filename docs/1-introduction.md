@@ -1,21 +1,32 @@
 # Introduction au Portail de Gestion Escalade
 
-Le projet "esca-compta" a pivoté pour devenir un portail global de gestion pour le club d'escalade. 
+Le projet "esca-compta" est un portail global de gestion pour le club
+d'escalade. Il réunit les outils staff et un parcours Abonnements public isolé.
 
-L'objectif de cette application est de regrouper plusieurs "mini-outils" (Comptabilité, Adhérents, Événements, Statistiques) au sein d'une seule et même interface centralisée, hautement sécurisée, et disposant d'une charte graphique forte (Néo-Brutalisme).
+L'objectif de cette application est de regrouper plusieurs « mini-outils »
+(Comptabilité, Budget, Paiements, suivi des cours, remboursements élèves et
+Abonnements) dans une même interface centralisée, sécurisée et à la charte
+graphique néo-brutaliste. Les routes Adhérents, Événements et Statistiques sont
+pour l'instant des espaces réservés, sans module métier associé.
 
 ## Fonctionnalités Principales
 
-1. **Dashboard Centralisé** : Un point d'entrée unique listant tous les outils disponibles sous forme de tuiles.
-2. **Saisonnabilité Transversale** : L'application permet de sélectionner une saison en cours (ex: "2025-26"). Ce choix est conservé en mémoire (via le localStorage) et propagé à tous les mini-outils pour garantir qu'un utilisateur consulte toujours les données de la bonne année.
-3. **Sécurité par OTP** : Le staff accède au portail si son email a été
+1. **Dashboard centralisé** : un point d'entrée unique liste les outils staff
+   autorisés sous forme de tuiles.
+2. **Saisonnalité explicite** : les outils comptables utilisent la saison
+   sélectionnée ; les parcours qui doivent rester consultables (Abonnements,
+   tests d'autonomie, remboursements élèves) déclarent explicitement leur
+   exception.
+3. **Sécurité par OTP** : le staff accède au portail si son email a été
    pré-enregistré. Les abonnés peuvent s'auto-inscrire, mais restent isolés dans
    le module public Abonnements sans accès aux outils du staff.
-4. **Base de données temps réel** : Utilisation de [Convex](https://convex.dev/) pour synchroniser instantanément les modifications sans avoir à recharger la page.
+4. **Base de données temps réel** : [Convex](https://convex.dev/) synchronise
+   les modifications sans rechargement.
 
 ## Prérequis
 
-- **Node.js** 20 ou supérieur
+- **Node.js** compatible avec les dépendances du projet ; la livraison continue
+  utilise Node.js 24
 - **Convex CLI** (installé via npm)
 
 ## Démarrage Rapide
@@ -26,7 +37,7 @@ L'objectif de cette application est de regrouper plusieurs "mini-outils" (Compta
    ```
 2. Démarrez le backend Convex dans un terminal :
    ```bash
-   npx convex dev
+   npx.cmd convex dev
    ```
 3. Démarrez l'application frontend React/Vite dans un autre terminal :
    ```bash
