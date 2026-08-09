@@ -56,6 +56,9 @@ export default function AboLogin() {
 
         {step === "email" ? (
           <form onSubmit={handleEmail}>
+            <p id="abo-email-follow-up-hint" className="abo-email-follow-up">
+              Pour faciliter le suivi de votre dossier, utilisez autant que possible <strong>la même adresse e-mail</strong> sur les autres démarches liées à votre abonnement. Cela aide les bénévoles à retrouver votre dossier et limite le risque d’un rapprochement incomplet.
+            </p>
             <label htmlFor="abo-email">Votre email</label>
             <input
               id="abo-email"
@@ -65,8 +68,9 @@ export default function AboLogin() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="prenom.nom@exemple.fr"
+              aria-describedby="abo-email-code-hint abo-email-follow-up-hint"
             />
-            <p className="abo-hint">Vous recevrez un code à 6 chiffres pour vous connecter.</p>
+            <p id="abo-email-code-hint" className="abo-hint">Vous recevrez un code à 6 chiffres pour vous connecter.</p>
             <button type="submit" disabled={loading} className="abo-btn">
               {loading ? "Envoi…" : "Recevoir le code"}
             </button>

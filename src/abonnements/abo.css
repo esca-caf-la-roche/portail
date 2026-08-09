@@ -170,6 +170,17 @@
   color: #666;
 }
 
+.abo-email-follow-up {
+  margin: 0 0 0.75rem;
+  border: 3px solid var(--abo-border);
+  box-shadow: 6px 6px 0 0 var(--abo-border);
+  padding: 0.8rem;
+  background: var(--abo-bg);
+  font-size: 0.88rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
 .abo-btn {
   margin-top: 0.5rem;
   background: var(--abo-accent);
