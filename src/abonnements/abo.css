@@ -364,6 +364,60 @@ textarea.abo-input {
   font-size: 1.15rem;
 }
 
+/* Choix entre demande de disponibilité et réservation directe. */
+.abo-parcours-choix {
+  padding: 1.25rem;
+}
+
+.abo-parcours-option {
+  padding: 1rem;
+  border: 2px solid var(--abo-border);
+  background: #fff9e8;
+}
+
+.abo-parcours-option--test {
+  margin-top: 1rem;
+  background: #e6f5ff;
+}
+
+.abo-parcours-option h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.abo-parcours-option p {
+  margin: 0.4rem 0 0;
+}
+
+.abo-parcours-option .abo-btn {
+  display: inline-block;
+}
+
+.abo-verification-licence form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.abo-verification-licence .abo-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-weight: 700;
+}
+
+.abo-verification-licence .abo-label input {
+  min-width: 15rem;
+  min-height: 2.65rem;
+  box-sizing: border-box;
+}
+
+.abo-verification-licence .abo-btn {
+  margin-top: 0;
+}
+
 .abo-statut-badge {
   display: inline-block;
   border: 2px solid var(--abo-border);
