@@ -1,4 +1,4 @@
-# esca-compta
+# Portail Escalade CAF LRB
 
 Portail de gestion du club d'escalade. L'application regroupe dans une interface
 unique la comptabilité, les paiements, le budget prévisionnel, le contrôle des
@@ -84,4 +84,4 @@ de `convex/customFunctions.ts`. Les exceptions publiques ou internes doivent
 
 Un push sur `master` déclenche `.github/workflows/deploy.yml` : installation
 reproductible avec `npm ci`, déploiement Convex, build Vite puis publication sur
-GitHub Pages sous `/esca-compta/`.
+GitHub Pages sous `/portail/`.

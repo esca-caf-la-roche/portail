@@ -81,7 +81,7 @@ Les secrets CI requis sont :
 - `CONVEX_DEPLOY_KEY` pour déployer le backend ;
 - `VITE_CONVEX_URL` pour construire le frontend.
 
-Vite utilise la base `/esca-compta/` et `HashRouter`, deux contraintes à
+Vite utilise la base `/portail/` et `HashRouter`, deux contraintes à
 conserver pour GitHub Pages.
 
 ## Production Convex

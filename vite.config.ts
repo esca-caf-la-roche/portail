@@ -4,5 +4,6 @@ import react from '@vitejs/plugin-react'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
-  base: '/esca-compta/', // Ajouté pour que le site fonctionne sur GitHub Pages
+  // L'URL des GitHub Pages de projet reprend le nom du dépôt : /portail/.
+  base: '/portail/',
 })
