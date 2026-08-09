@@ -12,9 +12,9 @@
 // transactions HelloAsso. Les autres sources (annuaire licences, élèves en
 // cours) sont indépendantes et peuvent suivre dans n'importe quel ordre.
 //
-// Les boutons « Synchroniser maintenant » restent câblés sur les actions
-// directes (helloasso.syncHelloAsso, scrap.synchroniserClub, …) : un clic
-// explicite force une synchro immédiate, hors verrou.
+// Les boutons « Synchroniser maintenant » restent câblés sur des actions
+// directes. Le site club conserve son délai manuel de 5 min, tandis que
+// l'annuaire reste volontairement soumis au verrou partagé de 12 h.
 
 import { v, ConvexError } from "convex/values";
 import { internalMutation } from "../_generated/server";
@@ -22,8 +22,11 @@ import type { ActionCtx } from "../_generated/server";
 import { authenticatedAction } from "../customFunctions";
 import { api, internal } from "../_generated/api";
 
-// Fenêtre anti-rejeu par défaut (60 min). Surchargée par SYNC_TTL_MINUTES.
+// Fenêtre anti-rejeu par défaut (60 min). L'annuaire des licences est plus
+// coûteux et change peu : 12 h entre deux imports garantit au plus deux
+// exécutions sur une fenêtre glissante de 24 h.
 const TTL_MS = (Number(process.env.SYNC_TTL_MINUTES) || 60) * 60_000;
+const TTL_ANNUAIRE_MS = 12 * 60 * 60_000;
 
 type Source = "helloasso" | "scrap" | "annuaire" | "eleves";
 type Resultat = "done" | "skipped" | "erreur";
@@ -33,6 +36,13 @@ const CLE_MARQUEUR: Record<Source, string> = {
   scrap: "last_sync_scrap",
   annuaire: "last_sync_annuaire",
   eleves: "last_sync_eleves",
+};
+
+const TTL_PAR_SOURCE: Record<Source, number> = {
+  helloasso: TTL_MS,
+  scrap: TTL_MS,
+  annuaire: TTL_ANNUAIRE_MS,
+  eleves: TTL_MS,
 };
 
 // ── reserverSync : check-and-set ATOMIQUE du verrou (une seule mutation) ──
@@ -91,7 +101,7 @@ async function synchroniserSource(ctx: ActionCtx, source: Source): Promise<Resul
   const cle = CLE_MARQUEUR[source];
   const reservation = await ctx.runMutation(internal.abo.sync.reserverSync, {
     cle,
-    ttlMs: TTL_MS,
+    ttlMs: TTL_PAR_SOURCE[source],
   });
   if (!reservation.proceed) return "skipped";
   try {

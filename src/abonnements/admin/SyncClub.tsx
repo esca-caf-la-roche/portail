@@ -26,7 +26,7 @@ export default function SyncClub() {
       setMessage(
         r.statut === "skipped"
           ? `Synchronisation déjà lancée récemment. Réessayez à partir de ${formatRetryAt(r.retryAt)}.`
-          : `Abonnés : ${r.abonnes.upsertees} synchronisés, ${r.abonnes.maj} personne(s) mise(s) à jour. ` +
+          : `Abonnés : ${r.abonnes.upsertees} synchronisés, ${r.abonnes.supprimees} retiré(s) du cache, ${r.abonnes.maj} personne(s) mise(s) à jour. ` +
             `Élèves en cours : ${r.eleves.avecLicence + r.eleves.sansLicence} importé(s).`,
       );
     } catch (err) {

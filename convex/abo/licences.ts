@@ -28,6 +28,9 @@ const URL_ANNUAIRE =
 
 // Seuil de similarité trigram (défaut de pg_trgm : 0.3) pour retenir un candidat.
 const SEUIL_TRGM = 0.3;
+const MAX_ANNUAIRE_LICENCES = 1_000;
+const ANNUAIRE_SYNC_KEY = "last_sync_annuaire";
+const ANNUAIRE_TTL_MS = 12 * 60 * 60_000;
 const MAX_CANDIDATS = 5;
 
 // ── getLicencesAValider : personnes sans licence + candidats fuzzy ───
@@ -367,6 +370,43 @@ export const upsertLicencesBatch = internalMutation({
   },
 });
 
+// ── supprimerLicencesAbsentes : finalise un snapshot FFCAM complet ───────
+// L'annuaire est une référence externe : cette purge ne modifie ni les
+// licences déjà attribuées aux personnes ni leurs dossiers portail.
+export const supprimerLicencesAbsentes = internalMutation({
+  args: { licences: v.array(v.string()) },
+  returns: v.number(),
+  handler: async (ctx, args) => {
+    if (args.licences.length === 0) {
+      throw new Error("Refus de purger l'annuaire sans licence reçue.");
+    }
+    if (args.licences.length > MAX_ANNUAIRE_LICENCES) {
+      throw new Error(`L'annuaire dépasse la limite de ${MAX_ANNUAIRE_LICENCES} licences.`);
+    }
+
+    const licencesRecues = new Set(args.licences.map(canoniserLicence).filter(Boolean));
+    if (licencesRecues.size === 0) {
+      throw new Error("Refus de purger l'annuaire sans licence exploitable.");
+    }
+
+    // IO-BOUNDED: l'annuaire FFCAM du club est borné à 1 000 fiches ; on lit
+    // au plus 1 001 entrées pour détecter une croissance avant toute purge.
+    const existantes = await ctx.db.query("abo_licences").take(MAX_ANNUAIRE_LICENCES + 1);
+    if (existantes.length > MAX_ANNUAIRE_LICENCES) {
+      throw new Error(`Le cache annuaire dépasse la limite de ${MAX_ANNUAIRE_LICENCES} licences.`);
+    }
+
+    let supprimees = 0;
+    for (const existante of existantes) {
+      if (!licencesRecues.has(existante.licence)) {
+        await ctx.db.delete(existante._id);
+        supprimees++;
+      }
+    }
+    return supprimees;
+  },
+});
+
 // ── importerAnnuaireLicences : télécharge l'annuaire et upsert (admin) ──
 // Portage de scripts/import-licences.js. 🔒 Basic Auth dédiée (LICENCES_USER /
 // LICENCES_PASSWORD) jamais loggués ; on ne remonte que des compteurs. Fallback
@@ -379,19 +419,56 @@ interface LigneAnnuaire {
 
 export const importerAnnuaireLicences = authenticatedAction({
   args: {},
-  handler: async (ctx): Promise<{ upsertees: number; recus: number }> => {
+  returns: v.object({
+    statut: v.union(v.literal("done"), v.literal("skipped")),
+    retryAt: v.union(v.string(), v.null()),
+    upsertees: v.number(),
+    recus: v.number(),
+    supprimees: v.number(),
+  }),
+  handler: async (ctx): Promise<{
+    statut: "done" | "skipped";
+    retryAt: string | null;
+    upsertees: number;
+    recus: number;
+    supprimees: number;
+  }> => {
     const me = await ctx.runQuery(api.abo.identity.me, {});
     if (!me || me.aboRole !== "admin") {
       throw new Error("Réservé aux administrateurs.");
     }
-    return await ctx.runAction(internal.abo.licences.importerAnnuaireLicencesInternal, {});
+    const reservation = await ctx.runMutation(internal.abo.sync.reserverSync, {
+      cle: ANNUAIRE_SYNC_KEY,
+      ttlMs: ANNUAIRE_TTL_MS,
+    });
+    if (!reservation.proceed) {
+      const lastMs = reservation.precedent ? Date.parse(reservation.precedent) : NaN;
+      return {
+        statut: "skipped",
+        retryAt: Number.isFinite(lastMs) ? new Date(lastMs + ANNUAIRE_TTL_MS).toISOString() : null,
+        upsertees: 0,
+        recus: 0,
+        supprimees: 0,
+      };
+    }
+    try {
+      const resultat: { upsertees: number; recus: number; supprimees: number } =
+        await ctx.runAction(internal.abo.licences.importerAnnuaireLicencesInternal, {});
+      return { statut: "done", retryAt: null, ...resultat };
+    } catch (error) {
+      await ctx.runMutation(internal.abo.sync.restaurerMarqueur, {
+        cle: ANNUAIRE_SYNC_KEY,
+        valeur: reservation.precedent,
+      });
+      throw error;
+    }
   },
 });
 
 // ── importerAnnuaireLicencesInternal : logique partagée (cron + action admin) ──
 export const importerAnnuaireLicencesInternal = internalAction({
   args: {},
-  handler: async (ctx): Promise<{ upsertees: number; recus: number }> => {
+  handler: async (ctx): Promise<{ upsertees: number; recus: number; supprimees: number }> => {
     const user = process.env.LICENCES_USER;
     const pass = process.env.LICENCES_PASSWORD;
     if (!user || !pass) {
@@ -430,6 +507,11 @@ export const importerAnnuaireLicencesInternal = internalAction({
         "0 licence exploitable — authentification KO ou format de l'annuaire modifié.",
       );
     }
+    if (lignes.length > MAX_ANNUAIRE_LICENCES) {
+      throw new Error(
+        `L'annuaire dépasse la limite de ${MAX_ANNUAIRE_LICENCES} licences ; aucune donnée n'a été modifiée.`,
+      );
+    }
 
     // Upsert par lots (transactions bornées).
     let upsertees = 0;
@@ -441,6 +523,9 @@ export const importerAnnuaireLicencesInternal = internalAction({
       );
       upsertees += n;
     }
-    return { upsertees, recus: data.length };
+    const supprimees: number = await ctx.runMutation(internal.abo.licences.supprimerLicencesAbsentes, {
+      licences: lignes.map((ligne) => ligne.licence),
+    });
+    return { upsertees, recus: data.length, supprimees };
   },
 });

@@ -20,6 +20,11 @@ import { abonnementEstValide } from "./statutAbonnement";
 import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
 
+// Le site du club fournit une liste complète d'abonnés, plafonnée par la
+// capacité de la campagne. Au-delà, on échoue sans rien purger : une campagne
+// plus grande doit d'abord relever explicitement cette borne.
+const MAX_ABONNES_SCRAP = 500;
+
 // ── upsertAbonnesScrapBatch : miroir brut de la page club (par licence) ──
 // Comme le scrap Supabase, on n'écrit QUE les lignes ayant une licence (clé
 // d'unicité) ; les autres sont comptées et ignorées. Idempotent (patch/insert).
@@ -92,6 +97,44 @@ export const upsertAbonnesScrapBatch = internalMutation({
       upsertees++;
     }
     return { upsertees, sansLicence };
+  },
+});
+
+// ── supprimerAbonnesScrapAbsents : finalise un snapshot club complet ─────
+// Appelée seulement après que l'action de scrap a lu et upserté une liste non
+// vide. Les licences reçues sont la source de vérité du snapshot courant ; les
+// anciennes lignes absentes sont retirées du cache local (jamais du site club).
+export const supprimerAbonnesScrapAbsents = internalMutation({
+  args: { licences: v.array(v.string()) },
+  returns: v.number(),
+  handler: async (ctx, args) => {
+    if (args.licences.length === 0) {
+      throw new Error("Refus de purger le snapshot abonnés sans licence reçue.");
+    }
+    if (args.licences.length > MAX_ABONNES_SCRAP) {
+      throw new Error(`Le snapshot abonnés dépasse la limite de ${MAX_ABONNES_SCRAP} lignes.`);
+    }
+
+    const licencesRecues = new Set(args.licences.map(canoniserLicence).filter(Boolean));
+    if (licencesRecues.size === 0) {
+      throw new Error("Refus de purger le snapshot abonnés sans licence exploitable.");
+    }
+
+    // IO-BOUNDED: le snapshot club est limité à 500 abonnés ; on borne la
+    // lecture à 501 pour détecter une hausse de capacité avant toute purge.
+    const existants = await ctx.db.query("abo_abonnes_scrap").take(MAX_ABONNES_SCRAP + 1);
+    if (existants.length > MAX_ABONNES_SCRAP) {
+      throw new Error(`Le cache abonnés dépasse la limite de ${MAX_ABONNES_SCRAP} lignes.`);
+    }
+
+    let supprimees = 0;
+    for (const existant of existants) {
+      if (existant.licence && !licencesRecues.has(existant.licence)) {
+        await ctx.db.delete(existant._id);
+        supprimees++;
+      }
+    }
+    return supprimees;
   },
 });
 
@@ -195,10 +238,21 @@ export const matcherScrapPersonnes = internalMutation({
 
       const etapePaiement = payes.has(p.nom_prenom_normalise);
       if (!s) {
-        // Pas de correspondance scrap : on met tout de même à jour etape_paiement
-        // (source HelloAsso indépendante du scrap) si elle change.
-        if (p.etape_paiement !== etapePaiement) {
-          await ctx.db.patch(p._id, { etape_paiement: etapePaiement });
+        // La ligne était auparavant matérialisée depuis le site du club mais
+        // elle n'est plus présente dans le snapshot complet : on conserve la
+        // demande du portail, tout en retirant ses confirmations site. Le
+        // paiement reste une source HelloAsso indépendante du scrap.
+        const patchSansScrap = {
+          age: undefined,
+          etape_licence: false,
+          etape_test_autonomie: undefined,
+          etape_inscription_site: false,
+          etape_photo: false,
+          etape_paiement: etapePaiement,
+          etape_abonnement_valide: false,
+        };
+        if (champsModifies(p, patchSansScrap)) {
+          await ctx.db.patch(p._id, patchSansScrap);
           maj++;
         }
         continue;

@@ -197,6 +197,19 @@ configurable avec `SYNC_TTL_MINUTES`.
 L'ordre des sources est intentionnel : les données HelloAsso doivent être
 disponibles avant le matching des personnes.
 
+Le scrap des abonnés est un **snapshot complet** : après une collecte réussie
+et non vide, les lignes absentes de la liste reçue sont supprimées du cache
+local `abo_abonnes_scrap`. Cela ne modifie jamais le site du club. Une liste
+vide, illisible ou en erreur n'entraîne aucune purge.
+Les dossiers déposés dans le portail sont conservés ; seules leurs confirmations
+issues du site sont retirées jusqu'à une nouvelle présence dans le snapshot.
+
+L'annuaire FFCAM des licences suit le même principe de snapshot : une licence
+absente d'un export réussi et non vide est retirée du cache `abo_licences`, sans
+modifier les licences déjà attribuées aux personnes ni leurs dossiers. Cette
+source est limitée à une synchronisation toutes les 12 heures (au plus deux
+passages sur 24 heures), y compris depuis le bouton administratif.
+
 Le bouton admin « Synchroniser le site club » appelle toujours
 `api.abo.scrap.synchroniserClub` avec une garde `aboRole === "admin"`. Chacun des
 deux boutons manuels (site club et paiements Abonnements) a son verrou serveur

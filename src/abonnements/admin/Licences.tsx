@@ -66,7 +66,9 @@ export default function Licences() {
     try {
       const r = await importer({});
       setMsgImport(
-        `Annuaire synchronisé : ${r.upsertees} licence(s) (sur ${r.recus} reçue(s)).`,
+        r.statut === "skipped"
+          ? `Annuaire déjà actualisé. Nouvelle synchronisation possible après ${r.retryAt ? new Date(r.retryAt).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" }) : "12 heures après la dernière synchronisation"}.`
+          : `Annuaire synchronisé : ${r.upsertees} licence(s) (sur ${r.recus} reçue(s)), ${r.supprimees} retirée(s) du cache.`,
       );
     } catch (err) {
       setMsgImport(`Échec : ${aboError(err).message}`);

@@ -229,7 +229,9 @@ sont résolues automatiquement. Les cas restants exigent un arbitrage humain.
 ### Procédure conseillée
 
 1. Cliquer **Synchroniser l'annuaire des licences** si l'annuaire peut avoir
-   changé ou si c'est le début de journée de traitement.
+   changé ou si c'est le début de journée de traitement. L'import est limité à
+   deux passages sur 24 heures : le bouton indique l'heure de disponibilité si
+   l'annuaire a déjà été actualisé au cours des 12 dernières heures.
 2. Cliquer **Relancer la résolution automatique** : cela peut résoudre les
    nouveaux cas exacts.
 3. Pour chaque personne restante, examiner les candidats proposés et leur
@@ -240,6 +242,10 @@ sont résolues automatiquement. Les cas restants exigent un arbitrage humain.
 > Ne jamais associer une licence sur la seule ressemblance d'un nom. Une erreur
 > fausse le suivi de la licence, de l'inscription et potentiellement le
 > rapprochement avec le site du club.
+
+L'annuaire affiché est le dernier snapshot FFCAM réussi : une licence qui n'y
+figure plus est retirée du cache de recherche, sans retirer la licence déjà
+associée à une personne ni supprimer son dossier.
 
 ### Conflit de licence
 

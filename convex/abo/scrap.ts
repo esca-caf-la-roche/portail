@@ -20,9 +20,13 @@ import { v } from "convex/values";
 import { internalAction } from "../_generated/server";
 import { authenticatedAction } from "../customFunctions";
 import { internal, api } from "../_generated/api";
+import { canoniserLicence } from "./lib";
 
 const MANUAL_SYNC_TTL_MS = 5 * 60_000;
-const MANUAL_SYNC_KEY = "last_manual_sync_club";
+// Partagé avec syncPourAbo : un snapshot destructif ne doit jamais s'exécuter
+// en parallèle via le bouton manuel et la synchronisation au chargement.
+const MANUAL_SYNC_KEY = "last_sync_scrap";
+const MAX_ABONNES_SCRAP = 500;
 
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
@@ -204,7 +208,7 @@ function statutAbonnementSite(valeur?: string): "oui" | "non" | "bloque" {
 // ── scraperAbonnes : liste des abonnés → abo_abonnes_scrap → matching ────
 export const scraperAbonnes = internalAction({
   args: {},
-  handler: async (ctx): Promise<{ upsertees: number; sansLicence: number; maj: number }> => {
+  handler: async (ctx): Promise<{ upsertees: number; sansLicence: number; supprimees: number; maj: number }> => {
     const club = configClub();
     console.log(`→ Scrap club (abonnés) : ${new URL(club.base).host}`);
 
@@ -268,6 +272,11 @@ export const scraperAbonnes = internalAction({
       paiement: row["Paiement"] || undefined,
       abonnement_valide: statutAbonnementSite(row["Abonnementvalide ?"]),
     }));
+    if (aUpserter.length > MAX_ABONNES_SCRAP) {
+      throw new Error(
+        `Le snapshot abonnés dépasse la limite de ${MAX_ABONNES_SCRAP} lignes ; aucune donnée n'a été modifiée.`,
+      );
+    }
 
     // Upsert par lots (transactions bornées).
     let upsertees = 0;
@@ -282,15 +291,26 @@ export const scraperAbonnes = internalAction({
       sansLicence += res.sansLicence;
     }
 
+    // La liste HTML a été obtenue et validée non vide avant tout écrit. On peut
+    // donc finaliser le snapshot : une licence absente de cette source complète
+    // doit disparaître du cache Convex, sans jamais modifier le site du club.
+    const licences = [...new Set(aUpserter
+      .map((ligne) => canoniserLicence(ligne.licence))
+      .filter((licence): licence is string => licence !== null))];
+    const supprimees: number = await ctx.runMutation(
+      internal.abo.matching.supprimerAbonnesScrapAbsents,
+      { licences },
+    );
+
     const maj: number = await ctx.runMutation(
       internal.abo.matching.matcherScrapPersonnes,
       {},
     );
     await ctx.runMutation(internal.abo.compteur.rafraichirCompteurPublic, {});
     console.log(
-      `→ scrap : ${upsertees} upsertées, ${sansLicence} sans licence ; ${maj} personne(s) mise(s) à jour.`,
+      `→ scrap : ${upsertees} upsertées, ${supprimees} supprimée(s), ${sansLicence} sans licence ; ${maj} personne(s) mise(s) à jour.`,
     );
-    return { upsertees, sansLicence, maj };
+    return { upsertees, sansLicence, supprimees, maj };
   },
 });
 
@@ -495,7 +515,7 @@ export const synchroniserClub = authenticatedAction({
   returns: v.object({
     statut: v.union(v.literal("done"), v.literal("skipped")),
     retryAt: v.union(v.string(), v.null()),
-    abonnes: v.object({ upsertees: v.number(), sansLicence: v.number(), maj: v.number() }),
+    abonnes: v.object({ upsertees: v.number(), sansLicence: v.number(), supprimees: v.number(), maj: v.number() }),
     eleves: v.object({ avecLicence: v.number(), sansLicence: v.number(), enAttente: v.number() }),
   }),
   handler: async (
@@ -503,7 +523,7 @@ export const synchroniserClub = authenticatedAction({
   ): Promise<{
     statut: "done" | "skipped";
     retryAt: string | null;
-    abonnes: { upsertees: number; sansLicence: number; maj: number };
+    abonnes: { upsertees: number; sansLicence: number; supprimees: number; maj: number };
     eleves: { avecLicence: number; sansLicence: number; enAttente: number };
   }> => {
     const me = await ctx.runQuery(api.abo.identity.me, {});
@@ -521,7 +541,7 @@ export const synchroniserClub = authenticatedAction({
         retryAt: Number.isFinite(lastMs)
           ? new Date(lastMs + MANUAL_SYNC_TTL_MS).toISOString()
           : null,
-        abonnes: { upsertees: 0, sansLicence: 0, maj: 0 },
+        abonnes: { upsertees: 0, sansLicence: 0, supprimees: 0, maj: 0 },
         eleves: { avecLicence: 0, sansLicence: 0, enAttente: 0 },
       };
     }
