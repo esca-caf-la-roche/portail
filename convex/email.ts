@@ -71,12 +71,12 @@ export const sendOTP = action({
       }
 
       const subject = `${args.code} : votre code de connexion au portail escalade`;
-      const body = `Bonjour,\n\nVotre code de vérification est : ${args.code}\n\nCe code expirera dans 10 minutes.\n\nL'équipe Esca-Compta.`;
+      const body = `Bonjour,\n\nVotre code de vérification est : ${args.code}\n\nCe code expirera dans 10 minutes.\n\nL'équipe du Portail Escalade CAF LRB.`;
 
       await envoyerEmail(
         senderEmail,
         senderPassword,
-        `Esca-Compta <${senderEmail}>`,
+        `Portail Escalade CAF LRB <${senderEmail}>`,
         destinataire,
         subject,
         body,
