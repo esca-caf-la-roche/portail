@@ -28,7 +28,9 @@ const URL_ANNUAIRE =
 
 // Seuil de similarité trigram (défaut de pg_trgm : 0.3) pour retenir un candidat.
 const SEUIL_TRGM = 0.3;
-const MAX_ANNUAIRE_LICENCES = 1_000;
+// Le club dépasse 2 000 licenciés : cette borne laisse une marge explicite
+// tout en protégeant les imports et les parcours complets accidentels.
+const MAX_ANNUAIRE_LICENCES = 5_000;
 const ANNUAIRE_SYNC_KEY = "last_sync_annuaire";
 const ANNUAIRE_TTL_MS = 12 * 60 * 60_000;
 const MAX_CANDIDATS = 5;
@@ -389,8 +391,8 @@ export const supprimerLicencesAbsentes = internalMutation({
       throw new Error("Refus de purger l'annuaire sans licence exploitable.");
     }
 
-    // IO-BOUNDED: l'annuaire FFCAM du club est borné à 1 000 fiches ; on lit
-    // au plus 1 001 entrées pour détecter une croissance avant toute purge.
+    // IO-BOUNDED: l'annuaire FFCAM du club est borné à 5 000 fiches ; on lit
+    // au plus 5 001 entrées pour détecter une croissance avant toute purge.
     const existantes = await ctx.db.query("abo_licences").take(MAX_ANNUAIRE_LICENCES + 1);
     if (existantes.length > MAX_ANNUAIRE_LICENCES) {
       throw new Error(`Le cache annuaire dépasse la limite de ${MAX_ANNUAIRE_LICENCES} licences.`);

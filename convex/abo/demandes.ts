@@ -24,6 +24,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import { components, internal } from "../_generated/api";
 import { requireAboIdentity, requireAboAdmin } from "./auth";
 import { canoniserLicence, normaliserNomPrenom } from "./lib";
+import { REGLEMENT_VERSION } from "./reglementsConstants";
 import { vagueCourante } from "./config";
 import { abonnementEstValide } from "./statutAbonnement";
 import { canoniserEmailUnique } from "../emailValidation";
@@ -845,6 +846,7 @@ export const monSuivi = authenticatedQuery({
       v.literal("requis"),
       v.null(),
     ),
+    reglement_signe: v.boolean(),
     age: v.union(v.number(), v.null()),
   })),
   handler: async (ctx) => {
@@ -889,12 +891,30 @@ export const monSuivi = authenticatedQuery({
       }
       const licence_ok = licenceAnnuaire || scrap?.adhesion === "OK";
 
+      // Le règlement n'est reconnu que par la licence exacte. Aucun repli nom
+      // / prénom n'est autorisé sur cette preuve validée manuellement.
+      const licenceReglement = p.licence;
+      const licenceConfirmee =
+        p.licence_statut === "annuaire_auto" ||
+        p.licence_statut === "annuaire_valide";
+      const reglementSigne = licenceConfirmee && licenceReglement
+        ? await ctx.db
+            .query("abo_reglements_signes")
+            .withIndex("by_version_reglement_and_licence", (q) =>
+              q
+                .eq("version_reglement", REGLEMENT_VERSION)
+                .eq("licence", licenceReglement),
+            )
+            .first()
+        : null;
+
       out.push({
         personne_id: p._id,
         licence_ok,
         inscription_ok: scrap !== null,
         paiement_ok: scrap ? abonnementEstValide(scrap.abonnement_valide) : false,
         test_autonomie: mapAutonomie(scrap?.autonomie),
+        reglement_signe: reglementSigne !== null,
         age: scrap?.age ?? p.age ?? null,
       });
     }

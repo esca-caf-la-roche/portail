@@ -3,7 +3,8 @@
 Portage de l'outil autonome `abo-esca-new/` (Vanilla JS + Supabase) **entièrement
 sur Convex**. Gère les nouvelles inscriptions aux créneaux autonomes d'escalade
 (350 places) : demande multi-personnes gatée par vagues, suivi d'avancement,
-espace admin (validation, compteur, anomalies, licences, tests d'autonomie),
+espace admin (validation, compteur, anomalies, licences, règlements signés,
+tests d'autonomie),
 paiements HelloAsso, scraping du site club, emails transactionnels, messagerie.
 
 ## Deux populations, une seule base
@@ -152,6 +153,17 @@ l'activer pour son propre compte ou pour un autre administrateur éligible.
 | `IMPORT_SAISON` | Force la saison sportive (sinon déduite ~septembre). | Non |
 | `LICENCES_USER` | Basic Auth de l'export annuaire FFCAM (`export_licence.php`). | Oui pour l'import annuaire |
 | `LICENCES_PASSWORD` | Mot de passe de l'export annuaire. | Oui pour l'import annuaire |
+| `ABO_REGLEMENTS_DRIVE_ID` | Identifiant du Drive partagé contenant les règlements signés. | Oui pour la recherche staff |
+| `ABO_REGLEMENTS_DRIVE_ROOT_FOLDER_ID` | Identifiant du dossier racine des règlements dans ce Drive. | Oui pour la recherche staff |
+| `ABO_REGLEMENTS_WEBHOOK_URL` | URL serveur du webhook n8n qui renvoie les règlements déjà déposés dans Drive. | Oui pour la synchronisation des signatures |
+| `ABO_REGLEMENTS_WEBHOOK_USER` | Utilisateur Basic Auth du webhook n8n. | Oui pour la synchronisation des signatures |
+| `ABO_REGLEMENTS_WEBHOOK_PASSWORD` | Mot de passe Basic Auth du webhook n8n. | Oui pour la synchronisation des signatures |
+
+Le webhook n8n prend en charge Gmail, le PDF signé et son dépôt Drive. Convex
+ne reçoit que le nom, le prénom et l'identifiant Drive. La recherche historique
+dans Drive réutilise `GOOGLE_DRIVE_SERVICE_ACCOUNT_EMAIL` et
+`GOOGLE_DRIVE_PRIVATE_KEY` ; le compte de service doit avoir accès au Drive et
+au dossier racine configurés.
 
 Le **lien HelloAsso du formulaire abonnements** n'est PAS une variable
 d'environnement : il se configure dans l'UI admin (*Configuration*) et est stocké
@@ -250,6 +262,41 @@ puis vérifier la présence du singleton `cle = "courant"` avant d'ouvrir
 l'iframe publique. Le calcul borné de transition ne doit pas devenir le régime
 normal.
 
+## Règlements intérieurs signés
+
+Une personne validée voit une étape dédiée avec le lien DocuSeal
+`https://docuseal.com/d/6GFLQa478G3Qwv`. La signature ne valide pas
+immédiatement l'étape : le suivi prévient qu'un membre du staff doit encore
+confirmer la liaison et qu'un délai est normal.
+
+À l'ouverture de l'onglet et quand le staff clique **Synchroniser les
+règlements**, Convex appelle le webhook n8n authentifié. Celui-ci renvoie un
+tableau léger `{ NOM, Prénom, id-drive }` pour les PDF déjà classés dans Drive.
+Chaque identifiant Drive est enregistré de manière idempotente ; il n'y a ni
+stockage PDF dans Convex, ni cron, ni verrou temporel.
+
+Le nouveau fichier Drive apparaît dans **Nouveaux règlements à rapprocher**. Le portail
+propose des licences exactes ou proches, mais seul le choix confirmé par un
+membre du staff crée la liaison définitive. À cette confirmation, le nom
+officiel de la licence confirme l'archive métier. La recherche manuelle dans Drive
+reste disponible comme repli pour un document historique déjà classé.
+La recherche approchée ne lit l'annuaire qu'après un clic sur le règlement. Si
+les propositions ne suffisent pas, le staff peut rechercher avec un nom, un
+prénom ou un fragment. Une erreur HTTP ou JSON du webhook est affichée comme
+une erreur immédiate de synchronisation et ne crée aucune ligne métier.
+
+Le règlement lié entre dans la file **À enregistrer** avec un lien vers son PDF
+Drive. Après l'avoir enregistré manuellement sur le site du club, le staff le
+marque **Enregistré sur le site** dans le portail. Ce statut est un suivi
+interne ; le portail n'écrit jamais sur le site du club.
+
+`abo_reglements_imports` conserve la file légère renvoyée par n8n, dédupliquée
+par identifiant Drive. `abo_reglements_signes` reste l'archive métier définitive créée
+après validation de la licence. Les deux tables sont permanentes et hors saison. La version
+`6GFLQa478G3Qwv` distingue le formulaire courant : une licence ne peut être
+liée qu'une fois à cette version, et le reset de campagne ne purge pas
+l'archive.
+
 ## Rendez-vous de test d'autonomie
 
 Une personne dont la demande est **validée** peut réserver un créneau de test,
@@ -321,6 +368,13 @@ déploiement `npx.cmd convex dev` actif.
 - [ ] **Formulaire du test** : depuis le suivi d'une personne validée, télécharger
   le PDF pré-rempli (date Europe/Paris, nom, prénom, licence) ; vérifier le
   rendu après réouverture et le cas d'une licence absente.
+- [ ] **Règlement signé** : ouvrir DocuSeal depuis le suivi public et vérifier
+  que l'étape reste en attente avant intervention du staff. Dans l'onglet
+  Règlements, rechercher manuellement le PDF Drive, choisir la licence après
+  recherche nom/prénom, confirmer la liaison, ouvrir le fichier depuis la file
+  À enregistrer puis le marquer enregistré sur le site. Vérifier les doublons
+  de fichier et de licence/version, le refus sans tuile `abonnements`, ainsi que
+  la conservation après reset de campagne.
 - [ ] **Compteur/anomalies** : peupler scrap/archive/élèves/validées → total
   affiché sans double comptage, bloqués exclus ; le plafond de validation reste
   distinct. L'iframe `/#/compteur` affiche les nombres **sans connexion**.
@@ -331,8 +385,8 @@ déploiement `npx.cmd convex dev` actif.
   alimente `abo_eleves_en_cours` (badge « en cours »).
 - [ ] **Reset saison** : archive N-1, vide scrap/paiements-abo/élèves/créneaux,
   réservations et journal d'e-mails, purge les comptes publics par lots,
-  conserve les staff **et l'archive permanente des scans de tests** ; nouveau
-  lien + vagues réinitialisées.
+  conserve les staff, **l'archive permanente des scans de tests et celle des
+  règlements signés** ; nouveau lien + vagues réinitialisées.
 - [ ] **Emails** : validation → email `validation` unique (pas de renvoi au
   re-scrap) ; demande → `accuse` ; création/annulation de créneau → `test_annule`.
 - [ ] **Messagerie 🔒** : message instantané des deux côtés (réactivité Convex) ;

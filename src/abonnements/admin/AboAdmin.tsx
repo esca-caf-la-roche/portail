@@ -11,8 +11,9 @@ import Anomalies from "./Anomalies";
 import Paiements from "./Paiements";
 import Configuration from "./Configuration";
 import Messages from "./Messages";
+import Reglements from "./Reglements";
 
-type Vue = "dossiers" | "messages" | "anomalies" | "licences" | "tests" | "paiements" | "config";
+type Vue = "dossiers" | "messages" | "anomalies" | "licences" | "tests" | "reglements" | "paiements" | "config";
 
 const TABS: { id: Vue; label: string }[] = [
   { id: "dossiers", label: "Dossiers" },
@@ -21,6 +22,7 @@ const TABS: { id: Vue; label: string }[] = [
   { id: "anomalies", label: "Anomalies" },
   { id: "licences", label: "Licences" },
   { id: "tests", label: "Test Autonomie" },
+  { id: "reglements", label: "Règlements" },
   { id: "config", label: "Configuration" },
 ];
 
@@ -33,12 +35,14 @@ export default function AboAdmin() {
   const testsATraiter = useQuery(api.abo.testDocuments.listArchives, {
     filtre: "a_traiter",
   });
+  const reglementsATraiter = useQuery(api.abo.reglements.compterActions, {});
   const [vue, setVue] = useState<Vue>("dossiers");
   const [licenceTest, setLicenceTest] = useState<string | null>(null);
 
   const compteurs: Partial<Record<Vue, number>> = {
     messages: messagesNonLus?.reduce((total, message) => total + message.count, 0),
     tests: testsATraiter?.length,
+    reglements: reglementsATraiter,
   };
 
   // Synchro on-demand au chargement (throttle serveur ~1 h) : remplace les crons
@@ -115,6 +119,8 @@ export default function AboAdmin() {
           <Licences />
         ) : vue === "tests" ? (
           <Tests licenceInitiale={licenceTest} />
+        ) : vue === "reglements" ? (
+          <Reglements />
         ) : vue === "anomalies" ? (
           <Anomalies />
         ) : vue === "paiements" ? (

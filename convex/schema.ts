@@ -530,6 +530,68 @@ export default defineSchema({
     .index("by_statut", ["statut"])
     .index("by_nom_prenom_normalise", ["nom_prenom_normalise"]),
 
+  // SAISON-EXEMPT: archive permanente des règlements signés, conservée hors
+  // campagne Abonnements et indépendante des dossiers publics réinitialisables.
+  abo_reglements_signes: defineTable({
+    drive_file_id: v.string(),
+    drive_file_name: v.string(),
+    drive_url: v.string(),
+    version_reglement: v.string(),
+    // Identité du signataire figée lors de l'import du PDF DocuSeal.
+    nom: v.string(),
+    prenom: v.string(),
+    nom_prenom_normalise: v.string(),
+    // L'archive n'est créée qu'après validation manuelle de la liaison.
+    licence: v.string(),
+    liaison_validee_par: v.id("users"),
+    liaison_validee_le: v.string(),
+    statut_site: v.union(
+      v.literal("a_enregistrer"),
+      v.literal("enregistre"),
+    ),
+    enregistre_site_par: v.optional(v.id("users")),
+    enregistre_site_le: v.optional(v.string()),
+  })
+    .index("by_drive_file_id", ["drive_file_id"])
+    .index("by_version_reglement_and_licence", [
+      "version_reglement",
+      "licence",
+    ])
+    .index("by_statut_site", ["statut_site"]),
+
+  // SAISON-EXEMPT: file permanente Gmail -> Drive avant rapprochement manuel,
+  // conservée hors campagne Abonnements et exclue de toute purge/reset.
+  abo_reglements_imports: defineTable({
+    // Clé d'idempotence logique : l'unicité est imposée par la mutation.
+    gmail_message_id: v.optional(v.string()),
+    // Tampon PDF supprimé après dépôt Drive ou liaison ; l'import
+    // permanent ne conserve ensuite que les métadonnées du document.
+    storage_id: v.optional(v.id("_storage")),
+    // Absents tant que le dépôt Drive a échoué ou doit être repris.
+    drive_file_id: v.optional(v.string()),
+    drive_file_name: v.optional(v.string()),
+    drive_url: v.optional(v.string()),
+    version_reglement: v.string(),
+    // L'extraction d'identité peut échouer sans perdre la trace Gmail.
+    identite_extraite: v.optional(v.string()),
+    nom_extrait: v.optional(v.string()),
+    prenom_extrait: v.optional(v.string()),
+    nom_prenom_normalise: v.optional(v.string()),
+    statut: v.union(
+      v.literal("a_rapprocher"),
+      v.literal("lie"),
+      v.literal("erreur"),
+    ),
+    erreur_code: v.optional(v.string()),
+    reglement_id: v.optional(v.id("abo_reglements_signes")),
+    importe_le: v.string(),
+    derniere_tentative_le: v.optional(v.string()),
+  })
+    .index("by_gmail_message_id", ["gmail_message_id"])
+    .index("by_drive_file_id", ["drive_file_id"])
+    .index("by_statut", ["statut"])
+    .index("by_reglement_id", ["reglement_id"]),
+
   // SAISON-EXEMPT: état technique TTL d'un upload, sans axe métier saisonnier.
   // Il lie l'archive au staff auteur jusqu'au dépôt Drive atomique.
   abo_test_document_uploads: defineTable({

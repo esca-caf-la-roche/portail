@@ -70,6 +70,36 @@ Pour le module Abonnements, utiliser la checklist e2e de
    consultable après rechargement ; retirer ensuite la tuile à un compte staff
    et vérifier le refus de route et du compteur backend.
 
+### Scénario ciblé — Règlements signés
+
+Ce scénario est hors saison et se joue avec un compte staff possédant la tuile
+`abonnements` :
+
+1. depuis le suivi public d'une personne validée, ouvrir le formulaire DocuSeal
+   `6GFLQa478G3Qwv` ; vérifier que l'étape reste « À faire » après la signature
+   tant que le staff n'a pas confirmé la liaison ;
+2. préparer une réponse webhook contenant `{ NOM, Prénom, id-drive }`, puis
+   ouvrir **Règlements**. Vérifier la synchronisation automatique, l'apparition
+   dans la file à rapprocher et l'ouverture du lien Drive ;
+3. relancer plusieurs fois **Synchroniser les règlements** et vérifier qu'un
+   même `id-drive` ne crée ni doublon ni écriture inutile. Sélectionner ensuite
+   un candidat licence exact ou approchant et confirmer manuellement. Le suivi
+   public doit passer à « Fait » pour cette licence et cette version ;
+4. tenter de relier le même PDF à une autre licence, puis un autre PDF à la même
+   licence/version : les deux doublons doivent être refusés ; vérifier aussi le
+   refus d'un fichier hors du dossier racine ou non PDF ;
+5. ouvrir le lien Drive depuis la file **À enregistrer**, effectuer
+   l'enregistrement manuel sur le site du club, puis cliquer **Marquer
+   enregistré sur le site**. La ligne passe dans **Enregistrés** sans écriture
+   automatique sur le site externe ;
+6. simuler une réponse `null`, un tableau vide, une chaîne contenant le JSON,
+   un JSON invalide, un `id-drive` invalide et une panne HTTP : aucune réponse
+   invalide ne doit créer de ligne ou exposer les identifiants Basic Auth ;
+7. retirer la tuile `abonnements` au compte staff et vérifier le refus des
+   queries, mutations et actions webhook/Drive. Changer ensuite la saison comptable et
+   exécuter un reset Abonnements sur des données de test : la liaison et son
+   historique doivent rester présents.
+
 ### Scénarios ciblés — Résolution de conflits entre dossiers Abonnements
 
 Ces scénarios sont hors saison et doivent être joués avec un compte staff ayant

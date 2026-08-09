@@ -12,9 +12,9 @@ import N1RedirectModal from "../N1RedirectModal";
 // Le rendu d'une personne dépend de sa décision admin (etape_validation) :
 //   - non acceptée → carte « nom + statut » seulement ;
 //   - acceptée (validee) → étapes CONCRÈTES à réaliser (licence, attente, inscription,
-//     paiement, test d'autonomie), avec liens d'action et état LIVE (mon_suivi).
+//     règlement, paiement, test d'autonomie), avec liens d'action et état LIVE (mon_suivi).
 // L'abonné peut compléter (ajouter une personne) et retirer des personnes.
-// L'étape 5 (test d'autonomie, 16 ans et plus) embarque la prise de RDV :
+// L'étape 6 (test d'autonomie, 16 ans et plus) embarque la prise de RDV :
 // créneaux disponibles, réservation, annulation, et bandeau si le RDV a été
 // délogé par surbooking (cf. ReservationTest / ModalReservation).
 
@@ -33,6 +33,7 @@ type ReservationPersonne = NonNullable<
 type Check = {
   licence_ok: boolean;
   inscription_ok: boolean;
+  reglement_signe: boolean;
   paiement_ok: boolean;
   test_autonomie: string | null;
   age: number | null;
@@ -195,6 +196,7 @@ function CarteFinalisation({
   const c = check ?? {
     licence_ok: false,
     inscription_ok: false,
+    reglement_signe: false,
     paiement_ok: false,
     test_autonomie: null,
     age: personne.age,
@@ -324,6 +326,22 @@ function construireEtapes(
     },
     {
       num: 4,
+      titre: "Lire et signer le règlement intérieur",
+      ...etatBool(c.reglement_signe),
+      corps: (
+        <>
+          <p>
+            Consultez le règlement intérieur puis signez-le en ligne sur DocuSeal.
+            La confirmation est vérifiée par un membre du staff et peut prendre un peu de temps.
+          </p>
+          <p className="abo-fstep-liens">
+            {lienAction(liens?.reglement, "Lire et signer sur DocuSeal")}
+          </p>
+        </>
+      ),
+    },
+    {
+      num: 5,
       titre: "Paiement",
       ...etatBool(c.paiement_ok),
       corps: (
@@ -337,11 +355,11 @@ function construireEtapes(
     },
   ];
 
-  // Étape 5 — test d'autonomie (16 ans et plus). Masquée si non requis ou < 16 ans.
+  // Étape 6 — test d'autonomie (16 ans et plus). Masquée si non requis ou < 16 ans.
   if (peutAfficherTest) {
     const fait = c.test_autonomie === "valide";
     etapes.push({
-      num: 5,
+      num: 6,
       titre: "Test d'autonomie (16 ans et plus)",
       etat: fait ? "done" : "todo",
       etatLabel: fait ? "Validé" : "À faire",
@@ -407,7 +425,7 @@ function TelechargerFormulaireTest({ personne }: { personne: PersonneVue }) {
   );
 }
 
-// ── Réservation du test d'autonomie (étape 5) ────────────────────────
+// ── Réservation du test d'autonomie (étape 6) ────────────────────────
 // Affiche la réservation active (avec annulation), un bandeau si le RDV a été
 // délogé par surbooking, et un bouton ouvrant la liste des créneaux disponibles.
 function ReservationTest({
@@ -627,6 +645,9 @@ function DisclaimerBenevoles() {
         concernés :
       </p>
       <ul>
+        <li>
+          la confirmation du <strong>règlement intérieur signé</strong> ;
+        </li>
         <li>
           l'enregistrement du <strong>paiement</strong> ;
         </li>

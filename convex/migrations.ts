@@ -7,8 +7,12 @@ import { internalQuery, type MutationCtx, type QueryCtx } from "./_generated/ser
 import { authenticatedMutation as mutation } from "./customFunctions";
 import { requireAdmin } from "./access";
 import { canoniserEmailUnique } from "./emailValidation";
+import schema from "./schema";
 
-export const migrations = new Migrations<DataModel>(components.migrations);
+export const migrations = new Migrations<DataModel, typeof schema>(
+  components.migrations,
+  { schema },
+);
 
 export const migrateSaisonsTransactions = migrations.define({
   table: "transactions",
@@ -190,6 +194,28 @@ export const migrateUsersEmailCanonique = migrations.define({
   table: "users",
   migrateOne: async (ctx, utilisateur) => {
     await migrerEmailUtilisateurCanonique(ctx, utilisateur);
+  },
+});
+
+// Nettoyage ponctuel des erreurs de l'ancien flux Gmail, défini uniquement :
+// exécution supervisée sur DEV puis PROD après confirmation de la cible.
+// La présence de l'identifiant Gmail protège les imports créés par le webhook.
+export const deleteAboReglementsImportsGmailEnErreur = migrations.define({
+  table: "abo_reglements_imports",
+  batchSize: 100,
+  customRange: (query) =>
+    query.withIndex("by_drive_file_id", (q) =>
+      q.eq("drive_file_id", undefined),
+    ),
+  migrateOne: async (ctx, importReglement) => {
+    if (
+      importReglement.gmail_message_id === undefined ||
+      importReglement.statut !== "erreur" ||
+      importReglement.storage_id !== undefined
+    ) {
+      return;
+    }
+    await ctx.db.delete(importReglement._id);
   },
 });
 

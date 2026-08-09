@@ -16,6 +16,7 @@ flowchart LR
   D[Dossiers\nDécider les demandes] --> L[Licences\nRapprocher l'identité]
   D --> M[Messages\nÉchanger avec le demandeur]
   D --> T[Tests\nOrganiser les rendez-vous]
+  R[Règlements\nLier les PDF signés] --> D
   P[Paiements\nSuivre HelloAsso] --> D
   C[Configuration\nVagues, liens, campagne] --> D
   A[Anomalies\nContrôler le site club] --> D
@@ -29,6 +30,7 @@ flowchart LR
 | Anomalies | Détecter les inscriptions directes non autorisées sur le site club | Après chaque synchronisation du site club |
 | Licences | Rattacher chaque demande à la bonne licence | Avant ou pendant l'instruction des dossiers |
 | Tests | Proposer et suivre les rendez-vous de test d'autonomie | Avant et pendant les sessions de test |
+| Règlements | Lier les PDF signés aux licences puis suivre leur saisie sur le site du club | Quand un nouveau PDF est relevé ou qu'un badge apparaît |
 | Configuration | Préparer la campagne et ses liens | Au début de campagne ; reset uniquement en fin de campagne |
 
 ## 1. Dossiers
@@ -377,7 +379,52 @@ ne modifie pas le résultat du test dans le portail ni sur le site du club. Les
 scans restent conservés d'une campagne à l'autre et sont également accessibles
 depuis le détail du demandeur lorsqu'une licence est renseignée.
 
-## 7. Configuration
+## 7. Règlements
+
+### À quoi sert cet onglet ?
+
+L'onglet **Règlements** relie un PDF signé dans DocuSeal à la bonne licence,
+puis suit son enregistrement manuel sur le site du club. Le badge de l'onglet
+compte les règlements déjà liés qui restent à enregistrer sur ce site.
+
+La signature seule ne valide pas l'étape affichée au demandeur : elle passe à
+**Fait** seulement après confirmation de la liaison par un membre du staff. Un
+délai entre la signature et cette confirmation est donc normal.
+
+### Retrouver et lier un règlement
+
+1. Ouvrir l'onglet : la synchronisation se lance automatiquement. Le bouton
+   **Synchroniser les règlements** permet de la relancer immédiatement. Le
+   portail reçoit de n8n les PDF déjà classés dans Drive.
+2. Dans **Nouveaux règlements à rapprocher**, ouvrir le PDF proposé et vérifier
+   l'identité extraite.
+3. Contrôler les correspondances exactes ou probables proposées, puis choisir
+   la bonne licence. Si elle n'apparaît pas, rechercher avec un nom, un prénom
+   ou quelques lettres. Le nom reste un indice : aucune liaison n'est automatique.
+4. Cliquer **Confirmer la liaison avec cette licence** et confirmer. Le fichier
+   Drive devient alors l'archive signée de cette licence. Un même PDF ne peut pas être réutilisé,
+   et une licence ne peut recevoir qu'un règlement pour la version courante
+   `6GFLQa478G3Qwv`.
+
+La synchronisation est légère et idempotente : elle peut être relancée sans
+délai et ne crée pas de doublon. Aucun cron ne fonctionne lorsque personne
+n'utilise l'administration. La recherche Drive manuelle reste disponible pour
+retrouver un ancien PDF déjà classé. Une panne du webhook est affichée
+immédiatement sans créer de faux règlement.
+
+### Enregistrer sur le site du club
+
+1. Dans **À enregistrer**, cliquer **Ouvrir le règlement dans Drive**.
+2. Enregistrer manuellement le règlement sur le site internet du club.
+3. Revenir dans le portail et cliquer **Marquer enregistré sur le site**, puis
+   confirmer. La ligne rejoint **Enregistrés**.
+
+Le bouton met uniquement à jour la file de travail interne. Il ne transmet
+rien au site du club. Les liens, la liaison validée par le staff et l'état de
+traitement sont conservés dans une archive permanente, hors saison et non
+purgée lors du reset de campagne.
+
+## 8. Configuration
 
 Cet onglet modifie les paramètres communs à toute la campagne. Il doit être
 réservé à un petit nombre de responsables ; les changements prennent effet pour
@@ -406,7 +453,8 @@ club** et vérifier que l'actualisation a réussi.
 
 Ces URL sont affichées à un demandeur validé dans son suivi : nouvelle licence,
 renouvellement, activation de compte, demande d'abonnement sur le site du club
-et formulaire de test.
+et formulaire de test. Le règlement est un lien DocuSeal versionné dans le
+code ; il n'est pas modifiable dans cet écran.
 
 Vérifier les liens dans un navigateur avant enregistrement. Le lien HelloAsso
 de paiement est séparé : il est défini pour la campagne et ne se modifie qu'au
@@ -440,6 +488,7 @@ HelloAsso. Elle :
 - vide les snapshots, créneaux, réservations, cache de paiements et journal
   d'e-mails de la campagne ;
 - conserve les scans archivés de tests d'autonomie et leurs liens Drive ;
+- conserve les règlements signés, leurs liens Drive et leurs liaisons licence ;
 - programme la suppression des demandes et comptes publics ;
 - conserve le compte, les sessions et l'authentification d'un staff qui a aussi
   utilisé le portail public, tout en purgeant ses données publiques de campagne ;
@@ -488,8 +537,10 @@ dossier portail. Retirez d'abord l'inscription sur le site, puis synchronisez.
    d'attente ou le refus lorsque c'est le choix métier, et réserver « Valider
    malgré le plafond » aux exceptions assumées. En cas de changement externe
    récent, synchroniser avant la décision.
-5. Synchroniser et suivre les paiements séparément.
-6. Vérifier que les créneaux de test couvrent les besoins et éviter leur
+5. Traiter le badge Règlements : rechercher les nouveaux PDF, valider chaque
+   liaison licence, puis suivre leur enregistrement manuel sur le site du club.
+6. Synchroniser et suivre les paiements séparément.
+7. Vérifier que les créneaux de test couvrent les besoins et éviter leur
    suppression tardive.
 
 Pour les règles de sécurité, la base de données et les limites connues, lire

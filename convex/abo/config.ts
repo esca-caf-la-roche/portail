@@ -16,6 +16,7 @@ import type { QueryCtx, MutationCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { requireAboAdmin, requireAboSeasonReset } from "./auth";
 import { parseHa, poserLienAbo, trouverLienAbo } from "./paiements";
+import { REGLEMENT_DOCUSEAL_URL } from "./reglementsConstants";
 
 const MAX_REDIRECTIONS_PAR_CAMPAGNE = 1_000;
 
@@ -176,6 +177,7 @@ export const liensFinalisation = authenticatedQuery({
     inscription: v.union(v.string(), v.null()),
     helloasso: v.union(v.string(), v.null()),
     test_autonomie: v.union(v.string(), v.null()),
+    reglement: v.string(),
   }),
   handler: async (ctx) => {
     const inscription = await getConfigValeur(ctx, "inscription_lien");
@@ -186,6 +188,7 @@ export const liensFinalisation = authenticatedQuery({
       inscription: lienInscriptionPublic(inscription),
       helloasso: await getConfigValeur(ctx, "helloasso_lien"),
       test_autonomie: await getConfigValeur(ctx, "test_autonomie_lien"),
+      reglement: REGLEMENT_DOCUSEAL_URL,
     };
   },
 });

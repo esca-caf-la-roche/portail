@@ -779,6 +779,23 @@ textarea.abo-input {
 .abo-admin-test-upload { display: grid; gap: 0.65rem; max-width: 36rem; }
 .abo-admin-test-upload--compact { width: min(100%, 26rem); }
 .abo-admin-test-upload .abo-admin-button { justify-self: start; }
+.abo-admin-reglement-search { align-items: end; }
+.abo-admin-reglement-fieldset { display: grid; gap: 0.65rem; min-width: 0; margin: 0; padding: 0.75rem; border: 2px solid var(--border-color); }
+.abo-admin-reglement-fieldset legend { padding: 0 0.35rem; font-weight: 800; text-transform: uppercase; }
+.abo-admin-reglement-choice { display: flex; min-width: 0; align-items: center; gap: 0.6rem; cursor: pointer; }
+.abo-admin-reglement-choice input { width: 1.2rem; height: 1.2rem; accent-color: var(--info); flex: 0 0 auto; }
+.abo-admin-reglement-link-step { display: grid; gap: 0.75rem; padding-top: 0.75rem; border-top: 2px solid var(--border-color); }
+.abo-admin-reglement-card { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem; }
+.abo-admin-reglement-card p { margin: 0.3rem 0 0; }
+.abo-admin-reglement-import { display: grid; gap: 0.85rem; }
+.abo-admin-reglement-import-header { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 0.75rem; }
+.abo-admin-reglement-import-header p { margin: 0.25rem 0 0; }
+.abo-admin-reglement-correspondance { display: inline-block; margin-top: 0.25rem; color: var(--foreground); white-space: nowrap; }
+.abo-admin-reglement-correspondance--exacte { background: var(--success); }
+.abo-admin-reglement-correspondance--approchee { background: var(--warning); }
+.abo-admin-reglement-historique { padding: 0.8rem; border: 2px dashed var(--border-color); background: var(--background); }
+.abo-admin-reglement-historique > summary { cursor: pointer; font-weight: 800; text-transform: uppercase; }
+.abo-admin-reglement-historique[open] > summary { margin-bottom: 0.75rem; }
 .abo-admin-subheading { margin: 0; }
 .abo-admin-slot-grid { display: grid; gap: 0.35rem; }
 .abo-admin-slot-row { display: grid; grid-template-columns: 2.5rem minmax(0, 1fr); align-items: center; gap: 0.4rem; }
@@ -831,7 +848,11 @@ textarea.abo-input {
   .abo-admin-anomaly-checks { grid-template-columns: 1fr; }
   .abo-admin-slot-hour { text-align: left; }
   .abo-admin-list-row,
-  .abo-admin-person-row { align-items: stretch; }
+  .abo-admin-person-row,
+  .abo-admin-reglement-card,
+  .abo-admin-reglement-import-header { align-items: stretch; }
+  .abo-admin-reglement-search > .abo-admin-filter-field,
+  .abo-admin-reglement-search > .abo-admin-button { width: 100%; }
 }
 
 .abo-admin-payment-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.65rem; }

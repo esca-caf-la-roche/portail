@@ -5,59 +5,16 @@
 import { ConvexError, v } from "convex/values";
 import { authenticatedAction } from "../customFunctions";
 import { internal } from "../_generated/api";
-import { google } from "googleapis";
 import { Readable } from "node:stream";
-
-function echapperRequeteDrive(value: string): string {
-  return value.replaceAll("'", "\\'");
-}
-
-function prenomTitre(prenom: string): string {
-  return prenom
-    .trim()
-    .toLocaleLowerCase("fr-FR")
-    .replace(/(^|[ -])([\p{L}])/gu, (_, prefix: string, letter: string) =>
-      `${prefix}${letter.toLocaleUpperCase("fr-FR")}`,
-    );
-}
-
-function initialeNom(nom: string): string {
-  const initiale = nom.trim().normalize("NFD").replace(/\p{Diacritic}/gu, "")[0];
-  return initiale ? initiale.toLocaleUpperCase("fr-FR") : "#";
-}
-
-async function dossierInitiale(
-  drive: ReturnType<typeof google.drive>,
-  driveId: string,
-  rootFolderId: string,
-  initiale: string,
-  creerSiAbsent = true,
-): Promise<string | null> {
-  const resultat = await drive.files.list({
-    q: `name='${echapperRequeteDrive(initiale)}' and mimeType='application/vnd.google-apps.folder' and '${rootFolderId}' in parents and trashed=false`,
-    corpora: "drive",
-    driveId,
-    includeItemsFromAllDrives: true,
-    supportsAllDrives: true,
-    fields: "files(id)",
-  });
-  const existant = resultat.data.files?.[0]?.id;
-  if (existant) return existant;
-  if (!creerSiAbsent) return null;
-  const cree = await drive.files.create({
-    requestBody: {
-      name: initiale,
-      mimeType: "application/vnd.google-apps.folder",
-      parents: [rootFolderId],
-    },
-    supportsAllDrives: true,
-    fields: "id",
-  });
-  if (!cree.data.id) {
-    throw new ConvexError({ code: "DRIVE_DOSSIER", message: "Impossible de créer le dossier Drive du candidat." });
-  }
-  return cree.data.id;
-}
+import {
+  configurationDrive,
+  dossierInitiale,
+  echapperRequeteDrive,
+  initialeNom,
+  prenomTitre,
+  rechercherFichiersDrive,
+  verifierAccesRacine,
+} from "./driveArchives";
 
 export const envoyerVersDrive = authenticatedAction({
   args: { archiveId: v.id("abo_tests_autonomie_archive"), uploadToken: v.string(), storageId: v.id("_storage") },
@@ -120,37 +77,18 @@ export const envoyerVersDrive = authenticatedAction({
       throw new ConvexError({ code: "TEST_FICHIER_LECTURE", message: "Impossible de lire le fichier temporaire." });
     }
 
-    const email = process.env.GOOGLE_DRIVE_SERVICE_ACCOUNT_EMAIL;
-    const privateKey = process.env.GOOGLE_DRIVE_PRIVATE_KEY?.replace(/\\n/g, "\n");
-    const driveId = process.env.ABO_TESTS_DRIVE_ID;
-    const rootFolderId = process.env.ABO_TESTS_DRIVE_ROOT_FOLDER_ID;
-    if (!email || !privateKey || !driveId || !rootFolderId) {
-      throw new ConvexError({
-        code: "DRIVE_CONFIGURATION",
-        message: "Les variables Google Drive de l'archive des tests ne sont pas configurées.",
-      });
-    }
-
-    const auth = new google.auth.GoogleAuth({
-      credentials: { client_email: email, private_key: privateKey },
-      scopes: ["https://www.googleapis.com/auth/drive"],
+    const { drive, driveId, rootFolderId } = configurationDrive({
+      driveId: process.env.ABO_TESTS_DRIVE_ID,
+      rootFolderId: process.env.ABO_TESTS_DRIVE_ROOT_FOLDER_ID,
+      scope: "ecriture",
+      messageConfiguration:
+        "Les variables Google Drive de l'archive des tests ne sont pas configurées.",
     });
-    const drive = google.drive({ version: "v3", auth });
-    try {
-      await drive.files.get({
-        fileId: rootFolderId,
-        supportsAllDrives: true,
-        fields: "id",
-      });
-    } catch (error) {
-      if (typeof error === "object" && error !== null && "code" in error && error.code === 404) {
-        throw new ConvexError({
-          code: "DRIVE_DOSSIER_INACCESSIBLE",
-          message: "Le compte de service Convex n'a pas accès au dossier Test d'autonomie. Partagez ce dossier avec esca-compta@esca-compta.iam.gserviceaccount.com.",
-        });
-      }
-      throw error;
-    }
+    await verifierAccesRacine(
+      drive,
+      rootFolderId,
+      "Le compte de service Convex n'a pas accès au dossier Test d'autonomie. Partagez ce dossier avec esca-compta@esca-compta.iam.gserviceaccount.com.",
+    );
     const parentId = await dossierInitiale(drive, driveId, rootFolderId, initialeNom(contexte.nom));
     if (!parentId) {
       throw new ConvexError({ code: "DRIVE_DOSSIER", message: "Impossible de déterminer le dossier Drive du candidat." });
@@ -216,57 +154,25 @@ export const rechercherDansDrive = authenticatedAction({
     const nom = args.nom.trim();
     const prenom = args.prenom.trim();
     if (!nom && !prenom) return [];
-    const email = process.env.GOOGLE_DRIVE_SERVICE_ACCOUNT_EMAIL;
-    const privateKey = process.env.GOOGLE_DRIVE_PRIVATE_KEY?.replace(/\\n/g, "\n");
-    const driveId = process.env.ABO_TESTS_DRIVE_ID;
-    const rootFolderId = process.env.ABO_TESTS_DRIVE_ROOT_FOLDER_ID;
-    if (!email || !privateKey || !driveId || !rootFolderId) {
-      throw new ConvexError({ code: "DRIVE_CONFIGURATION", message: "Les variables Google Drive de l'archive des tests ne sont pas configurées." });
-    }
-    const auth = new google.auth.GoogleAuth({ credentials: { client_email: email, private_key: privateKey }, scopes: ["https://www.googleapis.com/auth/drive"] });
-    const drive = google.drive({ version: "v3", auth });
-    try {
-      await drive.files.get({ fileId: rootFolderId, supportsAllDrives: true, fields: "id" });
-    } catch (error) {
-      if (typeof error === "object" && error !== null && "code" in error && error.code === 404) {
-        throw new ConvexError({
-          code: "DRIVE_DOSSIER_INACCESSIBLE",
-          message: "Le compte de service Convex n'a pas accès au dossier Test d'autonomie. Partagez ce dossier avec esca-compta@esca-compta.iam.gserviceaccount.com.",
-        });
-      }
-      throw error;
-    }
-    // THROTTLE-OK: action manuelle réservée au staff, licence exacte, un seul dossier ciblé.
-    const dossiers = nom
-      ? [await dossierInitiale(drive, driveId, rootFolderId, initialeNom(nom), false)].filter(
-          (id): id is string => id !== null,
-        )
-      : (await drive.files.list({
-          q: `'${rootFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
-          corpora: "drive", driveId, includeItemsFromAllDrives: true, supportsAllDrives: true,
-          fields: "files(id)", pageSize: 30,
-        })).data.files?.flatMap((folder) => (folder.id ? [folder.id] : [])) ?? [];
-    const morceaux = [
-      nom && `name contains '${echapperRequeteDrive(nom.toLocaleUpperCase("fr-FR"))}'`,
-      prenom && `name contains '${echapperRequeteDrive(prenomTitre(prenom))}'`,
-    ].filter((morceau): morceau is string => Boolean(morceau));
-    const resultats: Array<{ nomFichier: string; driveUrl: string }> = [];
-
-    for (const parentId of dossiers) {
-      if (resultats.length >= 20) break;
-      const files = await drive.files.list({
-        q: `${morceaux.join(" and ")} and '${parentId}' in parents and trashed=false`,
-        corpora: "drive", driveId, includeItemsFromAllDrives: true, supportsAllDrives: true,
-        fields: "files(id, name, webViewLink)", pageSize: 20 - resultats.length,
-      });
-      for (const file of files.data.files ?? []) {
-        if (!file.id || !file.name) continue;
-        resultats.push({
-          nomFichier: file.name,
-          driveUrl: file.webViewLink ?? `https://drive.google.com/open?id=${file.id}`,
-        });
-      }
-    }
-    return resultats;
+    const { drive, driveId, rootFolderId } = configurationDrive({
+      driveId: process.env.ABO_TESTS_DRIVE_ID,
+      rootFolderId: process.env.ABO_TESTS_DRIVE_ROOT_FOLDER_ID,
+      scope: "lecture",
+      messageConfiguration:
+        "Les variables Google Drive de l'archive des tests ne sont pas configurées.",
+    });
+    await verifierAccesRacine(
+      drive,
+      rootFolderId,
+      "Le compte de service Convex n'a pas accès au dossier Test d'autonomie. Partagez ce dossier avec esca-compta@esca-compta.iam.gserviceaccount.com.",
+    );
+    // THROTTLE-OK: action manuelle staff, au plus 30 dossiers d'initiale et 20 fichiers.
+    return (await rechercherFichiersDrive({
+      drive,
+      driveId,
+      rootFolderId,
+      nom,
+      prenom,
+    })).map(({ nomFichier, driveUrl }) => ({ nomFichier, driveUrl }));
   },
 });

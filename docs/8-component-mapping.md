@@ -47,6 +47,7 @@ La documentation fonctionnelle complète est dans
 | Paiements | `src/abonnements/admin/Paiements.tsx` | `convex/abo/paiements.ts`, `convex/helloasso.ts` |
 | Licences et conflits | `src/abonnements/admin/Licences.tsx`, `src/abonnements/admin/FusionDossiersModal.tsx` | `convex/abo/licences.ts`, `convex/abo/matching.ts`, `convex/abo/fusionsDossiers.ts` |
 | Tests d'autonomie | `src/abonnements/admin/Tests.tsx`, `src/abonnements/pages/Suivi.tsx` | `convex/abo/tests.ts`, `convex/abo/testDocuments.ts`, `convex/abo/testDocumentsDrive.ts`, `convex/abo/testAutonomiePdf.ts` |
+| Règlements signés | `src/abonnements/admin/Reglements.tsx`, `src/abonnements/pages/Suivi.tsx` | `convex/abo/reglements.ts`, `convex/abo/reglementsDrive.ts`, `convex/abo/reglementsConstants.ts` |
 | Compteur public | `src/abonnements/Compteur.tsx` | `convex/abo/compteur.ts` |
 | Synchronisations | chargement des pages concernées | `convex/abo/sync.ts`, `convex/abo/scrap.ts` |
 
@@ -73,7 +74,8 @@ La documentation fonctionnelle complète est dans
 | Email Abonnements et notifications de fusion | `convex/abo/emails.ts`, `convex/abo/fusionsDossiers.ts`, `convex/email.ts` |
 | HelloAsso | `convex/helloasso.ts`, `convex/abo/paiements.ts` |
 | HelloAsso — remboursements élèves | `convex/remboursementsHelloAsso.ts` |
-| Google Drive | `convex/drive.ts`, `convex/abo/testDocumentsDrive.ts` |
+| Google Drive | `convex/drive.ts`, `convex/abo/testDocumentsDrive.ts`, `convex/abo/reglementsDrive.ts`, `convex/abo/driveArchives.ts` |
+| DocuSeal / webhook n8n des règlements | `convex/abo/reglementsWebhook.ts`, `convex/abo/reglementsImports.ts` |
 | Site du club et snapshot des élèves en cours | `convex/abo/scrap.ts`, `convex/abo/sync.ts` |
 | Annuaire des licences | `convex/abo/licences.ts` |
 

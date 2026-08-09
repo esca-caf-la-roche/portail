@@ -103,6 +103,21 @@ non secrets du Drive partagé : `ABO_TESTS_DRIVE_ID` et
 lecture et écriture au répertoire historique des tests ; ne pas remplacer ce
 répertoire ni changer son classement alphabétique.
 
+Le suivi des règlements signés réutilise les mêmes credentials Google Drive
+pour la recherche historique.
+Configurer aussi `ABO_REGLEMENTS_DRIVE_ID` et
+`ABO_REGLEMENTS_DRIVE_ROOT_FOLDER_ID`, puis vérifier que le compte de service
+peut lire dans le dossier racine. Configurer aussi
+`ABO_REGLEMENTS_WEBHOOK_URL`, `ABO_REGLEMENTS_WEBHOOK_USER` et
+`ABO_REGLEMENTS_WEBHOOK_PASSWORD`. Ces secrets restent côté serveur Convex.
+
+La synchronisation est déclenchée à l'ouverture effective de l'onglet
+**Règlements** et à chaque clic sur **Synchroniser les règlements**. Convex
+appelle le webhook n8n en Basic Auth, valide le tableau `{ NOM, Prénom,
+id-drive }`, puis effectue un upsert idempotent par identifiant Drive. L'appel
+n'a pas de TTL : les réponses identiques ne provoquent aucune écriture inutile.
+Aucun cron ne fonctionne en arrière-plan.
+
 ## Validation d'une fonctionnalité
 
 1. Vérifier le parcours nominal et les erreurs attendues.
