@@ -3,7 +3,7 @@ import { useConvexAuth, useQuery } from "convex/react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { api } from "../../convex/_generated/api";
 import { useSeason } from "../contexts/SeasonContext";
-import { LogOut } from "lucide-react";
+import { LogOut, UserRound } from "lucide-react";
 
 export default function Layout() {
   const { isAuthenticated, isLoading } = useConvexAuth();
@@ -13,6 +13,7 @@ export default function Layout() {
   // Discriminant staff vs abonné public : un abonné public (auto-inscrit via
   // abo-otp) n'a pas de userSettings et ne doit jamais voir l'app compta.
   const me = useQuery(api.abo.identity.me);
+  const currentUser = useQuery(api.users.current);
 
   // Les parties Paiements et Abonnements ne fonctionnent pas avec les saisons
   // (chacune gère son propre reset manuel) : on masque le sélecteur sur ces écrans.
@@ -65,6 +66,15 @@ export default function Layout() {
                   </option>
                 ))}
               </select>
+            </div>
+          )}
+          {currentUser && (
+            <div className="header-user-identity" aria-label="Utilisateur connecté">
+              <UserRound className="header-user-icon" size={20} aria-hidden="true" />
+              <div className="header-user-details">
+                <span className="header-user-name">{currentUser.name}</span>
+                <span className="header-user-email">{currentUser.email}</span>
+              </div>
             </div>
           )}
           <button

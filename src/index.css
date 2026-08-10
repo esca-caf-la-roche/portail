@@ -365,6 +365,44 @@ a.btn-primary {
   gap: 1.5rem;
 }
 
+.header-user-identity {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  padding: 0.35rem 0.6rem;
+  background-color: var(--info);
+  border: var(--border-width) solid var(--border-color);
+  box-shadow: 3px 3px 0px 0px var(--border-color);
+}
+
+.header-user-icon {
+  flex: 0 0 auto;
+}
+
+.header-user-details {
+  display: grid;
+  min-width: 0;
+  line-height: 1.15;
+}
+
+.header-user-name,
+.header-user-email {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.header-user-name {
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.header-user-email {
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
 .season-selector {
   display: flex;
   align-items: center;
@@ -884,6 +922,9 @@ a.btn-primary {
   .header-controls {
     gap: 1rem;
     flex-wrap: wrap;
+  }
+  .header-user-identity {
+    flex: 1 1 13rem;
   }
   .season-selector {
     flex: 1 1 auto;
