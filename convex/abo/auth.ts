@@ -8,6 +8,7 @@
 // Toute la sécurité des endpoints abo passe par ces helpers.
 
 import { getAuthUserId } from "@convex-dev/auth/server";
+import { ConvexError } from "convex/values";
 import type { QueryCtx, MutationCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 
@@ -77,25 +78,46 @@ export async function requireAboAdmin(
   return id;
 }
 
-// Garde dédiée à l'opération destructive de changement de campagne. Elle ne
-// confond pas la gestion quotidienne du module avec le droit de reset : il faut
-// la tuile Abonnements, le rôle d'administrateur général et l'autorisation
-// nominative accordée dans Configurations > Utilisateurs et Accès.
-export async function requireAboSeasonReset(
+// Garde dédiée à toute la Configuration Abonnements. Le droit est attribué
+// nominativement par un administrateur général, mais son titulaire peut être
+// un membre du staff non-admin. La tuile Abonnements reste indispensable.
+export async function requireAboConfigurationManager(
   ctx: QueryCtx | MutationCtx,
 ): Promise<AboIdentity> {
-  const id = await requireAboAdmin(ctx);
+  const id = await requireAboIdentity(ctx);
+  if (id.aboRole !== "admin") {
+    throw new ConvexError({
+      code: "ABO_CONFIGURATION_ACCES_REFUSE",
+      message: "La configuration des Abonnements requiert la tuile Abonnements et une autorisation explicite.",
+    });
+  }
   const settings = await ctx.db
     .query("userSettings")
     .withIndex("by_userId", (q) => q.eq("userId", id.userId))
     .first();
 
-  if (settings?.role !== "admin" || settings.canResetAboSeason !== true) {
-    throw new Error(
-      "Réinitialisation réservée à l'administrateur explicitement autorisé.",
-    );
+  const autorise = settings?.canManageAboConfiguration === true
+    || settings?.canResetAboSeason === true;
+  if (!autorise) {
+    throw new ConvexError({
+      code: "ABO_CONFIGURATION_ACCES_REFUSE",
+      message: "Vous pouvez gérer les abonnements, mais pas leur configuration. Demandez cette autorisation à un administrateur général.",
+    });
   }
   return id;
+}
+
+export async function peutGererConfigurationAbo(
+  ctx: QueryCtx | MutationCtx,
+): Promise<boolean> {
+  const id = await getAboIdentity(ctx);
+  if (!id || id.aboRole !== "admin") return false;
+  const settings = await ctx.db
+    .query("userSettings")
+    .withIndex("by_userId", (q) => q.eq("userId", id.userId))
+    .first();
+  return settings?.canManageAboConfiguration === true
+    || settings?.canResetAboSeason === true;
 }
 
 // Charge un dossier en vérifiant qu'il appartient à l'appelant (ou admin).

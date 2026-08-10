@@ -31,6 +31,7 @@ const TABS: { id: Vue; label: string }[] = [
 // Phase B : coquille à onglets ; les vues sont remplies aux phases suivantes.
 export default function AboAdmin() {
   const me = useQuery(api.abo.identity.me);
+  const peutGererConfiguration = useQuery(api.abo.config.peutGererConfiguration);
   const messagesNonLus = useQuery(api.abo.messages.messagesNonLusAdmin);
   const testsATraiter = useQuery(api.abo.testDocuments.listArchives, {
     filtre: "a_traiter",
@@ -83,7 +84,7 @@ export default function AboAdmin() {
       </header>
 
       <nav className="abo-admin-nav">
-        {TABS.map((t) => {
+        {TABS.filter((t) => t.id !== "config" || peutGererConfiguration === true).map((t) => {
           const compteur = compteurs[t.id];
           return (
             <button

@@ -14,7 +14,7 @@ import { authenticatedQuery, authenticatedMutation } from "../customFunctions";
 import { internalMutation, internalQuery } from "../_generated/server";
 import type { QueryCtx, MutationCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
-import { requireAboAdmin, requireAboSeasonReset } from "./auth";
+import { peutGererConfigurationAbo, requireAboConfigurationManager } from "./auth";
 import { parseHa, poserLienAbo, trouverLienAbo } from "./paiements";
 import { REGLEMENT_DOCUSEAL_URL } from "./reglementsConstants";
 
@@ -274,7 +274,7 @@ export const getConfig = authenticatedQuery({
     synchronisation_externe_active: v.boolean(),
   }),
   handler: async (ctx) => {
-    await requireAboAdmin(ctx);
+    await requireAboConfigurationManager(ctx);
     const [
       helloasso_lien,
       places_max,
@@ -303,11 +303,19 @@ export const getConfig = authenticatedQuery({
   },
 });
 
+// Droit d'affichage de l'onglet Configuration. Il ne divulgue aucune valeur de
+// configuration et évite d'appeler getConfig pour un membre non autorisé.
+export const peutGererConfiguration = authenticatedQuery({
+  args: {},
+  returns: v.boolean(),
+  handler: async (ctx) => peutGererConfigurationAbo(ctx),
+});
+
 export const setSynchronisationExterneActive = authenticatedMutation({
   args: { active: v.boolean() },
   returns: v.boolean(),
   handler: async (ctx, args) => {
-    await requireAboAdmin(ctx);
+    await requireAboConfigurationManager(ctx);
     if (
       args.active &&
       (await getConfigValeur(ctx, CLE_PURGE_SUIVI_CAMPAGNE_ACTIVE)) === "true"
@@ -334,7 +342,7 @@ export const setVagues = authenticatedMutation({
     vague3_debut: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireAboAdmin(ctx);
+    await requireAboConfigurationManager(ctx);
     const v2 = (args.vague2_debut ?? "").trim() || null;
     const v3 = (args.vague3_debut ?? "").trim() || null;
     if (v2 && v3 && v3 <= v2) {
@@ -358,7 +366,7 @@ export const setLiens = authenticatedMutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    await requireAboAdmin(ctx);
+    await requireAboConfigurationManager(ctx);
     const map: Record<string, string | undefined> = {
       licence_lien_nouvelle: args.licence_nouvelle,
       licence_lien_renouvellement: args.licence_renouvellement,
@@ -405,7 +413,7 @@ export const resetSaison = authenticatedMutation({
   args: { saisonArchivee: v.string(), nouveauLien: v.string() },
   returns: v.number(),
   handler: async (ctx, args) => {
-    await requireAboSeasonReset(ctx);
+    await requireAboConfigurationManager(ctx);
     const saison = args.saisonArchivee.trim();
     const lien = args.nouveauLien.trim();
     if (!saison) {

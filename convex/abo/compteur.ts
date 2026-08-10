@@ -15,7 +15,7 @@ import { internal } from "../_generated/api";
 import type { QueryCtx, MutationCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import { authenticatedQuery, authenticatedMutation } from "../customFunctions";
-import { requireAboAdmin } from "./auth";
+import { requireAboAdmin, requireAboConfigurationManager } from "./auth";
 import { vagueCourante, getConfigValeur } from "./config";
 import { canoniserLicence, normaliserNomPrenom } from "./lib";
 import { champsModifies } from "../dbUtils";
@@ -456,7 +456,7 @@ export const setPlacesMax = authenticatedMutation({
   args: { places_max: v.number() },
   returns: v.null(),
   handler: async (ctx, args) => {
-    await requireAboAdmin(ctx);
+    await requireAboConfigurationManager(ctx);
     const n = Math.round(args.places_max);
     if (!Number.isFinite(n) || n <= 0) {
       throw new ConvexError({ code: "22023", message: "Nombre de places invalide." });

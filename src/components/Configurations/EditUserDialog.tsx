@@ -13,7 +13,7 @@ interface EditUserDialogProps {
     name: string;
     role: string;
     allowedTiles: string[];
-    canResetAboSeason: boolean;
+    canManageAboConfiguration: boolean;
   }) => Promise<void>;
   onDismiss: () => void;
 }
@@ -37,7 +37,7 @@ export default function EditUserDialog({
   const [name, setName] = useState("");
   const [role, setRole] = useState("user");
   const [allowedTiles, setAllowedTiles] = useState<string[]>([]);
-  const [canResetAboSeason, setCanResetAboSeason] = useState(false);
+  const [canManageAboConfiguration, setCanManageAboConfiguration] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
   const [accessNotice, setAccessNotice] = useState("");
@@ -54,7 +54,10 @@ export default function EditUserDialog({
         ? [...initialTiles, "compta"]
         : initialTiles,
     );
-    setCanResetAboSeason(user.settings?.canResetAboSeason === true);
+    setCanManageAboConfiguration(
+      user.settings?.canManageAboConfiguration === true
+      || user.settings?.canResetAboSeason === true,
+    );
     setError("");
     setAccessNotice("");
     setIsSaving(false);
@@ -62,8 +65,7 @@ export default function EditUserDialog({
   }, [user]);
 
   const unknownTiles = unknownTileIds(allowedTiles);
-  const canGrantSeasonReset =
-    role === "admin" && allowedTiles.includes("abonnements");
+  const canManageAboConfig = allowedTiles.includes("abonnements");
 
   const toggleTile = (tileId: string) => {
     setAccessNotice("");
@@ -82,7 +84,7 @@ export default function EditUserDialog({
     }
 
     if (tileId === "abonnements" && isEnabled) {
-      setCanResetAboSeason(false);
+      setCanManageAboConfiguration(false);
     }
 
     setAllowedTiles(
@@ -94,7 +96,7 @@ export default function EditUserDialog({
 
   const setKnownTiles = (enabled: boolean) => {
     setAccessNotice("");
-    if (!enabled) setCanResetAboSeason(false);
+    if (!enabled) setCanManageAboConfiguration(false);
     setAllowedTiles([
       ...unknownTiles,
       ...(enabled ? TILE_OPTIONS.map(({ id }) => id) : []),
@@ -119,7 +121,7 @@ export default function EditUserDialog({
         name: trimmedName,
         role,
         allowedTiles,
-        canResetAboSeason: canGrantSeasonReset && canResetAboSeason,
+        canManageAboConfiguration: canManageAboConfig && canManageAboConfiguration,
       });
       dialogRef.current?.close();
     } catch (saveError) {
@@ -199,7 +201,6 @@ export default function EditUserDialog({
                 onChange={(event) => {
                   const nextRole = event.target.value;
                   setRole(nextRole);
-                  if (nextRole !== "admin") setCanResetAboSeason(false);
                 }}
               >
                 <option value="user">Utilisateur</option>
@@ -263,27 +264,26 @@ export default function EditUserDialog({
 
           <fieldset
             className="user-permissions-fieldset"
-            disabled={isSaving || !canGrantSeasonReset}
+            disabled={isSaving || !canManageAboConfig}
           >
-            <legend>Opération sensible</legend>
+              <legend>Configuration Abonnements</legend>
             <label className="user-reset-permission">
               <input
                 type="checkbox"
-                checked={canResetAboSeason}
-                onChange={(event) => setCanResetAboSeason(event.target.checked)}
+                checked={canManageAboConfiguration}
+                onChange={(event) => setCanManageAboConfiguration(event.target.checked)}
               />
               <span>
-                <strong>Autoriser la réinitialisation annuelle des Abonnements</strong>
+                <strong>Autoriser la gestion de la configuration des Abonnements</strong>
                 <small>
-                  Efface les données publiques de campagne. Réservé à un
-                  administrateur général disposant de la tuile Abonnements.
+                  Donne accès aux réglages et au changement de campagne. Peut être
+                  attribué à tout membre du staff ayant la tuile Abonnements.
                 </small>
               </span>
             </label>
-            {!canGrantSeasonReset && (
+            {!canManageAboConfig && (
               <p className="user-reset-permission-note">
-                Accordez d&apos;abord le rôle Administrateur et la tuile
-                Abonnements pour pouvoir attribuer ce droit.
+                Accordez d&apos;abord la tuile Abonnements pour pouvoir attribuer ce droit.
               </p>
             )}
           </fieldset>

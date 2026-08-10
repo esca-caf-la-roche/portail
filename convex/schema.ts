@@ -152,10 +152,13 @@ export default defineSchema({
     userId: v.id("users"),
     allowedTiles: v.array(v.string()), // ex: ["compta", "paiements"]
     role: v.string(), // "admin" ou "user"
-    // Autorisation nominative, réservée à un administrateur général ayant la
-    // tuile Abonnements, pour l'opération destructive de fin de campagne.
-    // Optionnel pendant la migration : l'absence vaut refus côté serveur.
+    // Ancienne autorisation de reset, conservée temporairement pour ne pas
+    // couper l'accès des titulaires historiques pendant la migration.
     canResetAboSeason: v.optional(v.boolean()),
+    // Autorisation nominative de gérer la Configuration Abonnements. Elle est
+    // attribuée par un administrateur général, mais peut être donnée à tout
+    // membre du staff disposant de la tuile Abonnements.
+    canManageAboConfiguration: v.optional(v.boolean()),
   }).index("by_userId", ["userId"]),
 
   // SAISON-EXEMPT: préférences globales d'affichage du tableau de bord,

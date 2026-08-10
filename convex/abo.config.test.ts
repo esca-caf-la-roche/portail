@@ -120,6 +120,7 @@ describe("liens de finalisation Abonnements", () => {
         userId,
         allowedTiles: ["abonnements"],
         role: "user",
+        canManageAboConfiguration: true,
       });
       return userId;
     });
@@ -160,6 +161,7 @@ describe("liens de finalisation Abonnements", () => {
         userId,
         allowedTiles: ["abonnements"],
         role: "user",
+        canManageAboConfiguration: true,
       });
       await ctx.db.insert("abo_app_config", {
         cle: "inscription_lien",
@@ -201,6 +203,7 @@ describe("autorisation du reset annuel Abonnements", () => {
         userId: adminId,
         allowedTiles: ["abonnements"],
         role: "user",
+        canManageAboConfiguration: true,
       });
       const publicId = await ctx.db.insert("users", { email: "sync-public@example.test" });
       await ctx.db.insert("abo_profiles", {
@@ -222,7 +225,7 @@ describe("autorisation du reset annuel Abonnements", () => {
     });
     await expect(
       t.withIdentity({ subject: publicId }).mutation(api.abo.config.setSynchronisationExterneActive, { active: true }),
-    ).rejects.toThrow("Réservé aux administrateurs");
+    ).rejects.toThrow("ABO_CONFIGURATION_ACCES_REFUSE");
   });
 
   test("exige la tuile, le rôle admin général et l'autorisation nominative", async () => {
@@ -232,7 +235,7 @@ describe("autorisation du reset annuel Abonnements", () => {
         const create = async (settings: {
           allowedTiles: string[];
           role: string;
-          canResetAboSeason: boolean;
+          canManageAboConfiguration: boolean;
         }) => {
           const userId = await ctx.db.insert("users", {
             email: `${crypto.randomUUID()}@example.test`,
@@ -244,17 +247,17 @@ describe("autorisation du reset annuel Abonnements", () => {
           create({
             allowedTiles: ["abonnements"],
             role: "user",
-            canResetAboSeason: false,
+            canManageAboConfiguration: false,
           }),
           create({
             allowedTiles: [],
             role: "admin",
-            canResetAboSeason: true,
+            canManageAboConfiguration: true,
           }),
           create({
             allowedTiles: ["abonnements"],
-            role: "admin",
-            canResetAboSeason: true,
+            role: "user",
+            canManageAboConfiguration: true,
           }),
         ]);
       },
@@ -295,10 +298,10 @@ describe("autorisation du reset annuel Abonnements", () => {
 
     await expect(
       t.withIdentity({ subject: staffSansDroit }).mutation(api.abo.config.resetSaison, args),
-    ).rejects.toThrow("Réinitialisation réservée");
+    ).rejects.toThrow("ABO_CONFIGURATION_ACCES_REFUSE");
     await expect(
       t.withIdentity({ subject: adminSansTuile }).mutation(api.abo.config.resetSaison, args),
-    ).rejects.toThrow("Réservé aux administrateurs");
+    ).rejects.toThrow("ABO_CONFIGURATION_ACCES_REFUSE");
     vi.useFakeTimers();
     try {
       await expect(

@@ -127,12 +127,13 @@ Le compteur public lit un agrégat sans donnée nominative, recalculé après le
 opérations métier qui peuvent modifier la jauge. En l'absence initiale de cet
 agrégat, un calcul de transition borné permet de servir l'iframe.
 
-La **réinitialisation annuelle** est plus restrictive que la gestion courante :
-elle exige la tuile `abonnements`, le rôle d'administrateur général et
-l'autorisation nominative `canResetAboSeason`, accordée dans
-*Configurations > Utilisateurs et Accès*. Cette dernière est désactivée par
-défaut, y compris pour les comptes existants. Un administrateur général peut
-l'activer pour son propre compte ou pour un autre administrateur éligible.
+La page **Configuration** n'est accessible qu'avec la tuile `abonnements` et
+l'autorisation nominative `canManageAboConfiguration`, accordée dans
+*Configurations > Utilisateurs et Accès*. Un administrateur général peut
+l'attribuer à tout membre du staff titulaire de cette tuile, y compris si cette
+personne n'est pas administratrice générale. Ce droit couvre les réglages de
+campagne, dont la réinitialisation annuelle ; le backend le vérifie sur chaque
+lecture ou modification de configuration.
 
 Elle remet le portail dans un état exclusivement utile à la nouvelle campagne :
 les suivis et statuts de campagne sont supprimés, tandis que les documents des

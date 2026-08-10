@@ -170,7 +170,7 @@ describe("saisons et administration globale", () => {
     })).rejects.toThrow("existe déjà");
   });
 
-  test("normalise le droit de reset Abonnements selon le rôle et la tuile", async () => {
+  test("autorise la configuration Abonnements à un staff non-admin ayant la tuile", async () => {
     const t = convexTest(schema, modules);
     const targetId = await createUser(t, { tiles: ["abonnements"], role: "admin" });
     const admin = t.withIdentity({
@@ -180,14 +180,17 @@ describe("saisons et administration globale", () => {
     await admin.mutation(api.users.updateUserSettings, {
       userId: targetId,
       name: "Responsable campagne",
-      role: "admin",
-      allowedTiles: ["abonnements"],
-      canResetAboSeason: true,
+      role: "user",
+      allowedTiles: [],
+      canManageAboConfiguration: false,
     });
     await expect(admin.query(api.users.listUsers, {})).resolves.toContainEqual(
       expect.objectContaining({
         _id: targetId,
-        settings: expect.objectContaining({ canResetAboSeason: true }),
+        settings: expect.objectContaining({
+          canManageAboConfiguration: false,
+          canResetAboSeason: false,
+        }),
       }),
     );
 
@@ -196,17 +199,17 @@ describe("saisons et administration globale", () => {
       name: "Responsable campagne",
       role: "user",
       allowedTiles: ["abonnements"],
-      canResetAboSeason: true,
+      canManageAboConfiguration: true,
     });
     await expect(admin.query(api.users.listUsers, {})).resolves.toContainEqual(
       expect.objectContaining({
         _id: targetId,
-        settings: expect.objectContaining({ canResetAboSeason: false }),
+        settings: expect.objectContaining({ canManageAboConfiguration: true }),
       }),
     );
   });
 
-  test("autorise un administrateur à s'attribuer le droit de reset", async () => {
+  test("permet à un administrateur d'attribuer le droit de configuration", async () => {
     const t = convexTest(schema, modules);
     const adminId = await createUser(t, { tiles: ["abonnements"], role: "admin" });
     const admin = t.withIdentity({ subject: adminId });
@@ -217,13 +220,13 @@ describe("saisons et administration globale", () => {
         name: "Administrateur",
         role: "admin",
         allowedTiles: ["abonnements"],
-        canResetAboSeason: true,
+        canManageAboConfiguration: true,
       }),
     ).resolves.toBeNull();
     await expect(admin.query(api.users.listUsers, {})).resolves.toContainEqual(
       expect.objectContaining({
         _id: adminId,
-        settings: expect.objectContaining({ canResetAboSeason: true }),
+        settings: expect.objectContaining({ canManageAboConfiguration: true }),
       }),
     );
   });

@@ -141,6 +141,7 @@ export const listUsers = authenticatedQuery({
         allowedTiles: [] as string[],
         role: "user",
         canResetAboSeason: false,
+        canManageAboConfiguration: false,
       };
       return {
         ...user,
@@ -161,6 +162,7 @@ export const getCurrentUserSettings = authenticatedQuery({
       allowedTiles: [] as string[],
       role: "user",
       canResetAboSeason: false,
+      canManageAboConfiguration: false,
     };
   },
 });
@@ -209,6 +211,7 @@ export const addUser = authenticatedMutation({
       allowedTiles: ensureBudgetIncludesCompta(["compta", "paiements", "budget"]),
       role: "user",
       canResetAboSeason: false,
+      canManageAboConfiguration: false,
     });
     
     return newUserId;
@@ -294,7 +297,10 @@ export const updateUserSettings = authenticatedMutation({
     allowedTiles: v.array(v.string()),
     role: v.string(),
     name: v.string(),
-    canResetAboSeason: v.boolean(),
+    canManageAboConfiguration: v.optional(v.boolean()),
+    // Compatibilité courte avec un onglet Configurations encore en cache après
+    // déploiement : les nouveaux clients envoient uniquement le nouveau droit.
+    canResetAboSeason: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     await requireAdmin(ctx, ctx.userId);
@@ -305,12 +311,11 @@ export const updateUserSettings = authenticatedMutation({
     }
 
     const allowedTiles = ensureBudgetIncludesCompta(args.allowedTiles);
-    // Une permission de destruction ne peut jamais survivre à la perte du
-    // rôle admin ou de la tuile Abonnements, même via un appel direct à l'API.
-    const canResetAboSeason =
-      args.canResetAboSeason &&
-      args.role === "admin" &&
-      allowedTiles.includes("abonnements");
+    // Le droit de configuration est réservé au staff qui gère réellement les
+    // Abonnements, sans exiger le rôle global admin du titulaire.
+    const canManageAboConfiguration =
+      (args.canManageAboConfiguration ?? args.canResetAboSeason ?? false)
+      && allowedTiles.includes("abonnements");
 
     const settings = await ctx.db
       .query("userSettings")
@@ -323,14 +328,19 @@ export const updateUserSettings = authenticatedMutation({
       await ctx.db.patch(settings._id, {
         allowedTiles,
         role: args.role,
-        canResetAboSeason,
+        canManageAboConfiguration,
+        // Dès qu'une fiche est enregistrée, la décision est portée uniquement
+        // par le nouveau droit : une ancienne autorisation ne peut pas survivre
+        // à une révocation explicite.
+        canResetAboSeason: false,
       });
     } else {
       await ctx.db.insert("userSettings", {
         userId: args.userId,
         allowedTiles,
         role: args.role,
-        canResetAboSeason,
+        canManageAboConfiguration,
+        canResetAboSeason: false,
       });
     }
   },
