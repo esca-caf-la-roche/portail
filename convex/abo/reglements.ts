@@ -1,5 +1,5 @@
-// Suivi administratif des règlements signés. Cette archive permanente reste
-// hors saison comptable et hors reset de campagne Abonnements.
+// Suivi administratif des règlements signés pour la campagne en cours. Les PDF
+// restent dans Drive ; leurs liaisons et statuts Convex sont purgés au reset.
 
 import { ConvexError, v } from "convex/values";
 import {

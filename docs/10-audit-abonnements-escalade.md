@@ -326,13 +326,15 @@ erDiagram
 | `abo_test_reservations` | Rendez-vous de test, actif ou annulé et motif. | Index par personne et tranche. |
 | `abo_app_config` | Dates de vagues et liens de campagne. | Index par clé. |
 | `abo_abonnes_scrap` | Image courante des abonnés sur le site club. | Index par licence et nom normalisé. |
-| `abo_abonnes_archive` | Archive N-1 des abonnés lors du reset. | Index par licence. |
+| `abo_abonnes_archive` | Seul snapshot N-1 des abonnés, remplacé à chaque reset. | Index par licence. |
 | `abo_eleves_en_cours` | Image courante des élèves de cours, utile à la priorité vague 2. | Index par licence et nom normalisé. |
-| `abo_licences` | Annuaire de licences pour aider au rapprochement. | Index par licence et nom normalisé. |
+| `abo_licences` | Cache courant de l'annuaire pour aider au rapprochement, sans historique annuel. | Index par licence et nom normalisé ; conservé au reset puis remplacé par un import complet valide. |
 | `abo_email_log` | Trace anti-doublon des emails transactionnels. | Index par dossier. |
 | `abo_demandes_supprimees` | Historique léger des dossiers retirés par leur auteur. | Index par propriétaire. |
-| `abo_fusions_dossiers` | Audit durable minimal d'une résolution : mode, dossiers A/B, répartition, fiche doublon conservée et volumes transférés, sans snapshot complet. | Index par licence, dossiers et propriétaires concernés. Hors saison. |
-| `abo_fusion_notifications` | État, nombre de tentatives et éventuelle erreur des notifications planifiées aux deux e-mails. | Index par fusion et statut ; suivi interne, sans endpoint applicatif de relance. Hors saison. |
+| `abo_tests_autonomie_archive`, `abo_test_document_uploads` | Métadonnées de traitement des scans et éventuels dépôts temporaires ; les fichiers définitifs sont dans Drive. | Données de campagne purgées au reset ; les documents restent recherchables dans Drive. |
+| `abo_reglements_imports`, `abo_reglements_signes` | File de rapprochement et liaison de campagne des règlements Drive. | Données de campagne purgées au reset ; les PDF restent dans Drive. |
+| `abo_fusions_dossiers`, `abo_licence_fusions` | Trace de résolution des conflits de la campagne. | Purgée au reset avec les dossiers auxquels elle se rapporte. |
+| `abo_fusion_notifications` | État, nombre de tentatives et éventuelle erreur des notifications planifiées aux deux e-mails. | Suivi interne de campagne, purgé au reset. |
 | `abo_fusion_redirections_email` | Marqueur créé seulement pour un dossier supprimé ; il refuse l'ancien e-mail dans `abo-otp`, sans révéler ni ouvrir le compte de destination. | Recherche par e-mail supprimé et retargeting interne. Limité à la campagne, purgé au reset. |
 
 ### Garanties de confidentialité
@@ -352,21 +354,24 @@ opération majeure. Elle exige un libellé d'archive et un nouveau lien HelloAss
 Elle effectue ensuite, dans cet ordre :
 
 1. remplace l'archive N-1 par les abonnés actuellement issus du site du club ;
-2. vide les snapshots courants (site, élèves), les créneaux et rendez-vous de
-   tests, et le journal d'e-mails ;
-3. vide le cache HelloAsso du seul formulaire Abonnements ;
-4. enregistre le nouveau formulaire et efface les dates de vagues ;
+2. vide les snapshots courants (site, élèves), les créneaux, rendez-vous de
+   tests, journaux et autres suivis de campagne ;
+3. vide les archives Convex des tests et règlements, ainsi que les fusions et
+   leurs notifications ; les fichiers définitifs restent dans Google Drive et
+   y sont recherchables ;
+4. vide le cache HelloAsso du seul formulaire Abonnements, enregistre le
+   nouveau formulaire et efface les dates de vagues ;
 5. programme la suppression par lots des comptes publics, de leurs dossiers,
    messages, réservations et sessions ;
-6. conserve les comptes staff, y compris leurs droits.
-
-L'archive permanente des scans de tests d'autonomie n'est pas concernée : elle
-reste disponible d'une campagne à l'autre, avec ses liens Google Drive et son
-statut interne de traitement.
+6. conserve les comptes staff, y compris leurs droits, et le cache courant de
+   l'annuaire `abo_licences` ;
+7. bloque toute synchronisation externe jusqu'à la réactivation explicite par
+   le staff, après bascule des sources vers la nouvelle campagne.
 
 > **Décision opérationnelle :** cette action efface les données publiques de
-> campagne après n'avoir conservé qu'une archive limitée des abonnés issus du
-> site. Elle doit donc être précédée d'une sauvegarde/validation métier et
+> campagne après n'avoir conservé qu'un snapshot N-1 limité des abonnés issus
+> du site. Les documents historiques restent uniquement dans Drive. Elle doit
+> donc être précédée d'une sauvegarde/validation métier et
 > exécutée par une personne nommément responsable.
 
 ## 8. Audit : points solides et points à finaliser
@@ -474,8 +479,12 @@ statut interne de traitement.
     site club demeure strictement inchangé.
 13. Enchaîner A → B puis B → C : A et B doivent être refusés sans révéler C ;
     seule la notification privée de résolution indique l'e-mail à utiliser. Après
-    le reset Abonnements, ces marqueurs de campagne doivent
-    être supprimés, tandis que l'audit minimal des résolutions reste conservé.
+    le reset Abonnements, les marqueurs, fusions et notifications de campagne
+    doivent être supprimés.
+14. Après le reset, vérifier que les tables de suivi des tests et règlements sont
+    vides, que les fichiers historiques restent recherchables dans Drive, puis
+    que chaque synchronisation externe — y compris l'import des élèves en cours
+    — est refusée jusqu'à sa réactivation explicite après bascule des sources.
 
 ## 10. Sources de vérité dans le dépôt
 

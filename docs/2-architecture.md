@@ -80,11 +80,12 @@ réparties en cinq domaines :
 - synchronisations et intégrations externes ;
 - inscriptions, licences, tests et messagerie du module Abonnements.
 
-Le domaine Abonnements comprend notamment l'archive permanente
-`abo_tests_autonomie_archive` (métadonnées et lien Drive des scans) et les
-tables de résolution de conflits de licence. Les scans restent dans Google
-Drive ; Convex conserve leur référence, leur identité gelée et leur état de
-traitement interne.
+Le domaine Abonnements conserve dans Convex les données de la campagne en
+cours, y compris les métadonnées et liens Drive des scans de tests, les
+règlements et les résolutions de conflits de licence. Les fichiers eux-mêmes
+restent dans Google Drive : après un changement de campagne, ils demeurent
+consultables par recherche dans Drive, sans conserver dans Convex leur ancien
+état de traitement.
 
 Les fichiers à la racine de `convex/` portent les domaines partagés ou staff.
 `convex/abo/` isole le domaine Abonnements. Les fonctions réutilisables de
@@ -126,9 +127,11 @@ les archives ne dépendent donc pas de la présence future de celui-ci dans
 `abo_eleves_en_cours`.
 
 Le module Abonnements a son propre cycle de campagne, distinct de la saison
-comptable. En particulier, l'archive des tests d'autonomie est permanente et
-n'est pas supprimée lors de la réinitialisation de campagne ; seuls les créneaux
-et réservations courants sont réinitialisés.
+comptable. Sa réinitialisation purgera toutes les données de suivi de la
+campagne achevée, dont les archives Convex des tests et règlements ainsi que
+les fusions et leurs notifications. Google Drive reste l'historique des
+documents des campagnes précédentes. Seuls le snapshot des abonnés N-1 et le
+cache courant de l'annuaire des licences sont conservés dans Convex.
 
 Les relations et index sont définis dans `convex/schema.ts`. Les collections
 potentiellement volumineuses doivent être bornées, paginées ou parcourues par
@@ -140,6 +143,13 @@ Les synchronisations HelloAsso, site du club, annuaire des licences et élèves 
 cours sont déclenchées à la demande depuis les pages concernées. L'orchestrateur
 `convex/abo/sync.ts` utilise un verrou partagé côté serveur, avec une fenêtre
 d'environ une heure, pour éviter les appels et écritures répétés.
+
+Après une réinitialisation Abonnements, les synchronisations de campagne de
+l'espace Abonnements (site club, annuaire et élèves utilisés par les vagues) ne
+sont pas actualisées tant qu'un admin n'a pas explicitement réactivé les imports,
+une fois les sources passées à la nouvelle campagne. Cette pause évite notamment
+de réimporter comme « élèves en cours » les élèves de la campagne précédente,
+sans bloquer les autres tuiles qui partagent ce snapshot.
 
 À l'ouverture de `/contacts-cours`, seule la source des élèves est demandée. La
 page continue d'exploiter le dernier snapshot disponible si cette actualisation

@@ -299,14 +299,140 @@ describe("autorisation du reset annuel Abonnements", () => {
     await expect(
       t.withIdentity({ subject: adminSansTuile }).mutation(api.abo.config.resetSaison, args),
     ).rejects.toThrow("Réservé aux administrateurs");
-    await expect(
-      t.withIdentity({ subject: adminAutorise }).mutation(api.abo.config.resetSaison, args),
-    ).resolves.toBe(0);
+    vi.useFakeTimers();
+    try {
+      await expect(
+        t.withIdentity({ subject: adminAutorise }).mutation(api.abo.config.resetSaison, args),
+      ).resolves.toBe(0);
+      await expect(
+        t.withIdentity({ subject: adminAutorise }).mutation(
+          api.abo.config.setSynchronisationExterneActive,
+          { active: true },
+        ),
+      ).rejects.toThrow("purge des suivis de la campagne précédente est encore en cours");
+      await t.finishAllScheduledFunctions(() => vi.runAllTimers());
+    } finally {
+      vi.useRealTimers();
+    }
     expect(await t.run(async (ctx) => ctx.db.get(redirectionId))).toBeNull();
     expect(await t.run(async (ctx) =>
       ctx.db.query("abo_app_config")
         .withIndex("by_cle", (q) => q.eq("cle", "synchronisation_externe_active"))
         .unique(),
     )).toMatchObject({ valeur: "false" });
+    const marqueurPurge = await t.run(async (ctx) =>
+      ctx.db.query("abo_app_config")
+        .withIndex("by_cle", (q) => q.eq("cle", "purge_suivi_campagne_active"))
+        .unique(),
+    );
+    expect(marqueurPurge?.valeur).toBeUndefined();
+  });
+
+  test("refuse l'import des élèves tant que le site club n'a pas basculé", async () => {
+    const t = convexTest(schema, modules);
+    await t.run(async (ctx) => {
+      await ctx.db.insert("abo_app_config", {
+        cle: "synchronisation_externe_active",
+        valeur: "false",
+      });
+    });
+
+    await expect(
+      t.action(internal.abo.scrap.importerElevesEnCours, { contexteAbo: true }),
+    ).rejects.toThrow("synchronisation des élèves Abonnements est désactivée");
+  });
+
+  test("purge par lots les suivis de campagne sans toucher aux références conservées", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = convexTest(schema, modules);
+      await t.run(async (ctx) => {
+        const userId = await ctx.db.insert("users", { email: "purge-suivi@example.test" });
+        const dossierId = await ctx.db.insert("abo_dossiers", {
+          email: "purge-suivi@example.test", owner_id: userId,
+          statut_dossier: "nouvelle_demande", date_soumission: "2026-08-08T00:00:00.000Z",
+        });
+        const personneId = await ctx.db.insert("abo_personnes", {
+          dossier_id: dossierId, nom: "PURGE", prenom: "Suivi", nom_prenom_normalise: "PURGE SUIVI",
+          licence: "123456789012", licence_statut: "saisie", etape_demande: true,
+          etape_validation: "en_attente", etape_licence: true, etape_inscription_site: false,
+          etape_photo: false, etape_paiement: false, etape_abonnement_valide: false,
+        });
+        const fusionId = await ctx.db.insert("abo_fusions_dossiers", {
+          licence_declencheur: "123456789012", mode_resolution: "conserver_b",
+          dossier_a_id: dossierId, dossier_b_id: dossierId, owner_a_id: userId, owner_b_id: userId,
+          email_a: "a@example.test", email_b: "b@example.test", dossier_supprime_id: dossierId,
+          personne_a_doublon_id: personneId, personne_b_doublon_id: personneId,
+          personne_conservee_id: personneId, affectations_json: "[]", personnes_reaffectees: 0,
+          reservations_reaffectees: 0, messages_reaffectes: 0, logs_reaffectes: 0,
+          historiques_reaffectes: 0, compte_a: "conserve", compte_b: "conserve",
+          resolue_le: "2026-08-08T00:00:00.000Z", resolue_par: userId,
+        });
+        await ctx.db.insert("abo_tests_autonomie_archive", {
+          licence: "123456789012", nom: "PURGE", prenom: "Suivi", nom_prenom_normalise: "PURGE SUIVI",
+          drive_file_id: "drive-test", drive_url: "https://drive.example.test/test", statut: "a_traiter",
+        });
+        const archiveId = await ctx.db.insert("abo_tests_autonomie_archive", {
+          licence: "123456789013", nom: "PURGE", prenom: "Ticket", nom_prenom_normalise: "PURGE TICKET",
+          drive_file_id: "", drive_url: "", statut: "a_traiter",
+        });
+        await ctx.db.insert("abo_test_document_uploads", {
+          archive_id: archiveId, author_id: userId, token: "token", statut: "autorise", expires_at: Date.now() + 60_000,
+        });
+        await ctx.db.insert("abo_reglements_signes", {
+          drive_file_id: "drive-reglement", drive_file_name: "reglement.pdf", drive_url: "https://drive.example.test/reglement",
+          version_reglement: "2026", nom: "PURGE", prenom: "Suivi", nom_prenom_normalise: "PURGE SUIVI",
+          licence: "123456789012", liaison_validee_par: userId, liaison_validee_le: "2026-08-08T00:00:00.000Z",
+          statut_site: "a_enregistrer",
+        });
+        await ctx.db.insert("abo_reglements_imports", {
+          version_reglement: "2026", statut: "a_rapprocher", importe_le: "2026-08-08T00:00:00.000Z",
+        });
+        await ctx.db.insert("abo_fusion_notifications", {
+          fusion_id: fusionId, destinataire: "a@example.test", role_destinataire: "dossier_a",
+          sujet: "Fusion", contenu: "Contenu", statut: "a_envoyer", tentatives: 0,
+        });
+        await ctx.db.insert("abo_fusion_redirections_email", {
+          email_supprime: "a@example.test", email_destination: "b@example.test", dossier_destination_id: dossierId,
+          fusion_id: fusionId, created_at: "2026-08-08T00:00:00.000Z",
+        });
+        await ctx.db.insert("abo_licence_fusions", {
+          licence: "123456789012", personne_source_id: personneId, personne_cible_id: personneId,
+          dossier_source_id: dossierId, dossier_cible_id: dossierId, source_nom: "PURGE", source_prenom: "Suivi",
+          fusionnee_le: "2026-08-08T00:00:00.000Z", fusionnee_par: userId,
+        });
+        await ctx.db.insert("abo_abonnes_archive", {
+          licence: "123456789012", nom: "GARDER", prenom: "N-1", nom_prenom_normalise: "GARDER N-1",
+          abonnement_valide: true, saison: "2025-26",
+        });
+        await ctx.db.insert("abo_licences", {
+          licence: "123456789012", nom: "GARDER", prenom: "ANNUAIRE", nom_prenom_normalise: "GARDER ANNUAIRE",
+          imported_at: "2026-08-08T00:00:00.000Z",
+        });
+      });
+
+      await t.mutation(internal.abo.config.purgerSuiviCampagne, { etape: "uploads_tests" });
+      await t.finishAllScheduledFunctions(() => vi.runAllTimers());
+      const compte = await t.run(async (ctx) => ({
+        uploads: await ctx.db.query("abo_test_document_uploads").collect(),
+        archives: await ctx.db.query("abo_tests_autonomie_archive").collect(),
+        imports: await ctx.db.query("abo_reglements_imports").collect(),
+        reglements: await ctx.db.query("abo_reglements_signes").collect(),
+        notifications: await ctx.db.query("abo_fusion_notifications").collect(),
+        redirections: await ctx.db.query("abo_fusion_redirections_email").collect(),
+        fusionsDossiers: await ctx.db.query("abo_fusions_dossiers").collect(),
+        fusionsLicences: await ctx.db.query("abo_licence_fusions").collect(),
+        archiveN1: await ctx.db.query("abo_abonnes_archive").collect(),
+        licences: await ctx.db.query("abo_licences").collect(),
+      }));
+      expect(compte).toMatchObject({
+        uploads: [], archives: [], imports: [], reglements: [], notifications: [], redirections: [],
+        fusionsDossiers: [], fusionsLicences: [],
+      });
+      expect(compte.archiveN1).toHaveLength(1);
+      expect(compte.licences).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

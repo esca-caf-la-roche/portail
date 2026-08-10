@@ -38,9 +38,10 @@ dossier et chaque dossier conservé doit contenir au moins une personne.
 Si les deux dossiers restent, leurs messages, journaux d'e-mails et comptes
 restent séparés. Si un dossier est supprimé, ses personnes et ses dépendances
 liées au dossier sont transférées vers l'autre. L'historique attaché au
-propriétaire reste avec lui lorsque son compte staff est conservé. Une ligne durable de
+propriétaire reste avec lui lorsque son compte staff est conservé. Une ligne de
 `abo_fusions_dossiers` conserve le mode de résolution, la répartition, les
-volumes déplacés et l'identité du staff, sans snapshot complet.
+volumes déplacés et l'identité du staff, sans snapshot complet, jusqu'au reset
+de la campagne.
 
 Le compte d'un dossier supprimé suit une règle de sécurité liée à sa population :
 
@@ -62,9 +63,9 @@ Le compte d'un dossier supprimé suit une règle de sécurité liée à sa popul
 Deux notifications indépendantes, une par e-mail de dossier, sont planifiées et
 suivies dans `abo_fusion_notifications`. Le statut, le nombre de tentatives et
 un éventuel échec sont conservés pour le suivi interne ; aucun endpoint
-applicatif ne propose de relance. L'audit et les notifications restent hors
-saison. Le marqueur d'ancien e-mail, lui, est limité à la campagne courante et
-est purgé lors du reset Abonnements — sans dépendre de la saison comptable.
+applicatif ne propose de relance. Cet audit, ces notifications et le marqueur
+d'ancien e-mail sont limités à la campagne courante et purgés lors du reset
+Abonnements — sans dépendre de la saison comptable.
 Enfin, aucune écriture ni action distante n'est effectuée sur le site du club :
 son snapshot demeure une source externe strictement en lecture seule.
 
@@ -132,6 +133,12 @@ l'autorisation nominative `canResetAboSeason`, accordée dans
 *Configurations > Utilisateurs et Accès*. Cette dernière est désactivée par
 défaut, y compris pour les comptes existants. Un administrateur général peut
 l'activer pour son propre compte ou pour un autre administrateur éligible.
+
+Elle remet le portail dans un état exclusivement utile à la nouvelle campagne :
+les suivis et statuts de campagne sont supprimés, tandis que les documents des
+campagnes précédentes restent retrouvables dans Google Drive. `abo_abonnes_archive`
+est remplacée par le seul snapshot N-1 et `abo_licences` est conservé comme cache
+courant de l'annuaire, sans historique annuel accumulé.
 
 ## Variables d'environnement (dashboard Convex → *Settings > Environment Variables*)
 
@@ -209,13 +216,15 @@ configurable avec `SYNC_TTL_MINUTES`.
 L'ordre des sources est intentionnel : les données HelloAsso doivent être
 disponibles avant le matching des personnes.
 
-Lors d'un changement de campagne Abonnements, le scrap des abonnés et l'annuaire
-des licences sont automatiquement mis en pause (`synchronisation_externe_active
-= false` dans `abo_app_config`). Les caches existants restent consultables sans
-être actualisés ni purgés. Un admin Abonnements les réactive depuis l'onglet
-Configuration, uniquement lorsque le site club et l'annuaire ont basculé sur la
-nouvelle campagne. HelloAsso et le snapshot des élèves en cours restent
-indépendants de cette pause.
+Lors d'un changement de campagne Abonnements, les imports de campagne de cet
+espace sont automatiquement mis en pause (`synchronisation_externe_active =
+false` dans `abo_app_config`) : snapshot des abonnés du site club, annuaire des
+licences et snapshot des élèves utilisé par les vagues. Les caches conservés
+restent consultables sans être actualisés depuis l'espace Abonnements. Un admin
+Abonnements les réactive explicitement depuis l'onglet Configuration, uniquement
+lorsque chaque source reflète la nouvelle campagne. Cette règle évite notamment
+de faire réapparaître des élèves N-1 comme « élèves en cours », sans empêcher les
+autres tuiles de gérer leur propre synchronisation des élèves.
 
 Le scrap des abonnés est un **snapshot complet** : après une collecte réussie
 et non vide, les lignes absentes de la liste reçue sont supprimées du cache
@@ -299,11 +308,12 @@ marque **Enregistré sur le site** dans le portail. Ce statut est un suivi
 interne ; le portail n'écrit jamais sur le site du club.
 
 `abo_reglements_imports` conserve la file légère renvoyée par n8n, dédupliquée
-par identifiant Drive. `abo_reglements_signes` reste l'archive métier définitive créée
-après validation de la licence. Les deux tables sont permanentes et hors saison. La version
-`6GFLQa478G3Qwv` distingue le formulaire courant : une licence ne peut être
-liée qu'une fois à cette version, et le reset de campagne ne purge pas
-l'archive.
+par identifiant Drive. `abo_reglements_signes` enregistre la liaison de campagne
+confirmée après validation de la licence. Ces deux tables sont vidées au reset :
+leurs états de rapprochement et d'enregistrement ne doivent pas se propager à
+la campagne suivante. Les PDF restent dans Drive et peuvent y être recherchés.
+La version `6GFLQa478G3Qwv` distingue le formulaire courant : une licence ne
+peut être liée qu'une fois à cette version durant la campagne.
 
 ## Rendez-vous de test d'autonomie
 
@@ -326,8 +336,8 @@ dans moins de 24 heures, il part immédiatement. Son objet indique explicitement
 qu'il s'agit d'un rappel de test d'autonomie et demande d'imprimer le
 formulaire. Le formulaire n'est pas joint : il est à récupérer dans l'espace
 sécurisé du demandeur. Ce mécanisme utilise une tâche différée attachée à la
-réservation, jamais un cron périodique. Les créneaux, réservations, rappels et
-réévaluations restent disponibles hors saison.
+réservation, jamais un cron périodique. Ces créneaux, réservations, rappels et
+réévaluations relèvent de la campagne courante et sont purgés à son reset.
 
 Les destinataires sont validés comme adresses uniques à l'entrée de
 l'authentification puis de nouveau dans les actions SMTP. Les listes de
@@ -382,7 +392,8 @@ déploiement `npx.cmd convex dev` actif.
   recherche nom/prénom, confirmer la liaison, ouvrir le fichier depuis la file
   À enregistrer puis le marquer enregistré sur le site. Vérifier les doublons
   de fichier et de licence/version, le refus sans tuile `abonnements`, ainsi que
-  la conservation après reset de campagne.
+  la purge des suivis Convex après reset de campagne, tout en vérifiant que le
+  PDF reste trouvable dans Drive.
 - [ ] **Compteur/anomalies** : peupler scrap/archive/élèves/validées → total
   affiché sans double comptage, bloqués exclus ; le plafond de validation reste
   distinct. L'iframe `/#/compteur` affiche les nombres **sans connexion**.
@@ -392,9 +403,11 @@ déploiement `npx.cmd convex dev` actif.
   les abonnés (`abo_abonnes_scrap`) et fait avancer les `etape_*` ; import élèves
   alimente `abo_eleves_en_cours` (badge « en cours »).
 - [ ] **Reset saison** : archive N-1, vide scrap/paiements-abo/élèves/créneaux,
-  réservations et journal d'e-mails, purge les comptes publics par lots,
-  conserve les staff, **l'archive permanente des scans de tests et celle des
-  règlements signés** ; nouveau lien + vagues réinitialisées.
+  réservations, journal d'e-mails, archives Convex des tests et règlements,
+  fusions et notifications ; purge les comptes publics par lots, conserve les
+  staff ; nouveau lien + vagues réinitialisées. Vérifier que les documents
+  restent retrouvables dans Drive et que les imports de campagne Abonnements
+  restent bloqués jusqu'à leur réactivation explicite après bascule des sources.
 - [ ] **Emails** : validation → email `validation` unique (pas de renvoi au
   re-scrap) ; demande → `accuse` ; création/annulation de créneau → `test_annule`.
 - [ ] **Messagerie 🔒** : message instantané des deux côtés (réactivité Convex) ;

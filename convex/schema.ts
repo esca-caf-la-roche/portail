@@ -515,8 +515,9 @@ export default defineSchema({
     .index("by_nom_prenom_normalise", ["nom_prenom_normalise"])
     .index("by_licence", ["licence"]),
 
-  // SAISON-EXEMPT: archive administrative permanente des scans, conservée hors campagne.
-  // Elle est indépendante du dossier public d'origine, purgé au changement de campagne.
+  // SAISON-EXEMPT: suivi administratif des scans de la campagne courante, sans
+  // saison comptable. Les fichiers restent dans Drive après le reset ; leurs
+  // métadonnées et statut Convex sont purgés avec la campagne.
   abo_tests_autonomie_archive: defineTable({
     licence: v.string(),
     nom: v.string(),
@@ -530,8 +531,9 @@ export default defineSchema({
     .index("by_statut", ["statut"])
     .index("by_nom_prenom_normalise", ["nom_prenom_normalise"]),
 
-  // SAISON-EXEMPT: archive permanente des règlements signés, conservée hors
-  // campagne Abonnements et indépendante des dossiers publics réinitialisables.
+  // SAISON-EXEMPT: suivi des règlements signés de la campagne courante, distinct
+  // de la saison comptable. Les PDF restent dans Drive après le reset ; leurs
+  // liaisons et statuts Convex sont purgés avec la campagne.
   abo_reglements_signes: defineTable({
     drive_file_id: v.string(),
     drive_file_name: v.string(),
@@ -559,8 +561,8 @@ export default defineSchema({
     ])
     .index("by_statut_site", ["statut_site"]),
 
-  // SAISON-EXEMPT: file permanente Gmail -> Drive avant rapprochement manuel,
-  // conservée hors campagne Abonnements et exclue de toute purge/reset.
+  // SAISON-EXEMPT: file Gmail -> Drive de la campagne courante avant
+  // rapprochement manuel, purgée au reset sans supprimer les PDF Drive.
   abo_reglements_imports: defineTable({
     // Clé d'idempotence logique : l'unicité est imposée par la mutation.
     gmail_message_id: v.optional(v.string()),

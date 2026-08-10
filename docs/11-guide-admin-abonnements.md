@@ -375,9 +375,9 @@ complet : elle sert uniquement à retrouver la personne demandée.
 La liste **Tests déposés sur Drive** rassemble les scans récemment enregistrés.
 Ouvrez le test, validez son résultat sur le site du club, puis cliquez sur
 **Marquer comme traité** dans le portail. Ce statut est un repère interne ; il
-ne modifie pas le résultat du test dans le portail ni sur le site du club. Les
-scans restent conservés d'une campagne à l'autre et sont également accessibles
-depuis le détail du demandeur lorsqu'une licence est renseignée.
+ne modifie pas le résultat du test dans le portail ni sur le site du club. Au
+changement de campagne, cette liste et ses statuts sont vidés dans le portail ;
+les scans restent dans Drive et s'y recherchent avec l'identité de la personne.
 
 ## 7. Règlements
 
@@ -420,9 +420,9 @@ immédiatement sans créer de faux règlement.
    confirmer. La ligne rejoint **Enregistrés**.
 
 Le bouton met uniquement à jour la file de travail interne. Il ne transmet
-rien au site du club. Les liens, la liaison validée par le staff et l'état de
-traitement sont conservés dans une archive permanente, hors saison et non
-purgée lors du reset de campagne.
+rien au site du club. Au changement de campagne, cette file, ses liaisons et
+ses états de traitement sont supprimés du portail ; le PDF reste dans Drive et
+peut y être recherché si un document d'une campagne précédente est nécessaire.
 
 ## 8. Configuration
 
@@ -432,13 +432,14 @@ tous les admins et demandeurs concernés.
 
 ### Synchronisations externes
 
-Le statut **Synchronisations externes** concerne uniquement le scrap des
-abonnés du site club et l'annuaire des licences. Après le changement de
-campagne, il passe automatiquement à **en pause** : les snapshots déjà présents
-restent visibles, mais le portail ne les remplace ni ne les purge. Lorsque le
-site du club et l'annuaire reflètent la nouvelle campagne, cliquer sur
+Après le changement de campagne, les imports de campagne Abonnements passent
+automatiquement à **en pause** : site du club, annuaire des licences et import
+des élèves utilisé par les vagues. Cette pause évite de réimporter les
+informations de la campagne précédente, notamment des élèves qui ne sont plus
+« en cours ». Elle ne bloque pas les autres tuiles qui utilisent aussi le
+snapshot des élèves. Une fois chaque source basculée sur la nouvelle campagne,
+cliquer sur
 **Réactiver les synchronisations**, puis lancer les synchronisations habituelles.
-HelloAsso et l'import des élèves en cours ne sont pas concernés.
 
 ### Plafond de places
 
@@ -495,14 +496,18 @@ saison**, après validation de la conservation des données et du nouveau lien
 HelloAsso. Elle :
 
 - archive le snapshot actuel des abonnés en N-1 ;
-- vide les snapshots, créneaux, réservations, cache de paiements et journal
-  d'e-mails de la campagne ;
-- conserve les scans archivés de tests d'autonomie et leurs liens Drive ;
-- conserve les règlements signés, leurs liens Drive et leurs liaisons licence ;
+- vide les snapshots, créneaux, réservations, cache de paiements, journal
+  d'e-mails et toutes les autres files de suivi de la campagne ;
+- vide les archives Convex des tests d'autonomie et règlements, ainsi que les
+  fusions et leurs notifications ; les scans et PDF restent dans Drive, où ils
+  peuvent être recherchés ;
 - programme la suppression des demandes et comptes publics ;
 - conserve le compte, les sessions et l'authentification d'un staff qui a aussi
   utilisé le portail public, tout en purgeant ses données publiques de campagne ;
 - enregistre le nouveau lien HelloAsso et efface les dates de vagues.
+
+`abo_licences` reste le cache courant de l'annuaire et n'est pas un historique
+annuel. L'archive des abonnés est, elle, remplacée par le seul snapshot N-1.
 
 > **Autorisation requise :** ne lancer le reset que lorsque les
 > responsabilités de fin de campagne ont été validées. Le bouton n'est
@@ -514,8 +519,10 @@ HelloAsso. Elle :
 > staff ayant aussi déposé une demande. Voir
 > [l'audit complet](10-audit-abonnements-escalade.md).
 
-Après le reset, reconfigurer les vagues, contrôler les liens puis lancer les
-synchronisations nécessaires avant de rouvrir la campagne.
+Après le reset, reconfigurer les vagues et contrôler les liens. Attendre que les
+sources utilisées par Abonnements aient basculé sur la nouvelle campagne, puis
+cliquer sur **Réactiver les synchronisations** avant de les lancer et de rouvrir
+la campagne.
 
 ## Routine opérationnelle minimale
 

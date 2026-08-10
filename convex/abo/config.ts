@@ -18,11 +18,12 @@ import { requireAboAdmin, requireAboSeasonReset } from "./auth";
 import { parseHa, poserLienAbo, trouverLienAbo } from "./paiements";
 import { REGLEMENT_DOCUSEAL_URL } from "./reglementsConstants";
 
-const MAX_REDIRECTIONS_PAR_CAMPAGNE = 1_000;
+const LOT_PURGE_SUIVI_CAMPAGNE = 25;
 // SAISON-EXEMPT: état opérationnel de la campagne Abonnements, distinct de la
 // saison comptable. Sans cette clé (compatibilité des campagnes existantes),
 // les synchronisations restent actives.
 export const CLE_SYNCHRONISATION_EXTERNE_ACTIVE = "synchronisation_externe_active";
+const CLE_PURGE_SUIVI_CAMPAGNE_ACTIVE = "purge_suivi_campagne_active";
 const CLE_SYNCHRONISATION_EXTERNE_GENERATION = "synchronisation_externe_generation";
 
 // ── Lecture d'une clé de config ──────────────────────────────────────
@@ -307,6 +308,15 @@ export const setSynchronisationExterneActive = authenticatedMutation({
   returns: v.boolean(),
   handler: async (ctx, args) => {
     await requireAboAdmin(ctx);
+    if (
+      args.active &&
+      (await getConfigValeur(ctx, CLE_PURGE_SUIVI_CAMPAGNE_ACTIVE)) === "true"
+    ) {
+      throw new ConvexError({
+        code: "ABO_PURGE_CAMPAGNE_EN_COURS",
+        message: "La purge des suivis de la campagne précédente est encore en cours.",
+      });
+    }
     await setConfigValeur(
       ctx,
       CLE_SYNCHRONISATION_EXTERNE_ACTIVE,
@@ -387,9 +397,9 @@ export const setLiens = authenticatedMutation({
 // resetSaison() : changement de saison (admin, portage de reset_saison()).
 // Archive N-1, vide l'année en cours (scrap, élèves, cache paiements du lien
 // abo, créneaux/réservations de test, email_log), pose le nouveau lien HelloAsso,
-// réinitialise les dates de vagues, PUIS programme la purge des comptes publics
-// (+ cascade) par lots. `abo_tests_autonomie_archive` reste volontairement
-// intact : c'est l'archive permanente des scans, sans lien vers les dossiers.
+// réinitialise les dates de vagues, PUIS programme la purge par lots des comptes
+// publics et de tous les suivis de campagne. Les fichiers historiques restent
+// dans Drive, sans conserver leur état opérationnel dans Convex.
 // Les comptes staff/admin sont CONSERVÉS. 🔒
 export const resetSaison = authenticatedMutation({
   args: { saisonArchivee: v.string(), nouveauLien: v.string() },
@@ -398,12 +408,23 @@ export const resetSaison = authenticatedMutation({
     await requireAboSeasonReset(ctx);
     const saison = args.saisonArchivee.trim();
     const lien = args.nouveauLien.trim();
-    if (!saison) throw new Error("Libellé de la saison à archiver requis.");
-    if (!lien) throw new Error("Nouveau lien HelloAsso requis.");
+    if (!saison) {
+      throw new ConvexError({
+        code: "ABO_SAISON_ARCHIVEE_REQUISE",
+        message: "Libellé de la saison à archiver requis.",
+      });
+    }
+    if (!lien) {
+      throw new ConvexError({
+        code: "ABO_LIEN_HELLOASSO_REQUIS",
+        message: "Nouveau lien HelloAsso requis.",
+      });
+    }
     if (!parseHa(lien)) {
-      throw new Error(
-        "Lien HelloAsso non reconnu (attendu : .../associations/<org>/<type>/<slug>).",
-      );
+      throw new ConvexError({
+        code: "ABO_LIEN_HELLOASSO_INVALIDE",
+        message: "Lien HelloAsso non reconnu (attendu : .../associations/<org>/<type>/<slug>).",
+      });
     }
 
     // 1) Archive la saison qui se termine (écrase la N-1 précédente).
@@ -437,23 +458,6 @@ export const resetSaison = authenticatedMutation({
     for (const l of await ctx.db.query("abo_email_log").collect()) {
       await ctx.db.delete(l._id);
     }
-    // Les anciennes adresses ne sont tombstonées que pendant la campagne : au
-    // reset, elles doivent pouvoir déposer une nouvelle demande normalement.
-    // IO-BOUNDED: une campagne est limitée à 1 000 redirections ; au-delà, le
-    // reset échoue atomiquement et exige un nettoyage supervisé par lots.
-    const redirections = await ctx.db
-      .query("abo_fusion_redirections_email")
-      .take(MAX_REDIRECTIONS_PAR_CAMPAGNE + 1);
-    if (redirections.length > MAX_REDIRECTIONS_PAR_CAMPAGNE) {
-      throw new ConvexError({
-        code: "ABO_RESET_TROP_DE_REDIRECTIONS",
-        message: "Plus de 1 000 redirections de dossiers sont à nettoyer. Contactez un administrateur technique.",
-      });
-    }
-    for (const redirection of redirections) {
-      await ctx.db.delete(redirection._id);
-    }
-
     // 3) Vide le cache et le suivi de TOUS les formulaires Abonnements connus
     //    (courant et anciens). Les commandes des cours ne sont jamais touchées.
     const cible = await trouverLienAbo(ctx);
@@ -491,14 +495,137 @@ export const resetSaison = authenticatedMutation({
     // Le site club et l'annuaire peuvent encore porter la campagne N-1 : leur
     // synchronisation reste explicitement en pause jusqu'au feu vert staff.
     await setConfigValeur(ctx, CLE_SYNCHRONISATION_EXTERNE_ACTIVE, "false");
+    await setConfigValeur(ctx, CLE_PURGE_SUIVI_CAMPAGNE_ACTIVE, "true");
     const generation = Number(await getConfigValeur(ctx, CLE_SYNCHRONISATION_EXTERNE_GENERATION)) || 0;
     await setConfigValeur(ctx, CLE_SYNCHRONISATION_EXTERNE_GENERATION, String(generation + 1));
 
-    // 5) Purge des comptes publics (+ cascade) en tâche de fond, par lots bornés.
+    // 5) Purges en tâche de fond, par lots bornés. Les dépendances sont
+    // supprimées avant leurs parents (uploads → archives, notifications →
+    // fusions) afin de ne laisser aucun état de suivi à la campagne suivante.
+    await ctx.scheduler.runAfter(0, internal.abo.config.purgerSuiviCampagne, {
+      etape: "uploads_tests",
+    });
     await ctx.scheduler.runAfter(0, internal.abo.config.purgerComptesPublics, {});
     await ctx.scheduler.runAfter(0, internal.abo.compteur.rafraichirCompteurPublic, {});
 
     return nbArchive;
+  },
+});
+
+const etapePurgeSuiviValidator = v.union(
+  v.literal("uploads_tests"),
+  v.literal("archives_tests"),
+  v.literal("imports_reglements"),
+  v.literal("reglements_signes"),
+  v.literal("notifications_fusions"),
+  v.literal("redirections_fusions"),
+  v.literal("fusions_dossiers"),
+  v.literal("fusions_licences"),
+);
+
+type EtapePurgeSuivi =
+  | "uploads_tests"
+  | "archives_tests"
+  | "imports_reglements"
+  | "reglements_signes"
+  | "notifications_fusions"
+  | "redirections_fusions"
+  | "fusions_dossiers"
+  | "fusions_licences";
+
+const ETAPES_PURGE_SUIVI: readonly EtapePurgeSuivi[] = [
+  "uploads_tests",
+  "archives_tests",
+  "imports_reglements",
+  "reglements_signes",
+  "notifications_fusions",
+  "redirections_fusions",
+  "fusions_dossiers",
+  "fusions_licences",
+];
+
+function etapeSuivante(etape: EtapePurgeSuivi): EtapePurgeSuivi | null {
+  const index = ETAPES_PURGE_SUIVI.indexOf(etape);
+  return ETAPES_PURGE_SUIVI[index + 1] ?? null;
+}
+
+// Purge les tables de suivi de la campagne, une table et 25 documents à la
+// fois. Les fichiers Drive ne sont jamais touchés. Les blobs Convex ne vivent
+// que dans les tickets/imports : ils doivent en revanche être libérés avant de
+// supprimer leur ligne. IO-BOUNDED: au plus 25 documents lus/supprimés par run.
+export const purgerSuiviCampagne = internalMutation({
+  args: { etape: etapePurgeSuiviValidator },
+  returns: v.number(),
+  handler: async (ctx, args) => {
+    let traites = 0;
+    switch (args.etape) {
+      case "uploads_tests": {
+        const uploads = await ctx.db.query("abo_test_document_uploads").take(LOT_PURGE_SUIVI_CAMPAGNE);
+        for (const upload of uploads) {
+          if (upload.storage_id) await ctx.storage.delete(upload.storage_id);
+          await ctx.db.delete(upload._id);
+        }
+        traites = uploads.length;
+        break;
+      }
+      case "archives_tests": {
+        const archives = await ctx.db.query("abo_tests_autonomie_archive").take(LOT_PURGE_SUIVI_CAMPAGNE);
+        for (const archive of archives) await ctx.db.delete(archive._id);
+        traites = archives.length;
+        break;
+      }
+      case "imports_reglements": {
+        const imports = await ctx.db.query("abo_reglements_imports").take(LOT_PURGE_SUIVI_CAMPAGNE);
+        for (const importReglement of imports) {
+          if (importReglement.storage_id) await ctx.storage.delete(importReglement.storage_id);
+          await ctx.db.delete(importReglement._id);
+        }
+        traites = imports.length;
+        break;
+      }
+      case "reglements_signes": {
+        const reglements = await ctx.db.query("abo_reglements_signes").take(LOT_PURGE_SUIVI_CAMPAGNE);
+        for (const reglement of reglements) await ctx.db.delete(reglement._id);
+        traites = reglements.length;
+        break;
+      }
+      case "notifications_fusions": {
+        const notifications = await ctx.db.query("abo_fusion_notifications").take(LOT_PURGE_SUIVI_CAMPAGNE);
+        for (const notification of notifications) await ctx.db.delete(notification._id);
+        traites = notifications.length;
+        break;
+      }
+      case "redirections_fusions": {
+        const redirections = await ctx.db.query("abo_fusion_redirections_email").take(LOT_PURGE_SUIVI_CAMPAGNE);
+        for (const redirection of redirections) await ctx.db.delete(redirection._id);
+        traites = redirections.length;
+        break;
+      }
+      case "fusions_dossiers": {
+        const fusions = await ctx.db.query("abo_fusions_dossiers").take(LOT_PURGE_SUIVI_CAMPAGNE);
+        for (const fusion of fusions) await ctx.db.delete(fusion._id);
+        traites = fusions.length;
+        break;
+      }
+      case "fusions_licences": {
+        const fusions = await ctx.db.query("abo_licence_fusions").take(LOT_PURGE_SUIVI_CAMPAGNE);
+        for (const fusion of fusions) await ctx.db.delete(fusion._id);
+        traites = fusions.length;
+        break;
+      }
+    }
+
+    const prochaineEtape = traites === LOT_PURGE_SUIVI_CAMPAGNE
+      ? args.etape
+      : etapeSuivante(args.etape);
+    if (prochaineEtape) {
+      await ctx.scheduler.runAfter(0, internal.abo.config.purgerSuiviCampagne, {
+        etape: prochaineEtape,
+      });
+    } else {
+      await setConfigValeur(ctx, CLE_PURGE_SUIVI_CAMPAGNE_ACTIVE, null);
+    }
+    return traites;
   },
 });
 

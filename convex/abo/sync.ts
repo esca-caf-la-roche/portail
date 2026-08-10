@@ -98,7 +98,11 @@ export const restaurerMarqueur = internalMutation({
 // ── synchroniserSource : lance UNE source si le verrou l'autorise ──
 // Ne jette jamais : renvoie un statut pour que la page reste fonctionnelle même
 // si une source externe est indisponible.
-async function synchroniserSource(ctx: ActionCtx, source: Source): Promise<Resultat> {
+async function synchroniserSource(
+  ctx: ActionCtx,
+  source: Source,
+  contexteAbo = false,
+): Promise<Resultat> {
   const etat = (source === "scrap" || source === "annuaire")
     ? await ctx.runQuery(internal.abo.config.etatSynchronisationExterneInterne, {})
     : null;
@@ -121,7 +125,9 @@ async function synchroniserSource(ctx: ActionCtx, source: Source): Promise<Resul
         await ctx.runAction(internal.abo.licences.importerAnnuaireLicencesInternal, { generation: etat!.generation });
         break;
       case "eleves":
-        await ctx.runAction(internal.abo.scrap.importerElevesEnCours, {});
+        await ctx.runAction(internal.abo.scrap.importerElevesEnCours, {
+          contexteAbo,
+        });
         break;
     }
     return "done";
@@ -161,7 +167,7 @@ export const syncPourAbo = authenticatedAction({
     const helloasso = await synchroniserSource(ctx, "helloasso");
     const scrap = await synchroniserSource(ctx, "scrap");
     const annuaire = await synchroniserSource(ctx, "annuaire");
-    const eleves = await synchroniserSource(ctx, "eleves");
+    const eleves = await synchroniserSource(ctx, "eleves", true);
     return { helloasso, scrap, annuaire, eleves };
   },
 });

@@ -5,7 +5,8 @@ import { aboError } from "../lib/errors";
 
 // Vue admin « Configuration » (Phase I, portage de admin-config.js) : plafond de
 // places, liens stables des étapes de finalisation, dates des vagues 2/3, et
-// changement de saison (archive N-1 + purge des comptes publics). Le lien
+// changement de saison (conservation du snapshot N-1 et de l'annuaire des
+// licences, puis purge des suivis de campagne). Le lien
 // HelloAsso ne se change QU'au changement de saison (affiché en lecture seule).
 
 type Statut = { texte: string; erreur: boolean } | null;
@@ -127,11 +128,14 @@ export default function Configuration() {
     const ok = window.confirm(
       "Changer de saison ?\n\n" +
         `• Archive les abonnés actuels en N-1 sous « ${s} »\n` +
-        "• Vide les abonnés scrapés, les paiements et les élèves en cours\n" +
+        "• Conserve l'annuaire des licences\n" +
+        "• Vide les suivis de campagne : scrap, élèves, paiements, tests d'autonomie,\n" +
+        "  règlements et fusions\n" +
         "• Supprime les demandes et les comptes abonnés publics\n" +
         "  (les comptes staff/admin sont conservés)\n" +
+        "• Conserve les fichiers Drive des tests et règlements, recherchables dans Drive\n" +
         "• Enregistre le nouveau lien HelloAsso\n\n" +
-        "Le scrap du site et l'annuaire des licences seront mis en pause jusqu'à leur réactivation.\n\n" +
+        "Les imports du site (abonnés et élèves) et de l'annuaire seront bloqués jusqu'à leur réactivation.\n\n" +
         "Action irréversible.",
     );
     if (!ok) return;
@@ -142,7 +146,7 @@ export default function Configuration() {
       setSaison("");
       setNouveauLien("");
       setMsgSaison({
-        texte: `Saison « ${s} » archivée (${n} abonné·es). Comptes publics en cours de suppression, nouveau lien enregistré. Relancez scrap + sync.`,
+        texte: `Saison « ${s} » archivée (${n} abonné·es). Les suivis et comptes publics sont en cours de suppression. Les imports externes restent bloqués jusqu'à leur réactivation.`,
         erreur: false,
       });
     } catch (err) {
@@ -160,12 +164,14 @@ export default function Configuration() {
       await setSynchronisationExterneActive({ active });
       setMsgSynchronisation({
         texte: active
-          ? "Synchronisations du site et de l'annuaire réactivées."
-          : "Synchronisations du site et de l'annuaire mises en pause.",
+          ? "Synchronisations réactivées : les imports des abonnés et élèves du site, ainsi que de l'annuaire, sont à nouveau autorisés."
+          : "Synchronisations mises en pause : les imports des abonnés et élèves du site, ainsi que de l'annuaire, sont bloqués.",
         erreur: false,
       });
       setMsgSaison({
-        texte: "Saison archivée. Le scrap du site et l'annuaire des licences sont en pause : réactivez-les lorsque leurs données sont prêtes.",
+        texte: active
+          ? "Saison archivée. Les imports des abonnés et élèves du site, ainsi que de l'annuaire, sont réactivés : vous pouvez lancer les imports de la nouvelle campagne."
+          : "Saison archivée. Les imports des abonnés et élèves du site, ainsi que de l'annuaire, sont bloqués jusqu'à leur réactivation lorsque les données de la nouvelle campagne sont prêtes.",
         erreur: false,
       });
     } catch (err) {
@@ -285,16 +291,19 @@ export default function Configuration() {
 
       <h3>Synchronisations externes</h3>
       <p className="abo-admin-intro">
-        Le scrap des abonnés du site club et l'annuaire des licences sont
-        <strong> {synchronisationExterneActive ? "activés" : "en pause"}</strong>.
-        Après un changement de saison, ils restent en pause tant que le site et
-        l'annuaire n'ont pas basculé sur la nouvelle campagne.
+        Les imports des abonnés et des élèves depuis le site club, ainsi que
+        l'annuaire des licences, sont
+        <strong> {synchronisationExterneActive ? " activés" : " bloqués"}</strong>.
+        Après un changement de saison, ils restent bloqués jusqu'à leur
+        réactivation, une fois que le site et l'annuaire exposent les données de
+        la nouvelle campagne. Cela évite de réimporter des élèves de l'année
+        précédente comme élèves en cours.
       </p>
       <div>
         <button type="button" className="abo-admin-button" disabled={busy} onClick={basculerSynchronisationExterne}>
           {synchronisationExterneActive
-            ? "Mettre en pause les synchronisations"
-            : "Réactiver les synchronisations"}
+            ? "Bloquer les imports externes"
+            : "Réactiver les imports externes"}
         </button>
       </div>
       <Message statut={msgSynchronisation} />
@@ -303,12 +312,15 @@ export default function Configuration() {
 
       <h3 className="abo-admin-heading abo-admin-heading--danger">Changer de saison</h3>
       <p className="abo-admin-intro">
-        Le lien HelloAsso ne change qu'ici. Cette action <strong>archive</strong> les
-        abonnés de la saison qui se termine (N-1), <strong>vide</strong> le scrap, les
-        paiements et les élèves en cours, <strong>supprime</strong> les demandes et les
-        comptes abonnés publics (les comptes <strong>staff/admin</strong> sont conservés),
-        puis enregistre le <strong>nouveau lien</strong>. À faire <strong>avant</strong> le
-        premier scrap de la nouvelle saison. Irréversible.
+        Le lien HelloAsso ne change qu'ici. Cette action <strong>conserve seulement</strong>
+        l'archive des abonnés N-1 et l'annuaire des licences. Elle <strong>vide tous les
+        suivis de campagne</strong> : scrap, élèves en cours, paiements, archives et
+        réservations de tests d'autonomie, règlements et historique des fusions. Elle
+        <strong> supprime</strong> les demandes et comptes abonnés publics (les comptes
+        <strong> staff/admin</strong> sont conservés), puis enregistre le <strong>nouveau lien</strong>.
+        Les fichiers de tests et règlements restent dans Drive et pourront y être
+        recherchés. À faire <strong>avant</strong> le premier import de la nouvelle saison.
+        Irréversible.
       </p>
       <label className="abo-admin-label" htmlFor="saison">Saison qui se termine (archivée en N-1)</label>
       <input

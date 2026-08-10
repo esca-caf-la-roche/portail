@@ -16,7 +16,7 @@
 // actions (les mutations/queries appelées vivent dans matching.ts / compteur.ts).
 
 import readXlsxFile from "read-excel-file/node";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { internalAction } from "../_generated/server";
 import { authenticatedAction } from "../customFunctions";
 import { internal, api } from "../_generated/api";
@@ -429,10 +429,23 @@ async function parserExport(buf: Buffer): Promise<LigneEleve[]> {
 }
 
 export const importerElevesEnCours = internalAction({
-  args: {},
+  args: { contexteAbo: v.optional(v.boolean()) },
   handler: async (
     ctx,
+    args,
   ): Promise<{ avecLicence: number; sansLicence: number; enAttente: number }> => {
+    if (args.contexteAbo) {
+      const synchronisationActive: boolean = await ctx.runQuery(
+        internal.abo.config.synchronisationExterneActiveInterne,
+        {},
+      );
+      if (!synchronisationActive) {
+        throw new ConvexError({
+          code: "ABO_SYNCHRONISATION_EXTERNE_DESACTIVEE",
+          message: "La synchronisation des élèves Abonnements est désactivée jusqu'à la bascule du site club sur la nouvelle campagne.",
+        });
+      }
+    }
     const club = configClub();
     const saison = saisonCourante();
     console.log(`→ Import élèves en cours : ${new URL(club.base).host} (saison ${saison})`);
@@ -533,12 +546,11 @@ export const synchroniserClub = authenticatedAction({
     }
     const etat = await ctx.runQuery(internal.abo.config.etatSynchronisationExterneInterne, {});
     if (!etat.active) {
-      const eleves = await ctx.runAction(internal.abo.scrap.importerElevesEnCours, {});
       return {
         statut: "desactive",
         retryAt: null,
         abonnes: { upsertees: 0, sansLicence: 0, supprimees: 0, maj: 0 },
-        eleves,
+        eleves: { avecLicence: 0, sansLicence: 0, enAttente: 0 },
       };
     }
     const reservation: { proceed: boolean; precedent: string | undefined } = await ctx.runMutation(
@@ -558,7 +570,9 @@ export const synchroniserClub = authenticatedAction({
     }
     try {
       const abonnes = await ctx.runAction(internal.abo.scrap.scraperAbonnes, { generation: etat.generation });
-      const eleves = await ctx.runAction(internal.abo.scrap.importerElevesEnCours, {});
+      const eleves = await ctx.runAction(internal.abo.scrap.importerElevesEnCours, {
+        contexteAbo: true,
+      });
       return { statut: "done", retryAt: null, abonnes, eleves };
     } catch (error) {
       await ctx.runMutation(internal.abo.sync.restaurerMarqueur, {
