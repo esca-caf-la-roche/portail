@@ -11,7 +11,7 @@
 
 import { ConvexError, v } from "convex/values";
 import { authenticatedQuery, authenticatedMutation } from "../customFunctions";
-import { internalMutation } from "../_generated/server";
+import { internalMutation, internalQuery } from "../_generated/server";
 import type { QueryCtx, MutationCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { requireAboAdmin, requireAboSeasonReset } from "./auth";
@@ -19,6 +19,11 @@ import { parseHa, poserLienAbo, trouverLienAbo } from "./paiements";
 import { REGLEMENT_DOCUSEAL_URL } from "./reglementsConstants";
 
 const MAX_REDIRECTIONS_PAR_CAMPAGNE = 1_000;
+// SAISON-EXEMPT: état opérationnel de la campagne Abonnements, distinct de la
+// saison comptable. Sans cette clé (compatibilité des campagnes existantes),
+// les synchronisations restent actives.
+export const CLE_SYNCHRONISATION_EXTERNE_ACTIVE = "synchronisation_externe_active";
+const CLE_SYNCHRONISATION_EXTERNE_GENERATION = "synchronisation_externe_generation";
 
 // ── Lecture d'une clé de config ──────────────────────────────────────
 export async function getConfigValeur(
@@ -32,6 +37,29 @@ export async function getConfigValeur(
   const val = row?.valeur ?? null;
   return val && val.trim() !== "" ? val : null;
 }
+
+export async function synchronisationExterneActive(
+  ctx: QueryCtx | MutationCtx,
+): Promise<boolean> {
+  return (await getConfigValeur(ctx, CLE_SYNCHRONISATION_EXTERNE_ACTIVE)) !== "false";
+}
+
+// Lecture exclusivement serveur : les actions l'utilisent avant tout appel
+// externe afin que le bouton UI ne soit jamais la seule protection.
+export const synchronisationExterneActiveInterne = internalQuery({
+  args: {},
+  returns: v.boolean(),
+  handler: async (ctx) => synchronisationExterneActive(ctx),
+});
+
+export const etatSynchronisationExterneInterne = internalQuery({
+  args: {},
+  returns: v.object({ active: v.boolean(), generation: v.number() }),
+  handler: async (ctx) => ({
+    active: await synchronisationExterneActive(ctx),
+    generation: Number(await getConfigValeur(ctx, CLE_SYNCHRONISATION_EXTERNE_GENERATION)) || 0,
+  }),
+});
 
 // ── Fuseau Europe/Paris : instant UTC d'une heure murale naïve ───────
 // Offset (ms) d'Europe/Paris à un instant UTC donné, via Intl (gère la DST).
@@ -242,6 +270,7 @@ export const getConfig = authenticatedQuery({
     vague1_debut: v.union(v.string(), v.null()),
     vague2_debut: v.union(v.string(), v.null()),
     vague3_debut: v.union(v.string(), v.null()),
+    synchronisation_externe_active: v.boolean(),
   }),
   handler: async (ctx) => {
     await requireAboAdmin(ctx);
@@ -268,7 +297,22 @@ export const getConfig = authenticatedQuery({
       vague1_debut,
       vague2_debut,
       vague3_debut,
+      synchronisation_externe_active: await synchronisationExterneActive(ctx),
     };
+  },
+});
+
+export const setSynchronisationExterneActive = authenticatedMutation({
+  args: { active: v.boolean() },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    await requireAboAdmin(ctx);
+    await setConfigValeur(
+      ctx,
+      CLE_SYNCHRONISATION_EXTERNE_ACTIVE,
+      args.active ? "true" : "false",
+    );
+    return args.active;
   },
 });
 
@@ -444,6 +488,11 @@ export const resetSaison = authenticatedMutation({
     await setConfigValeur(ctx, "vague1_debut", null);
     await setConfigValeur(ctx, "vague2_debut", null);
     await setConfigValeur(ctx, "vague3_debut", null);
+    // Le site club et l'annuaire peuvent encore porter la campagne N-1 : leur
+    // synchronisation reste explicitement en pause jusqu'au feu vert staff.
+    await setConfigValeur(ctx, CLE_SYNCHRONISATION_EXTERNE_ACTIVE, "false");
+    const generation = Number(await getConfigValeur(ctx, CLE_SYNCHRONISATION_EXTERNE_GENERATION)) || 0;
+    await setConfigValeur(ctx, CLE_SYNCHRONISATION_EXTERNE_GENERATION, String(generation + 1));
 
     // 5) Purge des comptes publics (+ cascade) en tâche de fond, par lots bornés.
     await ctx.scheduler.runAfter(0, internal.abo.config.purgerComptesPublics, {});

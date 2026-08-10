@@ -209,6 +209,14 @@ configurable avec `SYNC_TTL_MINUTES`.
 L'ordre des sources est intentionnel : les données HelloAsso doivent être
 disponibles avant le matching des personnes.
 
+Lors d'un changement de campagne Abonnements, le scrap des abonnés et l'annuaire
+des licences sont automatiquement mis en pause (`synchronisation_externe_active
+= false` dans `abo_app_config`). Les caches existants restent consultables sans
+être actualisés ni purgés. Un admin Abonnements les réactive depuis l'onglet
+Configuration, uniquement lorsque le site club et l'annuaire ont basculé sur la
+nouvelle campagne. HelloAsso et le snapshot des élèves en cours restent
+indépendants de cette pause.
+
 Le scrap des abonnés est un **snapshot complet** : après une collecte réussie
 et non vide, les lignes absentes de la liste reçue sont supprimées du cache
 local `abo_abonnes_scrap`. Cela ne modifie jamais le site du club. Une liste

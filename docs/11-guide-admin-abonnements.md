@@ -430,6 +430,16 @@ Cet onglet modifie les paramètres communs à toute la campagne. Il doit être
 réservé à un petit nombre de responsables ; les changements prennent effet pour
 tous les admins et demandeurs concernés.
 
+### Synchronisations externes
+
+Le statut **Synchronisations externes** concerne uniquement le scrap des
+abonnés du site club et l'annuaire des licences. Après le changement de
+campagne, il passe automatiquement à **en pause** : les snapshots déjà présents
+restent visibles, mais le portail ne les remplace ni ne les purge. Lorsque le
+site du club et l'annuaire reflètent la nouvelle campagne, cliquer sur
+**Réactiver les synchronisations**, puis lancer les synchronisations habituelles.
+HelloAsso et l'import des élèves en cours ne sont pas concernés.
+
 ### Plafond de places
 
 Le plafond alimente la jauge « X / plafond » et sécurise les décisions de

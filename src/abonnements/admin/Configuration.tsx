@@ -25,6 +25,7 @@ export default function Configuration() {
   const setLiens = useMutation(api.abo.config.setLiens);
   const setVagues = useMutation(api.abo.config.setVagues);
   const resetSaison = useMutation(api.abo.config.resetSaison);
+  const setSynchronisationExterneActive = useMutation(api.abo.config.setSynchronisationExterneActive);
 
   // États de formulaire, initialisés depuis la config au chargement.
   const [places, setPlaces] = useState("350");
@@ -43,7 +44,9 @@ export default function Configuration() {
   const [msgLiens, setMsgLiens] = useState<Statut>(null);
   const [msgVagues, setMsgVagues] = useState<Statut>(null);
   const [msgSaison, setMsgSaison] = useState<Statut>(null);
+  const [msgSynchronisation, setMsgSynchronisation] = useState<Statut>(null);
   const [busy, setBusy] = useState(false);
+  const synchronisationExterneActive = cfg?.synchronisation_externe_active ?? true;
 
   useEffect(() => {
     if (!cfg) return;
@@ -128,6 +131,7 @@ export default function Configuration() {
         "• Supprime les demandes et les comptes abonnés publics\n" +
         "  (les comptes staff/admin sont conservés)\n" +
         "• Enregistre le nouveau lien HelloAsso\n\n" +
+        "Le scrap du site et l'annuaire des licences seront mis en pause jusqu'à leur réactivation.\n\n" +
         "Action irréversible.",
     );
     if (!ok) return;
@@ -143,6 +147,29 @@ export default function Configuration() {
       });
     } catch (err) {
       setMsgSaison({ texte: aboError(err).message, erreur: true });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function basculerSynchronisationExterne() {
+    const active = !synchronisationExterneActive;
+    setBusy(true);
+    setMsgSynchronisation(null);
+    try {
+      await setSynchronisationExterneActive({ active });
+      setMsgSynchronisation({
+        texte: active
+          ? "Synchronisations du site et de l'annuaire réactivées."
+          : "Synchronisations du site et de l'annuaire mises en pause.",
+        erreur: false,
+      });
+      setMsgSaison({
+        texte: "Saison archivée. Le scrap du site et l'annuaire des licences sont en pause : réactivez-les lorsque leurs données sont prêtes.",
+        erreur: false,
+      });
+    } catch (err) {
+      setMsgSynchronisation({ texte: aboError(err).message, erreur: true });
     } finally {
       setBusy(false);
     }
@@ -253,6 +280,24 @@ export default function Configuration() {
         </button>
       </div>
       <Message statut={msgVagues} />
+
+      <hr className="abo-admin-separator" />
+
+      <h3>Synchronisations externes</h3>
+      <p className="abo-admin-intro">
+        Le scrap des abonnés du site club et l'annuaire des licences sont
+        <strong> {synchronisationExterneActive ? "activés" : "en pause"}</strong>.
+        Après un changement de saison, ils restent en pause tant que le site et
+        l'annuaire n'ont pas basculé sur la nouvelle campagne.
+      </p>
+      <div>
+        <button type="button" className="abo-admin-button" disabled={busy} onClick={basculerSynchronisationExterne}>
+          {synchronisationExterneActive
+            ? "Mettre en pause les synchronisations"
+            : "Réactiver les synchronisations"}
+        </button>
+      </div>
+      <Message statut={msgSynchronisation} />
 
       <hr className="abo-admin-separator" />
 

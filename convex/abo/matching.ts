@@ -13,12 +13,24 @@
 
 import { v } from "convex/values";
 import { internalMutation } from "../_generated/server";
+import type { MutationCtx } from "../_generated/server";
 import { canoniserLicence, normaliserNomPrenom } from "./lib";
 import { trouverLienAbo, estRemboursement } from "./paiements";
 import { champsModifies } from "../dbUtils";
 import { abonnementEstValide } from "./statutAbonnement";
 import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
+
+async function assertGenerationSynchronisation(ctx: MutationCtx, generation: number | undefined) {
+  if (generation === undefined) return;
+  const [active, currentGeneration] = await Promise.all([
+    ctx.db.query("abo_app_config").withIndex("by_cle", (q) => q.eq("cle", "synchronisation_externe_active")).first(),
+    ctx.db.query("abo_app_config").withIndex("by_cle", (q) => q.eq("cle", "synchronisation_externe_generation")).first(),
+  ]);
+  if (active?.valeur === "false" || (Number(currentGeneration?.valeur) || 0) !== generation) {
+    throw new Error("Synchronisation annulée : la campagne Abonnements a changé.");
+  }
+}
 
 // Le site du club fournit une liste complète d'abonnés, plafonnée par la
 // capacité de la campagne. Au-delà, on échoue sans rien purger : une campagne
@@ -30,6 +42,7 @@ const MAX_ABONNES_SCRAP = 500;
 // d'unicité) ; les autres sont comptées et ignorées. Idempotent (patch/insert).
 export const upsertAbonnesScrapBatch = internalMutation({
   args: {
+    generation: v.optional(v.number()),
     lignes: v.array(
       v.object({
         licence: v.optional(v.string()),
@@ -53,6 +66,7 @@ export const upsertAbonnesScrapBatch = internalMutation({
   },
   returns: v.object({ upsertees: v.number(), sansLicence: v.number() }),
   handler: async (ctx, args) => {
+    await assertGenerationSynchronisation(ctx, args.generation);
     const maintenant = new Date().toISOString();
     let upsertees = 0;
     let sansLicence = 0;
@@ -105,9 +119,10 @@ export const upsertAbonnesScrapBatch = internalMutation({
 // vide. Les licences reçues sont la source de vérité du snapshot courant ; les
 // anciennes lignes absentes sont retirées du cache local (jamais du site club).
 export const supprimerAbonnesScrapAbsents = internalMutation({
-  args: { licences: v.array(v.string()) },
+  args: { licences: v.array(v.string()), generation: v.optional(v.number()) },
   returns: v.number(),
   handler: async (ctx, args) => {
+    await assertGenerationSynchronisation(ctx, args.generation);
     if (args.licences.length === 0) {
       throw new Error("Refus de purger le snapshot abonnés sans licence reçue.");
     }
@@ -177,9 +192,10 @@ export function champsPersonneDepuisScrap(
 // ── matcherScrapPersonnes : met à jour les etape_* des personnes ─────────
 // Un seul balayage borné. Renvoie le nombre de personnes mises à jour.
 export const matcherScrapPersonnes = internalMutation({
-  args: {},
+  args: { generation: v.optional(v.number()) },
   returns: v.number(),
-  handler: async (ctx) => {
+  handler: async (ctx, args) => {
+    await assertGenerationSynchronisation(ctx, args.generation);
     const personnes = await ctx.db.query("abo_personnes").collect();
     const scrap = await ctx.db.query("abo_abonnes_scrap").collect();
 

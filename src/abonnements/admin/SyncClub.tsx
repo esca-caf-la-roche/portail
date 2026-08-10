@@ -24,7 +24,9 @@ export default function SyncClub() {
     try {
       const r = await synchroniser({});
       setMessage(
-        r.statut === "skipped"
+        r.statut === "desactive"
+          ? `Scrap des abonnés en pause pour la nouvelle saison. Élèves en cours : ${r.eleves.avecLicence + r.eleves.sansLicence} importé(s). Réactivez le scrap dans Configuration lorsque le site club est prêt.`
+          : r.statut === "skipped"
           ? `Synchronisation déjà lancée récemment. Réessayez à partir de ${formatRetryAt(r.retryAt)}.`
           : `Abonnés : ${r.abonnes.upsertees} synchronisés, ${r.abonnes.supprimees} retiré(s) du cache, ${r.abonnes.maj} personne(s) mise(s) à jour. ` +
             `Élèves en cours : ${r.eleves.avecLicence + r.eleves.sansLicence} importé(s).`,

@@ -207,8 +207,8 @@ function statutAbonnementSite(valeur?: string): "oui" | "non" | "bloque" {
 
 // ── scraperAbonnes : liste des abonnés → abo_abonnes_scrap → matching ────
 export const scraperAbonnes = internalAction({
-  args: {},
-  handler: async (ctx): Promise<{ upsertees: number; sansLicence: number; supprimees: number; maj: number }> => {
+  args: { generation: v.optional(v.number()) },
+  handler: async (ctx, args): Promise<{ upsertees: number; sansLicence: number; supprimees: number; maj: number }> => {
     const club = configClub();
     console.log(`→ Scrap club (abonnés) : ${new URL(club.base).host}`);
 
@@ -286,6 +286,7 @@ export const scraperAbonnes = internalAction({
       const res: { upsertees: number; sansLicence: number } =
         await ctx.runMutation(internal.abo.matching.upsertAbonnesScrapBatch, {
           lignes: lot,
+          generation: args.generation,
         });
       upsertees += res.upsertees;
       sansLicence += res.sansLicence;
@@ -299,12 +300,12 @@ export const scraperAbonnes = internalAction({
       .filter((licence): licence is string => licence !== null))];
     const supprimees: number = await ctx.runMutation(
       internal.abo.matching.supprimerAbonnesScrapAbsents,
-      { licences },
+      { licences, generation: args.generation },
     );
 
     const maj: number = await ctx.runMutation(
       internal.abo.matching.matcherScrapPersonnes,
-      {},
+      { generation: args.generation },
     );
     await ctx.runMutation(internal.abo.compteur.rafraichirCompteurPublic, {});
     console.log(
@@ -513,7 +514,7 @@ export const importerElevesEnCours = internalAction({
 export const synchroniserClub = authenticatedAction({
   args: {},
   returns: v.object({
-    statut: v.union(v.literal("done"), v.literal("skipped")),
+    statut: v.union(v.literal("done"), v.literal("skipped"), v.literal("desactive")),
     retryAt: v.union(v.string(), v.null()),
     abonnes: v.object({ upsertees: v.number(), sansLicence: v.number(), supprimees: v.number(), maj: v.number() }),
     eleves: v.object({ avecLicence: v.number(), sansLicence: v.number(), enAttente: v.number() }),
@@ -521,7 +522,7 @@ export const synchroniserClub = authenticatedAction({
   handler: async (
     ctx,
   ): Promise<{
-    statut: "done" | "skipped";
+    statut: "done" | "skipped" | "desactive";
     retryAt: string | null;
     abonnes: { upsertees: number; sansLicence: number; supprimees: number; maj: number };
     eleves: { avecLicence: number; sansLicence: number; enAttente: number };
@@ -529,6 +530,16 @@ export const synchroniserClub = authenticatedAction({
     const me = await ctx.runQuery(api.abo.identity.me, {});
     if (!me || me.aboRole !== "admin") {
       throw new Error("Réservé aux administrateurs.");
+    }
+    const etat = await ctx.runQuery(internal.abo.config.etatSynchronisationExterneInterne, {});
+    if (!etat.active) {
+      const eleves = await ctx.runAction(internal.abo.scrap.importerElevesEnCours, {});
+      return {
+        statut: "desactive",
+        retryAt: null,
+        abonnes: { upsertees: 0, sansLicence: 0, supprimees: 0, maj: 0 },
+        eleves,
+      };
     }
     const reservation: { proceed: boolean; precedent: string | undefined } = await ctx.runMutation(
       internal.abo.sync.reserverSync,
@@ -546,7 +557,7 @@ export const synchroniserClub = authenticatedAction({
       };
     }
     try {
-      const abonnes = await ctx.runAction(internal.abo.scrap.scraperAbonnes, {});
+      const abonnes = await ctx.runAction(internal.abo.scrap.scraperAbonnes, { generation: etat.generation });
       const eleves = await ctx.runAction(internal.abo.scrap.importerElevesEnCours, {});
       return { statut: "done", retryAt: null, abonnes, eleves };
     } catch (error) {

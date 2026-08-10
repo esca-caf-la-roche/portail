@@ -29,7 +29,8 @@ const TTL_MS = (Number(process.env.SYNC_TTL_MINUTES) || 60) * 60_000;
 const TTL_ANNUAIRE_MS = 12 * 60 * 60_000;
 
 type Source = "helloasso" | "scrap" | "annuaire" | "eleves";
-type Resultat = "done" | "skipped" | "erreur";
+type Resultat = "done" | "skipped" | "desactive" | "erreur";
+type ResultatEleves = Exclude<Resultat, "desactive">;
 
 const CLE_MARQUEUR: Record<Source, string> = {
   helloasso: "last_sync_helloasso",
@@ -98,6 +99,10 @@ export const restaurerMarqueur = internalMutation({
 // Ne jette jamais : renvoie un statut pour que la page reste fonctionnelle même
 // si une source externe est indisponible.
 async function synchroniserSource(ctx: ActionCtx, source: Source): Promise<Resultat> {
+  const etat = (source === "scrap" || source === "annuaire")
+    ? await ctx.runQuery(internal.abo.config.etatSynchronisationExterneInterne, {})
+    : null;
+  if (etat && !etat.active) return "desactive";
   const cle = CLE_MARQUEUR[source];
   const reservation = await ctx.runMutation(internal.abo.sync.reserverSync, {
     cle,
@@ -110,10 +115,10 @@ async function synchroniserSource(ctx: ActionCtx, source: Source): Promise<Resul
         await ctx.runAction(internal.helloasso.syncHelloAssoInternal, {});
         break;
       case "scrap":
-        await ctx.runAction(internal.abo.scrap.scraperAbonnes, {});
+        await ctx.runAction(internal.abo.scrap.scraperAbonnes, { generation: etat!.generation });
         break;
       case "annuaire":
-        await ctx.runAction(internal.abo.licences.importerAnnuaireLicencesInternal, {});
+        await ctx.runAction(internal.abo.licences.importerAnnuaireLicencesInternal, { generation: etat!.generation });
         break;
       case "eleves":
         await ctx.runAction(internal.abo.scrap.importerElevesEnCours, {});
@@ -186,10 +191,11 @@ export const syncPourContactsCours = authenticatedAction({
   returns: v.object({
     eleves: v.union(v.literal("done"), v.literal("skipped"), v.literal("erreur")),
   }),
-  handler: async (ctx): Promise<{ eleves: Resultat }> => {
+  handler: async (ctx): Promise<{ eleves: ResultatEleves }> => {
     await ctx.runQuery(internal.contactsCours.requireContactsCoursAccess, {
       userId: ctx.userId,
     });
-    return { eleves: await synchroniserSource(ctx, "eleves") };
+    // La source élèves n'est jamais concernée par la pause scrap/annuaire.
+    return { eleves: (await synchroniserSource(ctx, "eleves")) as ResultatEleves };
   },
 });

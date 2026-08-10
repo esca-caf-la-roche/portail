@@ -28,6 +28,17 @@ const URL_ANNUAIRE =
 
 // Seuil de similarité trigram (défaut de pg_trgm : 0.3) pour retenir un candidat.
 const SEUIL_TRGM = 0.3;
+
+async function assertGenerationSynchronisation(ctx: MutationCtx, generation: number | undefined) {
+  if (generation === undefined) return;
+  const [active, currentGeneration] = await Promise.all([
+    ctx.db.query("abo_app_config").withIndex("by_cle", (q) => q.eq("cle", "synchronisation_externe_active")).first(),
+    ctx.db.query("abo_app_config").withIndex("by_cle", (q) => q.eq("cle", "synchronisation_externe_generation")).first(),
+  ]);
+  if (active?.valeur === "false" || (Number(currentGeneration?.valeur) || 0) !== generation) {
+    throw new Error("Synchronisation annulée : la campagne Abonnements a changé.");
+  }
+}
 // Le club dépasse 2 000 licenciés : cette borne laisse une marge explicite
 // tout en protégeant les imports et les parcours complets accidentels.
 const MAX_ANNUAIRE_LICENCES = 5_000;
@@ -329,6 +340,7 @@ export const fusionnerPersonnesLicence = authenticatedMutation({
 
 export const upsertLicencesBatch = internalMutation({
   args: {
+    generation: v.optional(v.number()),
     lignes: v.array(
       v.object({
         licence: v.string(),
@@ -338,6 +350,7 @@ export const upsertLicencesBatch = internalMutation({
     ),
   },
   handler: async (ctx, args) => {
+    await assertGenerationSynchronisation(ctx, args.generation);
     const maintenant = new Date().toISOString();
     let upsertees = 0;
     for (const ligne of args.lignes) {
@@ -376,9 +389,10 @@ export const upsertLicencesBatch = internalMutation({
 // L'annuaire est une référence externe : cette purge ne modifie ni les
 // licences déjà attribuées aux personnes ni leurs dossiers portail.
 export const supprimerLicencesAbsentes = internalMutation({
-  args: { licences: v.array(v.string()) },
+  args: { licences: v.array(v.string()), generation: v.optional(v.number()) },
   returns: v.number(),
   handler: async (ctx, args) => {
+    await assertGenerationSynchronisation(ctx, args.generation);
     if (args.licences.length === 0) {
       throw new Error("Refus de purger l'annuaire sans licence reçue.");
     }
@@ -422,14 +436,14 @@ interface LigneAnnuaire {
 export const importerAnnuaireLicences = authenticatedAction({
   args: {},
   returns: v.object({
-    statut: v.union(v.literal("done"), v.literal("skipped")),
+    statut: v.union(v.literal("done"), v.literal("skipped"), v.literal("desactive")),
     retryAt: v.union(v.string(), v.null()),
     upsertees: v.number(),
     recus: v.number(),
     supprimees: v.number(),
   }),
   handler: async (ctx): Promise<{
-    statut: "done" | "skipped";
+    statut: "done" | "skipped" | "desactive";
     retryAt: string | null;
     upsertees: number;
     recus: number;
@@ -438,6 +452,10 @@ export const importerAnnuaireLicences = authenticatedAction({
     const me = await ctx.runQuery(api.abo.identity.me, {});
     if (!me || me.aboRole !== "admin") {
       throw new Error("Réservé aux administrateurs.");
+    }
+    const etat = await ctx.runQuery(internal.abo.config.etatSynchronisationExterneInterne, {});
+    if (!etat.active) {
+      return { statut: "desactive", retryAt: null, upsertees: 0, recus: 0, supprimees: 0 };
     }
     const reservation = await ctx.runMutation(internal.abo.sync.reserverSync, {
       cle: ANNUAIRE_SYNC_KEY,
@@ -455,7 +473,7 @@ export const importerAnnuaireLicences = authenticatedAction({
     }
     try {
       const resultat: { upsertees: number; recus: number; supprimees: number } =
-        await ctx.runAction(internal.abo.licences.importerAnnuaireLicencesInternal, {});
+        await ctx.runAction(internal.abo.licences.importerAnnuaireLicencesInternal, { generation: etat.generation });
       return { statut: "done", retryAt: null, ...resultat };
     } catch (error) {
       await ctx.runMutation(internal.abo.sync.restaurerMarqueur, {
@@ -469,8 +487,8 @@ export const importerAnnuaireLicences = authenticatedAction({
 
 // ── importerAnnuaireLicencesInternal : logique partagée (cron + action admin) ──
 export const importerAnnuaireLicencesInternal = internalAction({
-  args: {},
-  handler: async (ctx): Promise<{ upsertees: number; recus: number; supprimees: number }> => {
+  args: { generation: v.optional(v.number()) },
+  handler: async (ctx, args): Promise<{ upsertees: number; recus: number; supprimees: number }> => {
     const user = process.env.LICENCES_USER;
     const pass = process.env.LICENCES_PASSWORD;
     if (!user || !pass) {
@@ -521,12 +539,12 @@ export const importerAnnuaireLicencesInternal = internalAction({
       const lot = lignes.slice(i, i + 200);
       const n: number = await ctx.runMutation(
         internal.abo.licences.upsertLicencesBatch,
-        { lignes: lot },
+        { lignes: lot, generation: args.generation },
       );
       upsertees += n;
     }
     const supprimees: number = await ctx.runMutation(internal.abo.licences.supprimerLicencesAbsentes, {
-      licences: lignes.map((ligne) => ligne.licence),
+      licences: lignes.map((ligne) => ligne.licence), generation: args.generation,
     });
     return { upsertees, recus: data.length, supprimees };
   },

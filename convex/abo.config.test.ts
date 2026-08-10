@@ -193,6 +193,38 @@ describe("liens de finalisation Abonnements", () => {
 });
 
 describe("autorisation du reset annuel Abonnements", () => {
+  test("la bascule des synchronisations est active par défaut et réservée au staff Abonnements", async () => {
+    const t = convexTest(schema, modules);
+    const { adminId, publicId } = await t.run(async (ctx) => {
+      const adminId = await ctx.db.insert("users", { email: "sync-admin@example.test" });
+      await ctx.db.insert("userSettings", {
+        userId: adminId,
+        allowedTiles: ["abonnements"],
+        role: "user",
+      });
+      const publicId = await ctx.db.insert("users", { email: "sync-public@example.test" });
+      await ctx.db.insert("abo_profiles", {
+        userId: publicId,
+        email: "sync-public@example.test",
+        role: "utilisateur",
+      });
+      return { adminId, publicId };
+    });
+
+    const admin = t.withIdentity({ subject: adminId });
+    expect(await admin.query(api.abo.config.getConfig, {})).toMatchObject({
+      synchronisation_externe_active: true,
+    });
+    await expect(admin.mutation(api.abo.config.setSynchronisationExterneActive, { active: false }))
+      .resolves.toBe(false);
+    expect(await admin.query(api.abo.config.getConfig, {})).toMatchObject({
+      synchronisation_externe_active: false,
+    });
+    await expect(
+      t.withIdentity({ subject: publicId }).mutation(api.abo.config.setSynchronisationExterneActive, { active: true }),
+    ).rejects.toThrow("Réservé aux administrateurs");
+  });
+
   test("exige la tuile, le rôle admin général et l'autorisation nominative", async () => {
     const t = convexTest(schema, modules);
     const [staffSansDroit, adminSansTuile, adminAutorise] = await t.run(
@@ -271,5 +303,10 @@ describe("autorisation du reset annuel Abonnements", () => {
       t.withIdentity({ subject: adminAutorise }).mutation(api.abo.config.resetSaison, args),
     ).resolves.toBe(0);
     expect(await t.run(async (ctx) => ctx.db.get(redirectionId))).toBeNull();
+    expect(await t.run(async (ctx) =>
+      ctx.db.query("abo_app_config")
+        .withIndex("by_cle", (q) => q.eq("cle", "synchronisation_externe_active"))
+        .unique(),
+    )).toMatchObject({ valeur: "false" });
   });
 });
