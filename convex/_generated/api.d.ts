@@ -21,6 +21,7 @@ import type * as abo_fusionsDossiers from "../abo/fusionsDossiers.js";
 import type * as abo_identity from "../abo/identity.js";
 import type * as abo_lib from "../abo/lib.js";
 import type * as abo_licences from "../abo/licences.js";
+import type * as abo_licencesCoursIdentite from "../abo/licencesCoursIdentite.js";
 import type * as abo_licencesEnCours from "../abo/licencesEnCours.js";
 import type * as abo_matching from "../abo/matching.js";
 import type * as abo_messages from "../abo/messages.js";
@@ -88,6 +89,7 @@ declare const fullApi: ApiFromModules<{
   "abo/identity": typeof abo_identity;
   "abo/lib": typeof abo_lib;
   "abo/licences": typeof abo_licences;
+  "abo/licencesCoursIdentite": typeof abo_licencesCoursIdentite;
   "abo/licencesEnCours": typeof abo_licencesEnCours;
   "abo/matching": typeof abo_matching;
   "abo/messages": typeof abo_messages;

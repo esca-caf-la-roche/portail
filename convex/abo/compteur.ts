@@ -24,6 +24,10 @@ import {
   normaliserStatutAbonnement,
   statutAbonnementNormaliseValidator,
 } from "./statutAbonnement";
+import {
+  compterOccurrencesParNom,
+  construireIdentiteLicenceCours,
+} from "./licencesCoursIdentite";
 
 const PLACES_MAX_DEFAUT = 350;
 const MAX_ELEVES_SNAPSHOT = 1_000;
@@ -609,6 +613,40 @@ export const remplacerElevesEnCours = internalMutation({
     // licence ou sa saison historique.
     for (const restants of existantsParIdentite.values()) {
       for (const e of restants) await ctx.db.delete(e._id);
+    }
+
+    // Le snapshot élèves reste prioritaire sur le suivi manuel. Après un
+    // remplacement réussi, on supprime uniquement les traitements dont la
+    // personne a disparu ou possède désormais une licence. Les identités
+    // devenues ambiguës sont également retirées par prudence.
+    const lignesCourantes = args.lignes
+      .map((ligne) => doc(ligne, canoniserLicence(ligne.licence) ?? undefined))
+      .filter((ligne) => ligne.nom_prenom_normalise);
+    const occurrencesParNom = compterOccurrencesParNom(lignesCourantes);
+    const clesEncoreSansLicence = new Set<string>();
+    for (const ligne of lignesCourantes) {
+      if (ligne.licence) continue;
+      const identiteTraitement = construireIdentiteLicenceCours(
+        ligne,
+        occurrencesParNom,
+      );
+      if (identiteTraitement) clesEncoreSansLicence.add(identiteTraitement.cle);
+    }
+
+    // IO-BOUNDED: une identité au plus par personne du snapshot (1 000 lignes).
+    const traitements = await ctx.db
+      .query("abo_licences_cours_traitements")
+      .take(MAX_ELEVES_SNAPSHOT + 1);
+    if (traitements.length > MAX_ELEVES_SNAPSHOT) {
+      throw new ConvexError({
+        code: "54000",
+        message: `Le suivi des traitements dépasse la limite de ${MAX_ELEVES_SNAPSHOT} personnes.`,
+      });
+    }
+    for (const traitement of traitements) {
+      if (!clesEncoreSansLicence.has(traitement.cle_identite)) {
+        await ctx.db.delete(traitement._id);
+      }
     }
 
     await programmerRafraichissementCompteurPublic(ctx);

@@ -19,8 +19,9 @@
 import { v, ConvexError } from "convex/values";
 import { internalMutation } from "../_generated/server";
 import type { ActionCtx } from "../_generated/server";
-import { authenticatedAction } from "../customFunctions";
+import { authenticatedAction, authenticatedQuery } from "../customFunctions";
 import { api, internal } from "../_generated/api";
+import { requireTile } from "../access";
 
 // Fenêtre anti-rejeu par défaut (60 min). L'annuaire des licences est plus
 // coûteux et change peu : 12 h entre deux imports garantit au plus deux
@@ -31,6 +32,18 @@ const TTL_ANNUAIRE_MS = 12 * 60 * 60_000;
 type Source = "helloasso" | "scrap" | "annuaire" | "eleves";
 type Resultat = "done" | "skipped" | "desactive" | "erreur";
 type ResultatEleves = Exclude<Resultat, "desactive">;
+
+const resultatValidator = v.union(
+  v.literal("done"),
+  v.literal("skipped"),
+  v.literal("desactive"),
+  v.literal("erreur"),
+);
+const resultatElevesValidator = v.union(
+  v.literal("done"),
+  v.literal("skipped"),
+  v.literal("erreur"),
+);
 
 const CLE_MARQUEUR: Record<Source, string> = {
   helloasso: "last_sync_helloasso",
@@ -53,7 +66,14 @@ const TTL_PAR_SOURCE: Record<Source, number> = {
 // pour pouvoir la restaurer en cas d'échec.
 export const reserverSync = internalMutation({
   args: { cle: v.string(), ttlMs: v.number() },
+  returns: v.object({
+    proceed: v.boolean(),
+    precedent: v.optional(v.string()),
+  }),
   handler: async (ctx, args) => {
+    if (!Number.isFinite(args.ttlMs) || args.ttlMs <= 0) {
+      throw new ConvexError({ code: "22023", message: "Durée de synchronisation invalide." });
+    }
     const now = Date.now();
     const row = await ctx.db
       .query("abo_app_config")
@@ -79,6 +99,7 @@ export const reserverSync = internalMutation({
 // réessaiera. Valeur absente (jamais synchronisé) → on vide le marqueur.
 export const restaurerMarqueur = internalMutation({
   args: { cle: v.string(), valeur: v.optional(v.string()) },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const row = await ctx.db
       .query("abo_app_config")
@@ -92,12 +113,23 @@ export const restaurerMarqueur = internalMutation({
     } else if (args.valeur !== undefined) {
       await ctx.db.insert("abo_app_config", { cle: args.cle, valeur: args.valeur });
     }
+    return null;
   },
 });
 
 // ── synchroniserSource : lance UNE source si le verrou l'autorise ──
 // Ne jette jamais : renvoie un statut pour que la page reste fonctionnelle même
 // si une source externe est indisponible.
+function synchroniserSource(
+  ctx: ActionCtx,
+  source: "eleves",
+  contexteAbo?: boolean,
+): Promise<ResultatEleves>;
+function synchroniserSource(
+  ctx: ActionCtx,
+  source: Exclude<Source, "eleves">,
+  contexteAbo?: boolean,
+): Promise<Resultat>;
 async function synchroniserSource(
   ctx: ActionCtx,
   source: Source,
@@ -144,6 +176,7 @@ async function synchroniserSource(
 // ── syncPourPaiements : page Validation des paiements cours (staff connecté) ──
 export const syncPourPaiements = authenticatedAction({
   args: {},
+  returns: v.object({ helloasso: resultatValidator }),
   handler: async (ctx): Promise<{ helloasso: Resultat }> => {
     await ctx.runQuery(internal.access.requireTileAccess, {
       userId: ctx.userId,
@@ -157,6 +190,12 @@ export const syncPourPaiements = authenticatedAction({
 // HelloAsso d'abord (etape_paiement), puis scrap(+matching), annuaire, élèves.
 export const syncPourAbo = authenticatedAction({
   args: {},
+  returns: v.object({
+    helloasso: resultatValidator,
+    scrap: resultatValidator,
+    annuaire: resultatValidator,
+    eleves: resultatValidator,
+  }),
   handler: async (
     ctx,
   ): Promise<{ helloasso: Resultat; scrap: Resultat; annuaire: Resultat; eleves: Resultat }> => {
@@ -175,17 +214,63 @@ export const syncPourAbo = authenticatedAction({
 // ── syncPourLicencesCours : tuile « licences élèves en cours » (staff dédié) ──
 export const syncPourLicencesCours = authenticatedAction({
   args: {},
-  handler: async (ctx): Promise<{ annuaire: Resultat; eleves: Resultat }> => {
-    const settings = await ctx.runQuery(api.users.getCurrentUserSettings, {});
-    if (!settings.allowedTiles?.includes("licences_cours")) {
-      throw new ConvexError({
-        code: "42501",
-        message: "Accès refusé : ce module ne vous est pas attribué.",
-      });
-    }
-    const annuaire = await synchroniserSource(ctx, "annuaire");
+  returns: v.object({
+    annuaire: resultatValidator,
+    eleves: resultatElevesValidator,
+  }),
+  handler: async (ctx): Promise<{ annuaire: Resultat; eleves: ResultatEleves }> => {
+    await ctx.runQuery(internal.access.requireTileAccess, {
+      userId: ctx.userId,
+      tile: "licences_cours",
+    });
+    // Le snapshot des élèves est la source de vérité de la liste. On le met à
+    // jour avant l'annuaire afin qu'une licence désormais renseignée efface
+    // immédiatement tout traitement manuel devenu obsolète.
     const eleves = await synchroniserSource(ctx, "eleves");
+    const annuaire = await synchroniserSource(ctx, "annuaire");
     return { annuaire, eleves };
+  },
+});
+
+const statutSourceValidator = v.object({
+  lastSyncAt: v.union(v.string(), v.null()),
+  nextSyncAt: v.union(v.string(), v.null()),
+});
+
+export const getStatutSyncLicencesCours = authenticatedQuery({
+  args: {},
+  returns: v.object({
+    eleves: statutSourceValidator,
+    annuaire: statutSourceValidator,
+  }),
+  handler: async (ctx) => {
+    await requireTile(ctx, ctx.userId, "licences_cours");
+    const [eleves, annuaire] = await Promise.all([
+      ctx.db
+        .query("abo_app_config")
+        .withIndex("by_cle", (q) => q.eq("cle", CLE_MARQUEUR.eleves))
+        .unique(),
+      ctx.db
+        .query("abo_app_config")
+        .withIndex("by_cle", (q) => q.eq("cle", CLE_MARQUEUR.annuaire))
+        .unique(),
+    ]);
+
+    const maintenant = Date.now();
+    const statut = (valeur: string | undefined, ttlMs: number) => {
+      const lastMs = valeur ? Date.parse(valeur) : NaN;
+      const prochaineMs = lastMs + ttlMs;
+      return {
+        lastSyncAt: Number.isFinite(lastMs) ? new Date(lastMs).toISOString() : null,
+        nextSyncAt: Number.isFinite(prochaineMs) && prochaineMs > maintenant
+          ? new Date(prochaineMs).toISOString()
+          : null,
+      };
+    };
+    return {
+      eleves: statut(eleves?.valeur, TTL_PAR_SOURCE.eleves),
+      annuaire: statut(annuaire?.valeur, TTL_PAR_SOURCE.annuaire),
+    };
   },
 });
 
@@ -195,13 +280,13 @@ export const syncPourLicencesCours = authenticatedAction({
 export const syncPourContactsCours = authenticatedAction({
   args: {},
   returns: v.object({
-    eleves: v.union(v.literal("done"), v.literal("skipped"), v.literal("erreur")),
+    eleves: resultatElevesValidator,
   }),
   handler: async (ctx): Promise<{ eleves: ResultatEleves }> => {
     await ctx.runQuery(internal.contactsCours.requireContactsCoursAccess, {
       userId: ctx.userId,
     });
     // La source élèves n'est jamais concernée par la pause scrap/annuaire.
-    return { eleves: (await synchroniserSource(ctx, "eleves")) as ResultatEleves };
+    return { eleves: await synchroniserSource(ctx, "eleves") };
   },
 });

@@ -457,6 +457,20 @@ export const resetSaison = authenticatedMutation({
     for (const e of await ctx.db.query("abo_eleves_en_cours").collect()) {
       await ctx.db.delete(e._id);
     }
+    // IO-BOUNDED: le suivi opérationnel ne peut pas dépasser les 1 000
+    // personnes du snapshot élèves et doit disparaître avec celui-ci.
+    const traitementsLicencesCours = await ctx.db
+      .query("abo_licences_cours_traitements")
+      .take(1_001);
+    if (traitementsLicencesCours.length > 1_000) {
+      throw new ConvexError({
+        code: "54000",
+        message: "Le suivi des licences en cours dépasse la limite de 1 000 personnes.",
+      });
+    }
+    for (const traitement of traitementsLicencesCours) {
+      await ctx.db.delete(traitement._id);
+    }
     for (const r of await ctx.db.query("abo_test_reservations").collect()) {
       await ctx.db.delete(r._id);
     }

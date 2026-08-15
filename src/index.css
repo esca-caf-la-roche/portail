@@ -372,6 +372,69 @@ a.btn-primary {
   margin: 0 auto;
 }
 
+.licences-cours-sync-resume {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.licences-cours-sync-resume--erreur {
+  display: inline-block;
+  padding: 0.4rem 0.55rem;
+  border: 2px solid var(--border-color);
+  background: var(--danger);
+}
+
+.licences-cours-syncs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin: 1rem 0;
+}
+
+.licences-cours-sync-carte {
+  padding: 0.85rem;
+  border: var(--border-width) solid var(--border-color);
+  background: var(--card);
+  box-shadow: 4px 4px 0 var(--border-color);
+}
+
+.licences-cours-sync-carte h2 {
+  margin-bottom: 0.6rem;
+  font-size: 1rem;
+  text-transform: uppercase;
+}
+
+.licences-cours-sync-carte dl {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.licences-cours-sync-carte dt {
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.licences-cours-sync-carte dd {
+  font-weight: 700;
+}
+
+.licences-cours-sync-delai {
+  margin-top: 0.65rem;
+  padding-top: 0.45rem;
+  border-top: 2px dashed var(--border-color);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.licences-cours-compteurs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+}
+
 .licences-cours-total {
   display: inline-flex;
   align-items: center;
@@ -383,6 +446,10 @@ a.btn-primary {
   box-shadow: 4px 4px 0 var(--border-color);
   font-weight: 800;
   text-transform: uppercase;
+}
+
+.licences-cours-total--attente {
+  background: var(--warning);
 }
 
 .licences-cours-total span:first-child {
@@ -440,6 +507,7 @@ a.btn-primary {
 }
 
 .licences-cours-relance .btn-primary,
+.licences-cours-eleve .btn-primary,
 .licences-cours-eleve .btn-secondary {
   width: auto;
   display: inline-flex;
@@ -562,6 +630,10 @@ a.btn-primary {
   background: #fff;
 }
 
+.licences-cours-eleve--traite {
+  background: var(--warning);
+}
+
 .licences-cours-eleve-nom {
   display: flex;
   align-items: center;
@@ -578,6 +650,27 @@ a.btn-primary {
   font-weight: 800;
 }
 
+.licences-cours-etats {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.licences-cours-traite {
+  padding: 0.2rem 0.45rem;
+  border: 2px solid var(--border-color);
+  background: var(--success);
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.licences-cours-traite-detail {
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
 .licences-cours-horaire {
   margin: 0.45rem 0 0;
   color: #444;
@@ -589,13 +682,17 @@ a.btn-primary {
   margin-top: 0.75rem;
 }
 
-.licences-cours-eleve-actions > span {
-  color: #555;
-  font-size: 0.8rem;
-  font-weight: 600;
+.licences-cours-eleve-actions .btn-primary,
+.licences-cours-eleve-actions .btn-secondary {
+  min-height: 3.5rem;
+  padding: 0.75rem 1rem;
+  justify-content: center;
+  font-size: 1rem;
+  line-height: 1.2;
+  text-transform: none;
 }
 
-.licences-cours-email-source {
+.licences-cours-eleve-actions > span {
   color: #555;
   font-size: 0.8rem;
   font-weight: 600;
@@ -627,6 +724,10 @@ a.btn-primary {
 @media (max-width: 680px) {
   .licences-cours-page {
     padding: 1rem;
+  }
+
+  .licences-cours-syncs {
+    grid-template-columns: 1fr;
   }
 
   .licences-cours-jour-entete,

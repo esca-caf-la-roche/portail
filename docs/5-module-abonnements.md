@@ -212,7 +212,7 @@ configurable avec `SYNC_TTL_MINUTES`.
 |---|---|---|
 | Validation des paiements des cours | `api.abo.sync.syncPourPaiements` | HelloAsso |
 | Espace admin Abonnements | `api.abo.sync.syncPourAbo` | HelloAsso → site club → annuaire → élèves |
-| Tuile Licences élèves en cours | `api.abo.sync.syncPourLicencesCours` | Annuaire → élèves |
+| Tuile Licences élèves en cours | `api.abo.sync.syncPourLicencesCours` | Élèves → annuaire (snapshot club prioritaire) |
 
 L'ordre des sources est intentionnel : les données HelloAsso doivent être
 disponibles avant le matching des personnes.

@@ -165,6 +165,15 @@ copier l'adresse d'un élève ou les adresses dédupliquées d'une sélection da
 presse-papiers, puis les coller dans l'outil de son choix. Aucun contenu de mail
 n'est généré et aucun email n'est envoyé par Convex depuis cette page.
 
+Son actualisation traite le snapshot des élèves du site club comme source de
+vérité, avant l'annuaire des licences. Les deux sources conservent des délais
+distincts, affichés dans la page : une heure pour les élèves et douze heures pour
+l'annuaire. Le staff peut marquer temporairement une personne « traitée » après
+avoir saisi sa licence sur le site club ; elle reste visible mais sort des
+sélections de relance jusqu'à ce que la synchronisation confirme la licence. Ce
+suivi est hors saison comptable et une licence réellement remontée par le site
+reste toujours prioritaire sur le marqueur manuel.
+
 `convex/crons.ts` est volontairement vide. Un cron ne doit être réintroduit que
 si une donnée doit rester fraîche sans présence utilisateur, à cadence justifiée
 et avec le commentaire requis `// CRON-OK: <raison>`.

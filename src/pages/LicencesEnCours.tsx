@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { Link } from "react-router-dom";
-import { useAction, useQuery } from "convex/react";
-import { ArrowLeft, ChevronDown, ChevronRight, Copy } from "lucide-react";
+import { useAction, useMutation, useQuery } from "convex/react";
+import { ArrowLeft, Check, ChevronDown, ChevronRight, Copy, RotateCcw } from "lucide-react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { useMaintenantJourParis } from "../abonnements/lib/useMaintenantJourParis";
@@ -25,9 +25,9 @@ function errMessage(err: unknown, fallback: string): string {
 // - Licence renseignée → toujours valide.
 // - Licence vide → tolérance en septembre si l'élève était déjà en cours la
 //   saison précédente (saison_precedente non vide), invalide sinon.
-// Lecture seule : abo_eleves_en_cours est régénérée à chaque scrape du site
-// club, aucune résolution n'est persistée ici — les candidats de l'annuaire
-// abo_licences sont proposés à titre indicatif pour le suivi manuel.
+// SAISON-EXEMPT: cette page reflète les snapshots courants du site club et de
+// l'annuaire FFCAM. Le suivi "traité" est temporaire et doit céder devant la
+// prochaine synchronisation des élèves.
 
 const RAISON_LABEL: Record<string, string> = {
   licence_absente_hors_fenetre: "Licence absente (hors tolérance de septembre)",
@@ -43,6 +43,9 @@ type EleveLicence = {
   email: string | null;
   emailSource: "eleve" | "gestion" | null;
   raison: string;
+  traite: boolean;
+  traiteAt: string | null;
+  traitementPossible: boolean;
   candidats: Array<{ licence: string; nom: string | null; prenom: string | null; score: number }>;
 };
 
@@ -51,13 +54,27 @@ type GroupeJour = { libelle: string; priorite: string; cours: GroupeCours[] };
 
 const JOURS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
 
-function trouverJour(horaire: string | null): { index: number; libelle: string } {
+function estSelectionnable(eleve: EleveLicence): boolean {
+  return !eleve.traite && normaliserAdresseEmailUnique(eleve.email) !== null;
+}
+
+function formaterDateHeure(value: string | number | null): string {
+  if (!value) return "Non disponible";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Non disponible";
+  return new Intl.DateTimeFormat("fr-FR", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(date);
+}
+
+function trouverJour(horaire: string | null): { libelle: string } {
   const texte = (horaire ?? "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLocaleLowerCase("fr");
   const index = JOURS.findIndex((jour) => texte.includes(jour.toLocaleLowerCase("fr")));
-  return index === -1 ? { index: JOURS.length, libelle: "Jour non renseigné" } : { index, libelle: JOURS[index] };
+  return { libelle: index === -1 ? "Jour non renseigné" : JOURS[index] };
 }
 
 function regrouperParJourEtCours(eleves: EleveLicence[]): GroupeJour[] {
@@ -102,7 +119,7 @@ function CheckboxGroupe({
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const ids = eleves
-    .filter((eleve) => normaliserAdresseEmailUnique(eleve.email))
+    .filter(estSelectionnable)
     .map((eleve) => eleve.eleve_id);
   const coche = ids.length > 0 && ids.every((id) => selection.has(id));
   const partiel = !coche && ids.some((id) => selection.has(id));
@@ -132,6 +149,8 @@ function CoursRepliable({
   onSelectionChange,
   copie,
   onCopierEmails,
+  traitementEnCours,
+  onDefinirTraite,
 }: {
   cours: GroupeCours;
   cle: string;
@@ -140,8 +159,13 @@ function CoursRepliable({
   selection: Set<Id<"abo_eleves_en_cours">>;
   onSelectionChange: (eleves: EleveLicence[]) => void;
   copie: { id: string; statut: "ok" | "erreur" } | null;
-  onCopierEmails: (id: string, emails: string[]) => Promise<void>;
+  onCopierEmails: (id: Id<"abo_eleves_en_cours">) => Promise<void>;
+  traitementEnCours: Id<"abo_eleves_en_cours"> | null;
+  onDefinirTraite: (eleve: EleveLicence) => Promise<void>;
 }) {
+  const aTraiter = cours.eleves.filter((eleve) => !eleve.traite).length;
+  const enAttente = cours.eleves.length - aTraiter;
+
   return (
     <section className="licences-cours-groupe">
       <header className="licences-cours-groupe-entete">
@@ -153,7 +177,9 @@ function CoursRepliable({
           <div>
             <span className="licences-cours-niveau">Cours</span>
             <h3>{cours.libelle}</h3>
-            <span className="licences-cours-effectif">{cours.eleves.length} élève{cours.eleves.length > 1 ? "s" : ""}</span>
+            <span className="licences-cours-effectif">
+              {aTraiter} à traiter{enAttente > 0 ? ` · ${enAttente} en attente` : ""}
+            </span>
             {cours.horaire && <span className="licences-cours-horaire">{cours.horaire}</span>}
           </div>
         </div>
@@ -164,35 +190,65 @@ function CoursRepliable({
       </header>
 
       {!replie && <ul className="licences-cours-eleves" id={`${cle}-contenu`}>
-        {cours.eleves.map((e) => (
-          <li key={e.eleve_id} className="licences-cours-eleve">
+        {cours.eleves.map((e) => {
+          // Pendant la bascule DEV, une réponse d'une ancienne version de la
+          // query peut ne pas encore porter les correspondances séparées.
+          // L'affichage reste disponible et les candidats arrivent à la
+          // prochaine réponse réactive.
+          const candidats = e.candidats ?? [];
+          return (
+          <li key={e.eleve_id} className={`licences-cours-eleve${e.traite ? " licences-cours-eleve--traite" : ""}`}>
             <div className="licences-cours-eleve-entete">
               <div className="licences-cours-eleve-nom">
-                <input type="checkbox" checked={selection.has(e.eleve_id)} disabled={!normaliserAdresseEmailUnique(e.email)} onChange={() => onSelectionChange([e])} aria-label={`Sélectionner ${`${e.prenom ?? ""} ${e.nom ?? ""}`.trim() || "cet élève"}`} />
+                <input type="checkbox" checked={!e.traite && selection.has(e.eleve_id)} disabled={!estSelectionnable(e)} onChange={() => onSelectionChange([e])} aria-label={`Sélectionner ${`${e.prenom ?? ""} ${e.nom ?? ""}`.trim() || "cet élève"}`} />
                 <span>{`${e.prenom ?? ""} ${e.nom ?? ""}`.trim() || "—"}</span>
               </div>
-              <span className="licences-cours-raison">{RAISON_LABEL[e.raison] ?? e.raison}</span>
+              <div className="licences-cours-etats">
+                {e.traite && <span className="licences-cours-traite">En attente de confirmation</span>}
+                <span className="licences-cours-raison">{RAISON_LABEL[e.raison] ?? e.raison}</span>
+              </div>
             </div>
+            {e.traite && (
+              <p className="licences-cours-traite-detail">
+                Marqué traité{e.traiteAt ? ` le ${formaterDateHeure(e.traiteAt)}` : ""}. La prochaine synchronisation des élèves reste prioritaire.
+              </p>
+            )}
             {e.horaire && <p className="licences-cours-horaire">{e.horaire}</p>}
             <div className="licences-cours-eleve-actions">
-              {normaliserAdresseEmailUnique(e.email) ? <>
-                <button type="button" className="btn btn-secondary" onClick={() => void onCopierEmails(e.eleve_id, [normaliserAdresseEmailUnique(e.email)!])}>
+              {normaliserAdresseEmailUnique(e.email) && !e.traite ? <>
+                <button type="button" className="btn btn-secondary" onClick={() => void onCopierEmails(e.eleve_id)}>
                   <Copy size={16} aria-hidden="true" />
-                  {copie?.id === e.eleve_id && copie.statut === "ok" ? "Adresse copiée" : "Copier l'adresse"}
+                  {copie?.id === e.eleve_id && copie.statut === "ok" ? "Adresse copiée" : "Copier l'adresse mail"}
                 </button>
                 {copie?.id === e.eleve_id && copie.statut === "erreur" && <span className="error-message" role="alert">Copie impossible</span>}
-                <span className="licences-cours-email-source">{e.emailSource === "gestion" ? "Contact du dossier" : "Contact élève"}</span>
-              </> : <span className="licences-cours-email-source">Email non renseigné</span>}
+              </> : !e.traite ? <span>Email non renseigné</span> : null}
+              <button
+                type="button"
+                className={`btn ${e.traite ? "btn-secondary" : "btn-primary"}`}
+                disabled={traitementEnCours === e.eleve_id || (!e.traite && !e.traitementPossible)}
+                onClick={() => void onDefinirTraite(e)}
+                title={!e.traite && !e.traitementPossible ? "Le suivi ne peut pas être enregistré pour cette ligne." : undefined}
+              >
+                {e.traite ? <RotateCcw size={16} aria-hidden="true" /> : <Check size={16} aria-hidden="true" />}
+                {traitementEnCours === e.eleve_id
+                  ? "Enregistrement…"
+                  : e.traite
+                    ? "Remettre à traiter"
+                    : e.traitementPossible
+                      ? "Marquer traité"
+                      : "Suivi indisponible"}
+              </button>
             </div>
-            {e.candidats.length > 0 && <div className="licences-cours-candidats">
+            {candidats.length > 0 && <div className="licences-cours-candidats">
               <div>Correspondances possibles dans l'annuaire des licences :</div>
-              <ul>{e.candidats.map((c) => {
+              <ul>{candidats.map((c) => {
                 const cn = `${c.prenom ?? ""} ${c.nom ?? ""}`.trim() || "—";
                 return <li key={c.licence}>{cn} — <code>{c.licence}</code> <span>{Math.round(c.score * 100)}%</span></li>;
               })}</ul>
             </div>}
           </li>
-        ))}
+          );
+        })}
       </ul>}
     </section>
   );
@@ -201,11 +257,21 @@ function CoursRepliable({
 export default function LicencesEnCours() {
   const maintenantJour = useMaintenantJourParis();
   const data = useQuery(api.abo.licencesEnCours.getElevesLicenceInvalide, { maintenantJour });
+  const candidats = useQuery(
+    api.abo.licencesEnCours.getCandidatsLicences,
+    data && data.eleves.some((eleve) => !eleve.traite)
+      ? { maintenantJour }
+      : "skip",
+  );
+  const statutSynchronisation = useQuery(api.abo.sync.getStatutSyncLicencesCours, {});
   const synchroniser = useAction(api.abo.sync.syncPourLicencesCours);
+  const definirTraite = useMutation(api.abo.licencesEnCours.definirTraite);
   const [syncStatut, setSyncStatut] = useState<"en_cours" | "ok" | "erreur">("en_cours");
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const [selection, setSelection] = useState<Set<Id<"abo_eleves_en_cours">>>(new Set());
   const [copie, setCopie] = useState<{ id: string; statut: "ok" | "erreur" } | null>(null);
+  const [traitementEnCours, setTraitementEnCours] = useState<Id<"abo_eleves_en_cours"> | null>(null);
+  const [traitementErreur, setTraitementErreur] = useState<string | null>(null);
   const [joursReplis, setJoursReplis] = useState<Set<string>>(new Set());
   const [coursReplis, setCoursReplis] = useState<Set<string>>(new Set());
   const lance = useRef(false);
@@ -214,31 +280,61 @@ export default function LicencesEnCours() {
     if (lance.current) return;
     lance.current = true;
     synchroniser({})
-      .then(() => setSyncStatut("ok"))
+      .then((resultat) => {
+        const echecs = [
+          resultat.eleves === "erreur" ? "élèves du site club" : null,
+          resultat.annuaire === "erreur" ? "annuaire des licences" : null,
+          resultat.annuaire === "desactive" ? "annuaire des licences temporairement désactivé" : null,
+        ].filter((source): source is string => source !== null);
+        if (echecs.length > 0) {
+          setSyncStatut("erreur");
+          setSyncMsg(`source non actualisée : ${echecs.join(" et ")}`);
+        } else {
+          setSyncStatut("ok");
+        }
+      })
       .catch((err) => {
         setSyncStatut("erreur");
         setSyncMsg(errMessage(err, "Échec de la synchronisation avec le site club."));
       });
   }, [synchroniser]);
 
-  const elevesJoignables = useMemo(
-    () => data?.eleves.filter((eleve) => normaliserAdresseEmailUnique(eleve.email)) ?? [],
-    [data?.eleves],
+  const eleves = useMemo<EleveLicence[]>(() => {
+    if (!data) return [];
+    const candidatsParEleve = new Map(
+      (candidats ?? []).map((item) => [item.eleveId, item.candidats]),
+    );
+    return data.eleves.map((eleve) => ({
+      ...eleve,
+      candidats: eleve.traite ? [] : (candidatsParEleve.get(eleve.eleve_id) ?? []),
+    }));
+  }, [candidats, data]);
+
+  const elevesASelectionner = useMemo(
+    () => eleves.filter(estSelectionnable),
+    [eleves],
   );
 
   const groupe = useMemo(() => {
-    const elevesSelectionnes = data?.eleves.filter((eleve) => selection.has(eleve.eleve_id)) ?? [];
+    const elevesSelectionnes = eleves.filter(
+      (eleve) => estSelectionnable(eleve) && selection.has(eleve.eleve_id),
+    );
     return { emails: emailsUniques(elevesSelectionnes.map((eleve) => eleve.email)) };
-  }, [data?.eleves, selection]);
+  }, [eleves, selection]);
+
+  const compteurs = useMemo(() => {
+    const aTraiter = eleves.filter((eleve) => !eleve.traite).length;
+    return { aTraiter, enAttente: eleves.length - aTraiter };
+  }, [eleves]);
 
   const groupes = useMemo(
-    () => regrouperParJourEtCours(data?.eleves ?? []),
-    [data?.eleves],
+    () => regrouperParJourEtCours(eleves),
+    [eleves],
   );
 
   const basculerSelection = (eleves: EleveLicence[]) => {
     const ids = eleves
-      .filter((eleve) => normaliserAdresseEmailUnique(eleve.email))
+      .filter(estSelectionnable)
       .map((eleve) => eleve.eleve_id);
     const toutLeGroupeEstSelectionne = ids.length > 0 && ids.every((id) => selection.has(id));
     setSelection((precedente) => {
@@ -252,6 +348,11 @@ export default function LicencesEnCours() {
   };
 
   const copierEmails = async (id: string, emails: string[]) => {
+    if (emails.length === 0) {
+      setCopie({ id, statut: "erreur" });
+      window.setTimeout(() => setCopie(null), 1800);
+      return;
+    }
     try {
       await navigator.clipboard.writeText(emails.join(", "));
       setCopie({ id, statut: "ok" });
@@ -259,6 +360,45 @@ export default function LicencesEnCours() {
       setCopie({ id, statut: "erreur" });
     }
     window.setTimeout(() => setCopie(null), 1800);
+  };
+
+  const copierEleve = async (eleveId: Id<"abo_eleves_en_cours">) => {
+    const eleve = eleves.find((item) => item.eleve_id === eleveId);
+    const email = eleve && !eleve.traite
+      ? normaliserAdresseEmailUnique(eleve.email)
+      : null;
+    await copierEmails(eleveId, email ? [email] : []);
+  };
+
+  const copierSelection = async () => {
+    // Refiltrage volontaire au clic : une ligne marquée traitée ou disparue
+    // depuis la sélection ne doit jamais se retrouver dans le presse-papiers.
+    const emails = emailsUniques(
+      eleves
+        .filter((eleve) => estSelectionnable(eleve) && selection.has(eleve.eleve_id))
+        .map((eleve) => eleve.email),
+    );
+    await copierEmails("groupe", emails);
+  };
+
+  const changerTraitement = async (eleve: EleveLicence) => {
+    setTraitementErreur(null);
+    setTraitementEnCours(eleve.eleve_id);
+    try {
+      await definirTraite({ eleveId: eleve.eleve_id, traite: !eleve.traite });
+      if (!eleve.traite) {
+        setSelection((precedente) => {
+          if (!precedente.has(eleve.eleve_id)) return precedente;
+          const suivante = new Set(precedente);
+          suivante.delete(eleve.eleve_id);
+          return suivante;
+        });
+      }
+    } catch (err) {
+      setTraitementErreur(errMessage(err, "Impossible de modifier le suivi de cet élève."));
+    } finally {
+      setTraitementEnCours(null);
+    }
   };
 
   const basculerRepli = (cle: string, setReplis: Dispatch<SetStateAction<Set<string>>>) => {
@@ -278,29 +418,66 @@ export default function LicencesEnCours() {
         </Link>
         <h1>Licences élèves en cours</h1>
         <p className="subtitle">
-          Élèves en cours (hors liste d'attente) sans licence FFCAM valide pour la saison.
+          Élèves en cours (hors liste d'attente) sans licence FFCAM valide dans les données actuelles.
         </p>
-        <p style={{ fontSize: "0.8rem", color: syncStatut === "erreur" ? "#b91c1c" : "#6b7280" }}>
+        <p className={`licences-cours-sync-resume licences-cours-sync-resume--${syncStatut}`} role="status">
           {syncStatut === "en_cours" && "Synchronisation avec le site club en cours…"}
-          {syncStatut === "ok" && "Données à jour (synchronisées avec le site club)."}
+          {syncStatut === "ok" && "Synchronisation vérifiée. Les délais propres à chaque source sont indiqués ci-dessous."}
           {syncStatut === "erreur" && `Synchronisation échouée : ${syncMsg} — données potentiellement obsolètes.`}
         </p>
       </header>
+
+      <section className="licences-cours-syncs" aria-label="État des synchronisations">
+        {([
+          { cle: "eleves", titre: "Élèves du site club", delai: "1 heure" },
+          { cle: "annuaire", titre: "Annuaire des licences", delai: "12 heures" },
+        ] as const).map((source) => {
+          const statut = statutSynchronisation?.[source.cle];
+          return (
+            <article className="licences-cours-sync-carte" key={source.cle}>
+              <h2>{source.titre}</h2>
+              {statutSynchronisation === undefined ? (
+                <p>Chargement de l'état…</p>
+              ) : (
+                <dl>
+                  <div>
+                    <dt>Dernière synchronisation</dt>
+                    <dd>{statut?.lastSyncAt ? formaterDateHeure(statut.lastSyncAt) : "Jamais synchronisée"}</dd>
+                  </div>
+                  <div>
+                    <dt>Prochaine synchronisation possible</dt>
+                    <dd>{statut?.nextSyncAt ? formaterDateHeure(statut.nextSyncAt) : "Disponible maintenant"}</dd>
+                  </div>
+                </dl>
+              )}
+              <p className="licences-cours-sync-delai">Délai minimal : {source.delai}</p>
+            </article>
+          );
+        })}
+      </section>
 
       {data === undefined ? (
         <p>Chargement…</p>
       ) : (
         <>
-          <div className="licences-cours-total">
-            <span>{data.total}</span>
-            <span>élève{data.total > 1 ? "s" : ""} sans licence valide</span>
-          </div>
+          <section className="licences-cours-compteurs" aria-label="Avancement du traitement">
+            <div className="licences-cours-total licences-cours-total--a-traiter">
+              <span>{compteurs.aTraiter}</span>
+              <span>à traiter</span>
+            </div>
+            <div className="licences-cours-total licences-cours-total--attente">
+              <span>{compteurs.enAttente}</span>
+              <span>en attente de confirmation</span>
+            </div>
+          </section>
+
+          {traitementErreur && <p className="error-message" role="alert">{traitementErreur}</p>}
 
           {data.total > 0 && (
             <section aria-label="Relance licence" className="licences-cours-relance">
               <label className="licences-cours-selection-totale">
                 <CheckboxGroupe
-                  eleves={elevesJoignables}
+                  eleves={elevesASelectionner}
                   selection={selection}
                   onChange={basculerSelection}
                   label="Sélectionner tous les élèves joignables"
@@ -315,7 +492,7 @@ export default function LicencesEnCours() {
                   type="button"
                   className="btn btn-primary"
                   disabled={groupe.emails.length === 0}
-                  onClick={() => void copierEmails("groupe", groupe.emails)}
+                  onClick={() => void copierSelection()}
                 >
                   <Copy size={16} aria-hidden="true" /> Copier {groupe.emails.length > 1 ? "les adresses" : "l'adresse"}
                 </button>
@@ -376,7 +553,9 @@ export default function LicencesEnCours() {
                         selection={selection}
                         onSelectionChange={basculerSelection}
                         copie={copie}
-                        onCopierEmails={copierEmails}
+                        onCopierEmails={copierEleve}
+                        traitementEnCours={traitementEnCours}
+                        onDefinirTraite={changerTraitement}
                       />
                     ))}
                   </div>}

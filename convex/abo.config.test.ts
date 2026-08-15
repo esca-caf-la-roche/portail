@@ -290,6 +290,11 @@ describe("autorisation du reset annuel Abonnements", () => {
         compte_a: "staff_conserve", compte_b: "conserve",
         resolue_le: "2026-08-08T00:00:00.000Z", resolue_par: adminAutorise,
       });
+      await ctx.db.insert("abo_licences_cours_traitements", {
+        cle_identite: '["nom_date_naissance","RESET TEST","2010-01-01"]',
+        traite_at: "2026-08-08T00:00:00.000Z",
+        traite_par: adminAutorise,
+      });
       return await ctx.db.insert("abo_fusion_redirections_email", {
         email_supprime: "ancienne-reset@example.test", email_destination: "canonique-reset@example.test",
         dossier_destination_id: dossierId, fusion_id: fusionId, created_at: "2026-08-08T00:00:00.000Z",
@@ -318,6 +323,9 @@ describe("autorisation du reset annuel Abonnements", () => {
       vi.useRealTimers();
     }
     expect(await t.run(async (ctx) => ctx.db.get(redirectionId))).toBeNull();
+    expect(await t.run(async (ctx) =>
+      ctx.db.query("abo_licences_cours_traitements").collect(),
+    )).toEqual([]);
     expect(await t.run(async (ctx) =>
       ctx.db.query("abo_app_config")
         .withIndex("by_cle", (q) => q.eq("cle", "synchronisation_externe_active"))

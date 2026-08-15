@@ -7,12 +7,11 @@
 //   - licence vide → valide UNIQUEMENT en septembre ET si saison_precedente
 //     est renseignée (élève déjà en cours l'an dernier, tolérance d'un mois
 //     pour re-fournir son numéro). Sinon → non valide.
-// Lecture seule : abo_eleves_en_cours est régénérée à chaque scrape du site
-// club, ce n'est pas la table d'identité canonique — aucune résolution n'y
-// est persistée ici (à la différence de abo/licences.ts sur abo_personnes).
+// abo_eleves_en_cours est régénérée à chaque scrape du site club. Le suivi
+// manuel est donc conservé à part, avec une identité métier stable et prudente.
 
 import { ConvexError, v } from "convex/values";
-import { authenticatedQuery } from "../customFunctions";
+import { authenticatedMutation, authenticatedQuery } from "../customFunctions";
 import { requireTile } from "../access";
 import {
   normaliserNomPrenom,
@@ -20,12 +19,18 @@ import {
   trigrammes,
   similariteTrigrammes,
 } from "./lib";
+import {
+  compterOccurrencesParNom,
+  construireIdentiteLicenceCours,
+} from "./licencesCoursIdentite";
 
 // Seuil relevé par rapport au défaut pg_trgm (0.3) : à 0.3 la liste remonte
 // beaucoup de candidats peu pertinents, peu utiles pour le suivi manuel.
 const SEUIL_TRGM = 0.5;
 const MAX_CANDIDATS = 5;
-const MAX_ELEVES_EN_COURS = 500;
+// Doit rester aligné avec MAX_ELEVES_SNAPSHOT dans abo/compteur.ts.
+const MAX_ELEVES_EN_COURS = 1_000;
+const MAX_TRAITEMENTS = 1_000;
 // L'annuaire FFCAM du club dépasse 2 000 fiches ; cette même borne est utilisée
 // pour l'import et la purge du snapshot dans `abo/licences.ts`.
 const MAX_LICENCES = 5_000;
@@ -119,20 +124,15 @@ export const getElevesLicenceInvalide = authenticatedQuery({
       prenom: v.union(v.string(), v.null()),
       cours: v.union(v.string(), v.null()),
       horaire: v.union(v.string(), v.null()),
-      licence: v.union(v.string(), v.null()),
-      saison_precedente: v.union(v.string(), v.null()),
       email: v.union(v.string(), v.null()),
       emailSource: v.union(v.literal("eleve"), v.literal("gestion"), v.null()),
+      traite: v.boolean(),
+      traiteAt: v.union(v.string(), v.null()),
+      traitementPossible: v.boolean(),
       raison: v.union(
         v.literal("licence_absente_hors_fenetre"),
         v.literal("nouvel_eleve_sans_licence"),
       ),
-      candidats: v.array(v.object({
-        licence: v.string(),
-        nom: v.union(v.string(), v.null()),
-        prenom: v.union(v.string(), v.null()),
-        score: v.number(),
-      })),
     })),
   }),
   handler: async (ctx, args) => {
@@ -149,8 +149,9 @@ export const getElevesLicenceInvalide = authenticatedQuery({
       });
     }
 
-    // IO-BOUNDED: les deux snapshots externes sont plafonnés par leurs imports
-    // (500 élèves et 5 000 licences) ; le rapprochement trigramme les parcourt.
+    // IO-BOUNDED: les snapshots externes sont plafonnés par leurs imports
+    // (1 000 élèves et 5 000 licences). Les traitements sont purgés au
+    // remplacement du snapshot et ne peuvent donc pas dépasser 1 000 lignes.
     const tous = await ctx.db.query("abo_eleves_en_cours").take(MAX_ELEVES_EN_COURS + 1);
     if (tous.length > MAX_ELEVES_EN_COURS) {
       throw new ConvexError({
@@ -163,55 +164,30 @@ export const getElevesLicenceInvalide = authenticatedQuery({
     const invalides = enCours.filter((e) => !licenceValide(e, now));
     if (invalides.length === 0) return { total: 0, eleves: [] };
 
-    const annuaire = await ctx.db.query("abo_licences").take(MAX_LICENCES + 1);
-    if (annuaire.length > MAX_LICENCES) {
+    const traitements = await ctx.db
+      .query("abo_licences_cours_traitements")
+      .take(MAX_TRAITEMENTS + 1);
+    if (traitements.length > MAX_TRAITEMENTS) {
       throw new ConvexError({
         code: "54000",
-        message: `L'annuaire des licences dépasse la limite de ${MAX_LICENCES} lignes.`,
+        message: `Le suivi des traitements dépasse la limite de ${MAX_TRAITEMENTS} lignes.`,
       });
     }
-    // Trigrammes de l'annuaire pré-calculés une seule fois (pas à chaque élève
-    // invalide comparé) : évite le O(n_invalides × n_annuaire) recalculs qui
-    // faisait dépasser le budget d'exécution d'une query (1s).
-    const annuaireTg = annuaire.map((l) => ({
-      l,
-      tg: trigrammes(l.nom_prenom_normalise),
-    }));
+    const traitementsParCle = new Map(
+      traitements.map((traitement) => [traitement.cle_identite, traitement]),
+    );
+    const occurrencesParNom = compterOccurrencesParNom(tous);
+    const invalidesAvecTraitement = invalides.map((eleve) => {
+      const identite = construireIdentiteLicenceCours(eleve, occurrencesParNom);
+      const traitement = identite ? traitementsParCle.get(identite.cle) : undefined;
+      return { eleve, identite, traitement };
+    });
 
-    const eleves = invalides.map((e) => {
+    const eleves = invalidesAvecTraitement.map(({ eleve: e, identite, traitement }) => {
       const raison: Raison =
         estSeptembreParis(now) && (e.saison_precedente ?? "").trim() === ""
           ? "nouvel_eleve_sans_licence"
           : "licence_absente_hors_fenetre";
-
-      let candidats: Array<{
-        licence: string;
-        nom: string | null;
-        prenom: string | null;
-        score: number;
-      }> = [];
-
-      if ((e.licence ?? "").trim() === "") {
-        const tgDirecte = trigrammes(e.nom_prenom_normalise);
-        const tgInverse = trigrammes(normaliserNomPrenom(e.prenom, e.nom));
-        candidats = annuaireTg
-          .map(({ l, tg }) => ({
-            l,
-            score: Math.max(
-              similariteTrigrammes(tgDirecte, tg),
-              similariteTrigrammes(tgInverse, tg),
-            ),
-          }))
-          .filter((x) => x.score >= SEUIL_TRGM)
-          .sort((a, b) => b.score - a.score)
-          .slice(0, MAX_CANDIDATS)
-          .map((x) => ({
-            licence: x.l.licence,
-            nom: x.l.nom ?? null,
-            prenom: x.l.prenom ?? null,
-            score: x.score,
-          }));
-      }
 
       return {
         eleve_id: e._id,
@@ -219,11 +195,11 @@ export const getElevesLicenceInvalide = authenticatedQuery({
         prenom: e.prenom ?? null,
         cours: e.cours ?? null,
         horaire: e.horaire ?? null,
-        licence: e.licence ?? null,
-        saison_precedente: e.saison_precedente ?? null,
         ...emailEffectif(e),
+        traite: traitement !== undefined,
+        traiteAt: traitement?.traite_at ?? null,
+        traitementPossible: identite !== null,
         raison,
-        candidats,
       };
     });
 
@@ -245,5 +221,147 @@ export const getElevesLicenceInvalide = authenticatedQuery({
     });
 
     return { total: eleves.length, eleves };
+  },
+});
+
+// Cette query coûteuse ne lit volontairement PAS la table des traitements.
+// Son résultat reste donc en cache quand le staff coche/décoche une personne :
+// le scan borné de l'annuaire n'est refait qu'après changement du snapshot des
+// élèves, de l'annuaire ou du jour métier.
+export const getCandidatsLicences = authenticatedQuery({
+  args: { maintenantJour: v.string() },
+  returns: v.array(v.object({
+    eleveId: v.id("abo_eleves_en_cours"),
+    candidats: v.array(v.object({
+      licence: v.string(),
+      nom: v.union(v.string(), v.null()),
+      prenom: v.union(v.string(), v.null()),
+      score: v.number(),
+    })),
+  })),
+  handler: async (ctx, args) => {
+    await requireTile(ctx, ctx.userId, "licences_cours");
+    const now = Date.now();
+    if (args.maintenantJour !== cleJourParis(now)) {
+      throw new ConvexError({
+        code: "40001",
+        message: "La journée indiquée ne correspond pas au calendrier du serveur.",
+      });
+    }
+
+    // IO-BOUNDED: rapprochement de deux snapshots complets plafonnés à
+    // 1 000 élèves et 5 000 licences. La query est isolée pour préserver son
+    // cache lors des écritures dans la table de suivi manuel.
+    const tous = await ctx.db
+      .query("abo_eleves_en_cours")
+      .take(MAX_ELEVES_EN_COURS + 1);
+    if (tous.length > MAX_ELEVES_EN_COURS) {
+      throw new ConvexError({
+        code: "54000",
+        message: `Le snapshot élèves dépasse la limite de ${MAX_ELEVES_EN_COURS} lignes.`,
+      });
+    }
+    const invalides = tous.filter(
+      (eleve) => eleve.horaire !== "Liste d'attente" && !licenceValide(eleve, now),
+    );
+    if (invalides.length === 0) return [];
+
+    const annuaire = await ctx.db.query("abo_licences").take(MAX_LICENCES + 1);
+    if (annuaire.length > MAX_LICENCES) {
+      throw new ConvexError({
+        code: "54000",
+        message: `L'annuaire des licences dépasse la limite de ${MAX_LICENCES} lignes.`,
+      });
+    }
+
+    const annuaireTg = annuaire.map((licence) => ({
+      licence,
+      trigrammes: trigrammes(licence.nom_prenom_normalise),
+    }));
+    return invalides.map((eleve) => {
+        const directs = trigrammes(eleve.nom_prenom_normalise);
+        const inverses = trigrammes(normaliserNomPrenom(eleve.prenom, eleve.nom));
+        const candidats = annuaireTg
+          .map(({ licence, trigrammes: candidatTg }) => ({
+            licence,
+            score: Math.max(
+              similariteTrigrammes(directs, candidatTg),
+              similariteTrigrammes(inverses, candidatTg),
+            ),
+          }))
+          .filter(({ score }) => score >= SEUIL_TRGM)
+          .sort((a, b) => b.score - a.score)
+          .slice(0, MAX_CANDIDATS)
+          .map(({ licence, score }) => ({
+            licence: licence.licence,
+            nom: licence.nom ?? null,
+            prenom: licence.prenom ?? null,
+            score,
+          }));
+        return { eleveId: eleve._id, candidats };
+    });
+  },
+});
+
+export const definirTraite = authenticatedMutation({
+  args: {
+    eleveId: v.id("abo_eleves_en_cours"),
+    traite: v.boolean(),
+  },
+  returns: v.object({
+    traite: v.boolean(),
+    traiteAt: v.union(v.string(), v.null()),
+  }),
+  handler: async (ctx, args) => {
+    await requireTile(ctx, ctx.userId, "licences_cours");
+
+    const eleve = await ctx.db.get("abo_eleves_en_cours", args.eleveId);
+    if (!eleve) {
+      throw new ConvexError({ code: "02000", message: "Cet élève n'est plus dans le snapshot courant." });
+    }
+    if (licenceValide(eleve, Date.now())) {
+      throw new ConvexError({
+        code: "22023",
+        message: "Cet élève possède désormais une licence : la synchronisation est prioritaire.",
+      });
+    }
+
+    let identite = construireIdentiteLicenceCours(eleve, new Map());
+    if (!identite) {
+      const memeNom = await ctx.db
+        .query("abo_eleves_en_cours")
+        .withIndex("by_nom_prenom_normalise", (q) =>
+          q.eq("nom_prenom_normalise", eleve.nom_prenom_normalise),
+        )
+        .take(2);
+      identite = construireIdentiteLicenceCours(
+        eleve,
+        new Map([[eleve.nom_prenom_normalise, memeNom.length]]),
+      );
+    }
+    if (!identite) {
+      throw new ConvexError({
+        code: "21000",
+        message: "Impossible de distinguer cette personne avec certitude (homonymie ou identité incomplète).",
+      });
+    }
+
+    const existant = await ctx.db
+      .query("abo_licences_cours_traitements")
+      .withIndex("by_cle_identite", (q) => q.eq("cle_identite", identite.cle))
+      .unique();
+    if (!args.traite) {
+      if (existant) await ctx.db.delete(existant._id);
+      return { traite: false, traiteAt: null };
+    }
+    if (existant) return { traite: true, traiteAt: existant.traite_at };
+
+    const traiteAt = new Date().toISOString();
+    await ctx.db.insert("abo_licences_cours_traitements", {
+      cle_identite: identite.cle,
+      traite_at: traiteAt,
+      traite_par: ctx.userId,
+    });
+    return { traite: true, traiteAt };
   },
 });

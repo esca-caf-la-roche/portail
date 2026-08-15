@@ -820,6 +820,15 @@ export default defineSchema({
     .index("by_licence", ["licence"])
     .index("by_nom_prenom_normalise", ["nom_prenom_normalise"]),
 
+  // SAISON-EXEMPT: suivi manuel lié au snapshot courant des élèves en cours,
+  // indépendant des saisons comptables et purgé avec ce snapshot opérationnel.
+  abo_licences_cours_traitements: defineTable({
+    // Empreinte métier stable calculée sans dépendre de l'_id éphémère du snapshot.
+    cle_identite: v.string(),
+    traite_at: v.string(),
+    traite_par: v.id("users"),
+  }).index("by_cle_identite", ["cle_identite"]),
+
   // Annuaire licence ↔ nom/prénom (résolution des licences des demandes).
   abo_licences: defineTable({
     licence: v.string(),
