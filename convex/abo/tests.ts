@@ -248,6 +248,7 @@ export const getMesReservationsDirectes = authenticatedQuery({
 
 export const reserverTestDirect = authenticatedMutation({
   args: { licence: v.string(), tranche: v.string() },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const id = await requireAboIdentity(ctx);
     const licence = args.licence.trim();
@@ -260,7 +261,27 @@ export const reserverTestDirect = authenticatedMutation({
     if (!cible || new Date(cible.tranche_debut).getTime() <= Date.now()) throw new ConvexError({ code: "P0012", message: "Ce créneau n'existe pas, ou il est passé." });
     const reserves = await reservationsActivesParTranche(ctx);
     if ((reserves.get(args.tranche) ?? 0) >= cible.capacite) throw new ConvexError({ code: "P0013", message: "Ce créneau est complet, choisissez-en un autre." });
-    await ctx.db.insert("abo_test_reservations", { candidat_user_id: id.userId, candidat_licence: licence, candidat_nom: eligibilite.candidat.nom, candidat_prenom: eligibilite.candidat.prenom, candidat_email: id.email, tranche: cible.tranche_debut, tranche_fin: cible.tranche_fin, statut: "active", etat_confirmation: "confirmee" });
+    const rappelPrevuMs = Math.max(
+      Date.now(),
+      new Date(cible.tranche_debut).getTime() - 24 * 60 * 60 * 1000,
+    );
+    const reservationId = await ctx.db.insert("abo_test_reservations", {
+      candidat_user_id: id.userId,
+      candidat_licence: licence,
+      candidat_nom: eligibilite.candidat.nom,
+      candidat_prenom: eligibilite.candidat.prenom,
+      candidat_email: id.email,
+      tranche: cible.tranche_debut,
+      tranche_fin: cible.tranche_fin,
+      statut: "active",
+      etat_confirmation: "confirmee",
+      rappel_prevu_le: new Date(rappelPrevuMs).toISOString(),
+    });
+    await ctx.scheduler.runAfter(
+      rappelPrevuMs - Date.now(),
+      internal.abo.emailsRappel.envoyerRappelTest,
+      { reservationId },
+    );
     return null;
   },
 });
@@ -527,6 +548,7 @@ export const creerTestCreneau = authenticatedMutation({
 // (email_log 'test_annule', envoi réel branché en Phase J). Renvoie le nb annulé.
 export const supprimerTestCreneau = authenticatedMutation({
   args: { creneauId: v.id("abo_test_creneaux") },
+  returns: v.number(),
   handler: async (ctx, args) => {
     const id = await requireAboAdmin(ctx);
 
@@ -573,14 +595,19 @@ export const supprimerTestCreneau = authenticatedMutation({
         });
         // Notifie l'annulation (envoi réel via la boîte abo ; journalisation
         // dans abo_email_log faite par le pipeline, sans dedup pour test_annule).
-        if (!r.personne_id) continue;
-        const personne = await ctx.db.get(r.personne_id);
-        const dossier = personne ? await ctx.db.get(personne.dossier_id) : null;
-        if (dossier) {
-          await ctx.scheduler.runAfter(0, internal.abo.emails.envoyerEmailAbo, {
-            dossierId: dossier._id,
-            typeEmail: "test_annule",
+        if (!r.personne_id) {
+          await ctx.scheduler.runAfter(0, internal.abo.emails.envoyerAnnulationCreneauTest, {
+            reservationId: r._id,
           });
+        } else {
+          const personne = await ctx.db.get(r.personne_id);
+          const dossier = personne ? await ctx.db.get(personne.dossier_id) : null;
+          if (dossier) {
+            await ctx.scheduler.runAfter(0, internal.abo.emails.envoyerEmailAbo, {
+              dossierId: dossier._id,
+              typeEmail: "test_annule",
+            });
+          }
         }
         total++;
       }
@@ -592,6 +619,17 @@ export const supprimerTestCreneau = authenticatedMutation({
 // ── Admin : liste globale des inscrits par tranche (jour J) ──────────
 export const testInscritsAdmin = authenticatedQuery({
   args: {},
+  returns: v.array(v.object({
+    reservationId: v.id("abo_test_reservations"),
+    tranche_debut: v.string(),
+    tranche_fin: v.union(v.string(), v.null()),
+    etat_confirmation: v.union(v.literal("provisoire"), v.literal("confirmee")),
+    personne_id: v.union(v.id("abo_personnes"), v.null()),
+    licence: v.string(),
+    nom: v.string(),
+    prenom: v.string(),
+    email: v.string(),
+  })),
   handler: async (ctx) => {
     await requireAboAdmin(ctx);
     const actives = (await ctx.db.query("abo_test_reservations").collect()).filter(
@@ -605,21 +643,39 @@ export const testInscritsAdmin = authenticatedQuery({
       tranche_debut: string;
       tranche_fin: string | null;
       etat_confirmation: "provisoire" | "confirmee";
-      personne_id: Id<"abo_personnes">;
+      reservationId: Id<"abo_test_reservations">;
+      personne_id: Id<"abo_personnes"> | null;
+      licence: string;
       nom: string;
       prenom: string;
       email: string;
     }[] = [];
     for (const r of actives) {
-      if (!r.personne_id) continue;
+      if (!r.personne_id) {
+        if (!r.candidat_licence || !r.candidat_nom || !r.candidat_prenom || !r.candidat_email) continue;
+        out.push({
+          reservationId: r._id,
+          tranche_debut: r.tranche,
+          tranche_fin: r.tranche_fin ?? null,
+          etat_confirmation: r.etat_confirmation ?? "confirmee",
+          personne_id: null,
+          licence: r.candidat_licence,
+          nom: r.candidat_nom,
+          prenom: r.candidat_prenom,
+          email: r.candidat_email,
+        });
+        continue;
+      }
       const personne = await ctx.db.get(r.personne_id);
       if (!personne) continue;
       const dossier = await ctx.db.get(personne.dossier_id);
       out.push({
+        reservationId: r._id,
         tranche_debut: r.tranche,
         tranche_fin: r.tranche_fin ?? null,
         etat_confirmation: r.etat_confirmation ?? "provisoire",
         personne_id: personne._id,
+        licence: personne.licence ?? "",
         nom: personne.nom,
         prenom: personne.prenom,
         email: dossier?.email ?? "",

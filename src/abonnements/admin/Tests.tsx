@@ -710,9 +710,10 @@ function Inscrits({
                   {gens.map((g) => {
                     const confirmation = etatConfirmationReservation(g);
                     return (
-                      <li key={g.personne_id}>
+                      <li key={g.reservationId}>
                         {`${g.prenom ?? ""} ${g.nom ?? ""}`.trim() || "—"}{" "}
                         <span className="abo-admin-meta">({g.email})</span>
+                        {g.licence && <span className="abo-admin-meta"> — licence {g.licence}</span>}
                         <span
                           className={`abo-admin-badge abo-admin-badge--confirmation-${confirmation}`}
                           aria-label={`Réservation ${confirmation === "confirmee" ? "confirmée" : "provisoire"}`}

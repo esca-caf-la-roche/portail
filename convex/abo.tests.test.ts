@@ -54,11 +54,12 @@ async function creerPersonne(
 async function creerCreneau(
   t: ReturnType<typeof convexTest>,
   date: string,
-): Promise<void> {
-  await t.run(async (ctx) => {
-    const adminId = await ctx.db.insert("users", { email: `admin-${date}@example.test` });
-    await ctx.db.insert("abo_test_creneaux", {
-      admin_id: adminId,
+  adminId?: Id<"users">,
+): Promise<Id<"abo_test_creneaux">> {
+  return await t.run(async (ctx) => {
+    const ownerId = adminId ?? await ctx.db.insert("users", { email: `admin-${date}@example.test` });
+    return await ctx.db.insert("abo_test_creneaux", {
+      admin_id: ownerId,
       date_jour: date,
       heure_debut: "10:00",
       heure_fin: "10:40",
@@ -73,6 +74,32 @@ async function creerAdminAbo(t: ReturnType<typeof convexTest>): Promise<Id<"user
       userId,
       allowedTiles: ["abonnements"],
       role: "admin",
+    });
+    return userId;
+  });
+}
+
+async function creerCandidatDirect(
+  t: ReturnType<typeof convexTest>,
+  licence = "DIRECT-123",
+): Promise<Id<"users">> {
+  return await t.run(async (ctx) => {
+    const userId = await ctx.db.insert("users", { email: "direct@example.test" });
+    await ctx.db.insert("abo_profiles", {
+      userId,
+      email: "direct@example.test",
+      role: "utilisateur",
+    });
+    await ctx.db.insert("abo_abonnes_scrap", {
+      licence,
+      nom: "DIRECT",
+      prenom: "Camille",
+      nom_prenom_normalise: "direct camille",
+      email: "direct@example.test",
+      age: 20,
+      autonomie: "Doit passer le test",
+      abonnement_valide: "oui",
+      last_scrap_at: new Date().toISOString(),
     });
     return userId;
   });
@@ -224,5 +251,59 @@ describe("réservation de test d'autonomie", () => {
     const reservations = await caller.query(api.abo.tests.getMesReservationsParPersonne, {});
     expect(reservations[0]?.active).toBeNull();
     expect(reservations[0]?.annulee?.annulee_raison).toBe("conditions_test_non_remplies");
+  });
+
+  test("rend une réservation directe visible au staff, archivable et rappelable", async () => {
+    const t = convexTest(schema, modules);
+    const adminId = await creerAdminAbo(t);
+    const candidatId = await creerCandidatDirect(t);
+    const admin = t.withIdentity({ subject: adminId });
+    const candidat = t.withIdentity({ subject: candidatId });
+    const creneauId = await creerCreneau(t, "2099-06-02", adminId);
+
+    await candidat.mutation(api.abo.tests.reserverTestDirect, {
+      licence: "DIRECT-123",
+      tranche: await trancheDisponible(candidat),
+    });
+
+    const inscrits = await admin.query(api.abo.tests.testInscritsAdmin, {});
+    expect(inscrits).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        personne_id: null,
+        licence: "DIRECT-123",
+        nom: "DIRECT",
+        prenom: "Camille",
+        email: "direct@example.test",
+        etat_confirmation: "confirmee",
+      }),
+    ]));
+
+    const aArchiver = await admin.query(api.abo.testDocuments.listeReservationsPassees, {
+      avant: "2100-01-01T00:00:00.000Z",
+    });
+    expect(aArchiver).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        personneId: null,
+        licence: "DIRECT-123",
+        nom: "DIRECT",
+        prenom: "Camille",
+        reservationPassee: true,
+      }),
+    ]));
+
+    const reservation = await t.run((ctx) =>
+      ctx.db
+        .query("abo_test_reservations")
+        .withIndex("by_candidat_licence", (q) => q.eq("candidat_licence", "DIRECT-123"))
+        .unique(),
+    );
+    expect(reservation?.rappel_prevu_le).toBeTruthy();
+
+    await admin.mutation(api.abo.tests.supprimerTestCreneau, { creneauId });
+    const annulee = await t.run((ctx) => ctx.db.get(reservation!._id));
+    expect(annulee).toMatchObject({
+      statut: "annulee",
+      annulee_raison: "creneau_admin_annule",
+    });
   });
 });

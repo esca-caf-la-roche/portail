@@ -181,7 +181,7 @@ export const listeReservationsPassees = authenticatedQuery({
       .order("desc")
       .take(100);
     const candidats = [] as Array<{
-      personneId: Id<"abo_personnes">;
+      personneId: Id<"abo_personnes"> | null;
       licence: string;
       nom: string;
       prenom: string;
@@ -195,7 +195,27 @@ export const listeReservationsPassees = authenticatedQuery({
 
     for (const reservation of reservations) {
       if (reservation.statut !== "active") continue;
-      if (!reservation.personne_id) continue;
+      if (!reservation.personne_id) {
+        const licence = reservation.candidat_licence?.trim() ?? "";
+        if (!licence || !reservation.candidat_nom || !reservation.candidat_prenom || vus.has(licence)) continue;
+        vus.add(licence);
+        const archive = await ctx.db
+          .query("abo_tests_autonomie_archive")
+          .withIndex("by_licence", (q) => q.eq("licence", licence))
+          .unique();
+        candidats.push({
+          personneId: null,
+          licence,
+          nom: reservation.candidat_nom,
+          prenom: reservation.candidat_prenom,
+          licenceManquante: false,
+          reservationPassee: true,
+          archiveId: archive?._id ?? null,
+          statut: archive?.statut ?? null,
+          driveUrl: archive?.drive_url || null,
+        });
+        continue;
+      }
       const personne = await ctx.db.get(reservation.personne_id);
       if (!personne || vus.has(personne._id)) continue;
       vus.add(personne._id);

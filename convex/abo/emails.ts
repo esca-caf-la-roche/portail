@@ -332,3 +332,25 @@ export const envoyerAnnulationConditionsTest = internalAction({
     return null;
   },
 });
+
+export const envoyerAnnulationCreneauTest = internalAction({
+  args: { reservationId: v.id("abo_test_reservations") },
+  returns: v.null(),
+  handler: async (ctx, args): Promise<null> => {
+    const email: EmailReservationTest | null = await ctx.runQuery(
+      internal.abo.emails.contexteReservationTest,
+      { reservationId: args.reservationId },
+    );
+    if (!email) return null;
+    await ctx.runAction(internal.email.sendAboEmail, {
+      to: email.destinataire,
+      subject: "Votre créneau de test d'autonomie a été annulé",
+      text:
+        `Bonjour ${email.prenom},\n\n` +
+        `Votre créneau de test d'autonomie prévu ${formaterTrancheParis(email.tranche)} a dû être annulé. ` +
+        "Merci de vous reconnecter pour réserver un nouveau créneau parmi les disponibilités proposées." +
+        SIGNATURE,
+    });
+    return null;
+  },
+});
