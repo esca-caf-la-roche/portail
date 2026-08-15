@@ -180,6 +180,19 @@ Ces scénarios sont manuels tant qu'aucune suite navigateur n'est installée :
    serveur. Cliquer aussi sur un email individuel et vérifier le même compte
    Gmail avec l'adresse en destinataire principal.
 
+### Scénarios ciblés — Licences élèves en cours
+
+1. ouvrir `/licences-cours` un lundi et vérifier l'ordre : hors tolérance de
+   septembre en premier, puis lundi, mardi, etc., puis cours et élèves ;
+2. cliquer sur l'action d'un élève et vérifier que son adresse unique est copiée
+   dans le presse-papiers, sans ouverture de Gmail ;
+3. vérifier que l'action affiche brièvement « Adresse copiée » et qu'un refus
+   d'accès au presse-papiers produit un message d'erreur ;
+4. sélectionner plusieurs élèves, dont deux partageant la même adresse : le
+   résultat collectif doit contenir uniquement les adresses uniques, séparées
+   par une virgule ;
+5. vérifier qu'aucune fenêtre Google ou Gmail ne s'ouvre depuis cette page.
+
 ### Scénarios ciblés — Remboursements élèves
 
 1. attribuer `remboursements_eleves` à un compte staff et vérifier la tuile, la

@@ -365,6 +365,256 @@ a.btn-primary {
   gap: 1.5rem;
 }
 
+/* Licences élèves en cours : niveaux opérationnels jour → cours → élève. */
+.licences-cours-page {
+  padding: 1.5rem;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.licences-cours-total {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin: 1rem 0;
+  padding: 0.55rem 1rem;
+  background: var(--info);
+  border: var(--border-width) solid var(--border-color);
+  box-shadow: 4px 4px 0 var(--border-color);
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.licences-cours-total span:first-child {
+  font-size: 1.65rem;
+  line-height: 1;
+}
+
+.licences-cours-relance {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.9rem;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+  background: var(--warning);
+  border: var(--border-width) solid var(--border-color);
+  box-shadow: var(--shadow);
+}
+
+.licences-cours-selection-totale,
+.licences-cours-selection-groupe {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-weight: 800;
+}
+
+.licences-cours-selection-groupe {
+  padding: 0.45rem 0.6rem;
+  border: 2px solid var(--border-color);
+  background: var(--card);
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.licences-cours-relance-actions,
+.licences-cours-eleve-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.licences-cours-relance-actions > span {
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.licences-cours-copie-statut {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.licences-cours-relance .btn-primary,
+.licences-cours-eleve .btn-secondary {
+  width: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.licences-cours-jours {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.licences-cours-jour {
+  border: var(--border-width) solid var(--border-color);
+  box-shadow: var(--shadow);
+  background: var(--card);
+}
+
+.licences-cours-jour-entete,
+.licences-cours-groupe-entete,
+.licences-cours-eleve-entete {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.licences-cours-jour-entete {
+  padding: 0.85rem 1rem;
+  color: #fff;
+  background: var(--foreground);
+}
+
+.licences-cours-jour-entete h2,
+.licences-cours-groupe-entete h3 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.licences-cours-jour-entete .licences-cours-selection-groupe {
+  color: var(--foreground);
+}
+
+.licences-cours-niveau {
+  display: block;
+  margin-bottom: 0.1rem;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.licences-cours-groupes {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+  background: #ffeaa0;
+}
+
+.licences-cours-groupe {
+  border: var(--border-width) solid var(--border-color);
+  background: var(--card);
+}
+
+.licences-cours-groupe-entete {
+  padding: 0.75rem;
+  border-bottom: var(--border-width) solid var(--border-color);
+  background: var(--lime);
+}
+
+.licences-cours-effectif {
+  display: inline-block;
+  margin-top: 0.25rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.licences-cours-eleves {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  margin: 0;
+  list-style: none;
+}
+
+.licences-cours-eleve {
+  padding: 0.85rem;
+  border: 2px solid var(--border-color);
+  background: #fff;
+}
+
+.licences-cours-eleve-nom {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 800;
+}
+
+.licences-cours-raison {
+  padding: 0.2rem 0.45rem;
+  border: 2px solid var(--border-color);
+  background: var(--danger);
+  color: var(--foreground);
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.licences-cours-horaire {
+  margin: 0.45rem 0 0;
+  color: #444;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.licences-cours-eleve-actions {
+  margin-top: 0.75rem;
+}
+
+.licences-cours-eleve-actions > span {
+  color: #555;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.licences-cours-email-source {
+  color: #555;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.licences-cours-candidats {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 2px dashed var(--border-color);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.licences-cours-candidats ul {
+  margin: 0.3rem 0 0;
+  padding-left: 1.2rem;
+  font-weight: 400;
+}
+
+.licences-cours-candidats li {
+  padding: 0.15rem 0;
+}
+
+.licences-cours-candidats li span {
+  color: #555;
+  font-size: 0.8rem;
+}
+
+@media (max-width: 680px) {
+  .licences-cours-page {
+    padding: 1rem;
+  }
+
+  .licences-cours-jour-entete,
+  .licences-cours-groupe-entete,
+  .licences-cours-eleve-entete {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .licences-cours-selection-groupe {
+    white-space: normal;
+  }
+
+  .licences-cours-relance .btn-primary {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
 .header-user-identity {
   display: flex;
   align-items: center;

@@ -160,6 +160,11 @@ avec le compte `coursescalade@caflarochebonneville.fr`. Le brouillon de groupe
 place les destinataires en CCI. Aucun email n'est envoyé par Convex depuis cette
 tuile.
 
+La page `/licences-cours` n'ouvre aucun service de messagerie. Le staff peut
+copier l'adresse d'un élève ou les adresses dédupliquées d'une sélection dans le
+presse-papiers, puis les coller dans l'outil de son choix. Aucun contenu de mail
+n'est généré et aucun email n'est envoyé par Convex depuis cette page.
+
 `convex/crons.ts` est volontairement vide. Un cron ne doit être réintroduit que
 si une donnée doit rester fraîche sans présence utilisateur, à cadence justifiée
 et avec le commentaire requis `// CRON-OK: <raison>`.
