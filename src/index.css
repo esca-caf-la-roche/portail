@@ -479,6 +479,37 @@ a.btn-primary {
   font-size: 1.2rem;
 }
 
+.licences-cours-titre-repliable {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.licences-cours-bouton-repli {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  color: inherit;
+  border: 2px solid currentColor;
+  background: transparent;
+  cursor: pointer;
+}
+
+.licences-cours-bouton-repli:hover,
+.licences-cours-bouton-repli:focus-visible {
+  color: var(--foreground);
+  background: #fff;
+}
+
+.licences-cours-groupe-entete .licences-cours-bouton-repli:hover,
+.licences-cours-groupe-entete .licences-cours-bouton-repli:focus-visible {
+  background: var(--card);
+}
+
 .licences-cours-jour-entete .licences-cours-selection-groupe {
   color: var(--foreground);
 }

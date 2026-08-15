@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { Link } from "react-router-dom";
 import { useAction, useQuery } from "convex/react";
-import { ArrowLeft, Copy } from "lucide-react";
+import { ArrowLeft, ChevronDown, ChevronRight, Copy } from "lucide-react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { useMaintenantJourParis } from "../abonnements/lib/useMaintenantJourParis";
@@ -123,6 +123,81 @@ function CheckboxGroupe({
   );
 }
 
+function CoursRepliable({
+  cours,
+  cle,
+  replie,
+  onBasculerRepli,
+  selection,
+  onSelectionChange,
+  copie,
+  onCopierEmails,
+}: {
+  cours: GroupeCours;
+  cle: string;
+  replie: boolean;
+  onBasculerRepli: (cle: string) => void;
+  selection: Set<Id<"abo_eleves_en_cours">>;
+  onSelectionChange: (eleves: EleveLicence[]) => void;
+  copie: { id: string; statut: "ok" | "erreur" } | null;
+  onCopierEmails: (id: string, emails: string[]) => Promise<void>;
+}) {
+  return (
+    <section className="licences-cours-groupe">
+      <header className="licences-cours-groupe-entete">
+        <div className="licences-cours-titre-repliable">
+          <button type="button" className="licences-cours-bouton-repli" onClick={() => onBasculerRepli(cle)} aria-expanded={!replie} aria-controls={`${cle}-contenu`}>
+            {replie ? <ChevronRight size={20} aria-hidden="true" /> : <ChevronDown size={20} aria-hidden="true" />}
+            <span className="sr-only">{replie ? "Déplier" : "Replier"} le cours {cours.libelle}</span>
+          </button>
+          <div>
+            <span className="licences-cours-niveau">Cours</span>
+            <h3>{cours.libelle}</h3>
+            <span className="licences-cours-effectif">{cours.eleves.length} élève{cours.eleves.length > 1 ? "s" : ""}</span>
+            {cours.horaire && <span className="licences-cours-horaire">{cours.horaire}</span>}
+          </div>
+        </div>
+        <label className="licences-cours-selection-groupe">
+          <CheckboxGroupe eleves={cours.eleves} selection={selection} onChange={onSelectionChange} label={`Sélectionner les élèves joignables du cours ${cours.libelle}`} />
+          Tous les joignables du cours
+        </label>
+      </header>
+
+      {!replie && <ul className="licences-cours-eleves" id={`${cle}-contenu`}>
+        {cours.eleves.map((e) => (
+          <li key={e.eleve_id} className="licences-cours-eleve">
+            <div className="licences-cours-eleve-entete">
+              <div className="licences-cours-eleve-nom">
+                <input type="checkbox" checked={selection.has(e.eleve_id)} disabled={!normaliserAdresseEmailUnique(e.email)} onChange={() => onSelectionChange([e])} aria-label={`Sélectionner ${`${e.prenom ?? ""} ${e.nom ?? ""}`.trim() || "cet élève"}`} />
+                <span>{`${e.prenom ?? ""} ${e.nom ?? ""}`.trim() || "—"}</span>
+              </div>
+              <span className="licences-cours-raison">{RAISON_LABEL[e.raison] ?? e.raison}</span>
+            </div>
+            {e.horaire && <p className="licences-cours-horaire">{e.horaire}</p>}
+            <div className="licences-cours-eleve-actions">
+              {normaliserAdresseEmailUnique(e.email) ? <>
+                <button type="button" className="btn btn-secondary" onClick={() => void onCopierEmails(e.eleve_id, [normaliserAdresseEmailUnique(e.email)!])}>
+                  <Copy size={16} aria-hidden="true" />
+                  {copie?.id === e.eleve_id && copie.statut === "ok" ? "Adresse copiée" : "Copier l'adresse"}
+                </button>
+                {copie?.id === e.eleve_id && copie.statut === "erreur" && <span className="error-message" role="alert">Copie impossible</span>}
+                <span className="licences-cours-email-source">{e.emailSource === "gestion" ? "Contact du dossier" : "Contact élève"}</span>
+              </> : <span className="licences-cours-email-source">Email non renseigné</span>}
+            </div>
+            {e.candidats.length > 0 && <div className="licences-cours-candidats">
+              <div>Correspondances possibles dans l'annuaire des licences :</div>
+              <ul>{e.candidats.map((c) => {
+                const cn = `${c.prenom ?? ""} ${c.nom ?? ""}`.trim() || "—";
+                return <li key={c.licence}>{cn} — <code>{c.licence}</code> <span>{Math.round(c.score * 100)}%</span></li>;
+              })}</ul>
+            </div>}
+          </li>
+        ))}
+      </ul>}
+    </section>
+  );
+}
+
 export default function LicencesEnCours() {
   const maintenantJour = useMaintenantJourParis();
   const data = useQuery(api.abo.licencesEnCours.getElevesLicenceInvalide, { maintenantJour });
@@ -131,6 +206,8 @@ export default function LicencesEnCours() {
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const [selection, setSelection] = useState<Set<Id<"abo_eleves_en_cours">>>(new Set());
   const [copie, setCopie] = useState<{ id: string; statut: "ok" | "erreur" } | null>(null);
+  const [joursReplis, setJoursReplis] = useState<Set<string>>(new Set());
+  const [coursReplis, setCoursReplis] = useState<Set<string>>(new Set());
   const lance = useRef(false);
 
   useEffect(() => {
@@ -182,6 +259,15 @@ export default function LicencesEnCours() {
       setCopie({ id, statut: "erreur" });
     }
     window.setTimeout(() => setCopie(null), 1800);
+  };
+
+  const basculerRepli = (cle: string, setReplis: Dispatch<SetStateAction<Set<string>>>) => {
+    setReplis((precedents) => {
+      const suivants = new Set(precedents);
+      if (suivants.has(cle)) suivants.delete(cle);
+      else suivants.add(cle);
+      return suivants;
+    });
   };
 
   return (
@@ -246,12 +332,27 @@ export default function LicencesEnCours() {
             <p style={{ color: "#6b7280" }}>Tous les élèves en cours ont une licence valide.</p>
           ) : (
             <div className="licences-cours-jours">
-              {groupes.map((jour) => (
-                <section className="licences-cours-jour" key={`${jour.priorite}-${jour.libelle}`}>
+              {groupes.map((jour) => {
+                const cleJour = `${jour.priorite}-${jour.libelle}`;
+                const jourReplie = joursReplis.has(cleJour);
+                return (
+                <section className="licences-cours-jour" key={cleJour}>
                   <header className="licences-cours-jour-entete">
-                    <div>
+                    <div className="licences-cours-titre-repliable">
+                      <button
+                        type="button"
+                        className="licences-cours-bouton-repli"
+                        onClick={() => basculerRepli(cleJour, setJoursReplis)}
+                        aria-expanded={!jourReplie}
+                        aria-controls={`${cleJour}-contenu`}
+                      >
+                        {jourReplie ? <ChevronRight size={20} aria-hidden="true" /> : <ChevronDown size={20} aria-hidden="true" />}
+                        <span className="sr-only">{jourReplie ? "Déplier" : "Replier"} le jour {jour.libelle}</span>
+                      </button>
+                      <div>
                       <span className="licences-cours-niveau">{jour.priorite}</span>
                       <h2>{jour.libelle}</h2>
+                      </div>
                     </div>
                     <label className="licences-cours-selection-groupe">
                       <CheckboxGroupe
@@ -264,102 +365,24 @@ export default function LicencesEnCours() {
                     </label>
                   </header>
 
-                  <div className="licences-cours-groupes">
+                  {!jourReplie && <div className="licences-cours-groupes" id={`${cleJour}-contenu`}>
                     {jour.cours.map((cours) => (
-                      <section className="licences-cours-groupe" key={`${cours.libelle}-${cours.horaire ?? ""}`}>
-                        <header className="licences-cours-groupe-entete">
-                          <div>
-                            <span className="licences-cours-niveau">Cours</span>
-                            <h3>{cours.libelle}</h3>
-                            <span className="licences-cours-effectif">
-                              {cours.eleves.length} élève{cours.eleves.length > 1 ? "s" : ""}
-                            </span>
-                            {cours.horaire && <span className="licences-cours-horaire">{cours.horaire}</span>}
-                          </div>
-                          <label className="licences-cours-selection-groupe">
-                            <CheckboxGroupe
-                              eleves={cours.eleves}
-                              selection={selection}
-                              onChange={basculerSelection}
-                              label={`Sélectionner les élèves joignables du cours ${cours.libelle}`}
-                            />
-                            Tous les joignables du cours
-                          </label>
-                        </header>
-
-                        <ul className="licences-cours-eleves">
-                          {cours.eleves.map((e) => (
-                            <li key={e.eleve_id} className="licences-cours-eleve">
-                              <div className="licences-cours-eleve-entete">
-                                <div className="licences-cours-eleve-nom">
-                      <input
-                        type="checkbox"
-                        checked={selection.has(e.eleve_id)}
-                        disabled={!normaliserAdresseEmailUnique(e.email)}
-                        onChange={() => basculerSelection([e])}
-                        aria-label={`Sélectionner ${`${e.prenom ?? ""} ${e.nom ?? ""}`.trim() || "cet élève"}`}
+                      <CoursRepliable
+                        key={`${cours.libelle}-${cours.horaire ?? ""}`}
+                        cours={cours}
+                        cle={`${cleJour}-${cours.libelle}-${cours.horaire ?? ""}`}
+                        replie={coursReplis.has(`${cleJour}-${cours.libelle}-${cours.horaire ?? ""}`)}
+                        onBasculerRepli={(cle) => basculerRepli(cle, setCoursReplis)}
+                        selection={selection}
+                        onSelectionChange={basculerSelection}
+                        copie={copie}
+                        onCopierEmails={copierEmails}
                       />
-                      <span>{`${e.prenom ?? ""} ${e.nom ?? ""}`.trim() || "—"}</span>
-                    </div>
-                                <span className="licences-cours-raison">
-                      {RAISON_LABEL[e.raison] ?? e.raison}
-                    </span>
-                  </div>
-                              {e.horaire && <p className="licences-cours-horaire">{e.horaire}</p>}
-                              <div className="licences-cours-eleve-actions">
-                    {normaliserAdresseEmailUnique(e.email) ? (
-                      <>
-                        <button
-                          type="button"
-                          className="btn btn-secondary"
-                          onClick={() => void copierEmails(
-                            e.eleve_id,
-                            [normaliserAdresseEmailUnique(e.email)!],
-                          )}
-                        >
-                          <Copy size={16} aria-hidden="true" />
-                          {copie?.id === e.eleve_id && copie.statut === "ok" ? "Adresse copiée" : "Copier l'adresse"}
-                        </button>
-                        {copie?.id === e.eleve_id && copie.statut === "erreur" && (
-                          <span className="error-message" role="alert">Copie impossible</span>
-                        )}
-                        <span className="licences-cours-email-source">
-                          {e.emailSource === "gestion" ? "Contact du dossier" : "Contact élève"}
-                        </span>
-                      </>
-                    ) : (
-                      <span className="licences-cours-email-source">Email non renseigné</span>
-                    )}
-                  </div>
-
-                  {e.candidats.length > 0 && (
-                                <div className="licences-cours-candidats">
-                      <div>
-                        Correspondances possibles dans l'annuaire des licences :
-                      </div>
-                      <ul>
-                        {e.candidats.map((c) => {
-                          const cn = `${c.prenom ?? ""} ${c.nom ?? ""}`.trim() || "—";
-                          return (
-                            <li key={c.licence}>
-                              {cn} — <code>{c.licence}</code>{" "}
-                                <span>
-                                {Math.round(c.score * 100)}%
-                              </span>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                                </div>
-                  )}
-                            </li>
-                          ))}
-                        </ul>
-                      </section>
                     ))}
-                  </div>
+                  </div>}
                 </section>
-              ))}
+                );
+              })}
             </div>
           )}
         </>
