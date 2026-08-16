@@ -8,6 +8,7 @@ import Dashboard from "./pages/Dashboard";
 import Configurations from "./pages/Configurations";
 import LicencesEnCours from "./pages/LicencesEnCours";
 import ContactsCours from "./pages/ContactsCours";
+import ContactsCoursCopie from "./pages/ContactsCoursCopie";
 import RemboursementsEleves from "./pages/RemboursementsEleves";
 import Compteur from "./abonnements/Compteur";
 
@@ -104,6 +105,7 @@ function App() {
               <Route path="/configurations" element={<RequireAccess admin><Configurations /></RequireAccess>} />
               <Route path="/licences-cours" element={<RequireAccess tile="licences_cours"><LicencesEnCours /></RequireAccess>} />
               <Route path="/contacts-cours" element={<RequireAccess tile="contacts_cours"><ContactsCours /></RequireAccess>} />
+              <Route path="/contacts-cours/copier" element={<RequireAccess tile="contacts_cours"><ContactsCoursCopie /></RequireAccess>} />
               <Route path="/remboursements-eleves" element={<RequireAccess tile="remboursements_eleves"><RemboursementsEleves /></RequireAccess>} />
 
               {/* Routes Paiements */}

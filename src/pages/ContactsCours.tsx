@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAction, useQuery } from "convex/react";
 import {
   ArrowLeft,
@@ -15,6 +15,7 @@ import {
   calculerOptionsContactsCours,
   creerLienGmail,
   creerLienWhatsApp,
+  doitCopierEmailsParLots,
   emailsUniques,
   estAppareilMobileWhatsApp,
   filtresContactsCoursEgaux,
@@ -52,6 +53,7 @@ function formatDate(value: string | number | null): string | null {
 }
 
 export default function ContactsCours() {
+  const navigate = useNavigate();
   const data = useQuery(api.contactsCours.listContacts);
   const synchroniser = useAction(api.abo.sync.syncPourContactsCours);
   const syncLancee = useRef(false);
@@ -64,6 +66,7 @@ export default function ContactsCours() {
     encadrant: "",
   });
   const [copie, setCopie] = useState<{ id: string; statut: "ok" | "erreur" } | null>(null);
+  const [copieGroupe, setCopieGroupe] = useState<"ok" | "erreur" | null>(null);
 
   useEffect(() => {
     if (syncLancee.current) return;
@@ -157,6 +160,23 @@ export default function ContactsCours() {
       "_blank",
       "noopener,noreferrer",
     );
+  };
+
+  const copierEmailsFiltres = async () => {
+    if (groupe.emails.length === 0) return;
+
+    if (doitCopierEmailsParLots(groupe.emails.length)) {
+      navigate("/contacts-cours/copier", { state: { filtres } });
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(groupe.emails.join(", "));
+      setCopieGroupe("ok");
+    } catch {
+      setCopieGroupe("erreur");
+    }
+    window.setTimeout(() => setCopieGroupe(null), 1800);
   };
 
   const dateFraicheur = formatDate(data?.lastSyncAt ?? null);
@@ -264,15 +284,44 @@ export default function ContactsCours() {
             {groupe.sansEmail} inscription{groupe.sansEmail > 1 ? "s" : ""} sans email
           </p>
         </div>
-        <button
-          type="button"
-          className="contacts-cours-action contacts-cours-action--mail"
-          disabled={groupe.emails.length === 0}
-          onClick={ouvrirBrouillon}
-        >
-          <Mail size={18} aria-hidden="true" />
-          Ouvrir le brouillon
-        </button>
+        <div className="contacts-cours-group-actions">
+          <button
+            type="button"
+            className="contacts-cours-action contacts-cours-action--copy"
+            disabled={groupe.emails.length === 0}
+            onClick={() => void copierEmailsFiltres()}
+            aria-describedby="contacts-groupe-copie-aide"
+          >
+            {copieGroupe === "ok"
+              ? <Check size={18} aria-hidden="true" />
+              : <Clipboard size={18} aria-hidden="true" />}
+            {copieGroupe === "ok"
+              ? "Emails copiés"
+              : copieGroupe === "erreur"
+                ? "Échec de la copie"
+                : doitCopierEmailsParLots(groupe.emails.length)
+                  ? "Préparer les lots"
+                  : "Copier les emails"}
+          </button>
+          <span id="contacts-groupe-copie-aide" className="sr-only" aria-live="polite">
+            {doitCopierEmailsParLots(groupe.emails.length)
+              ? "La sélection sera répartie en lots de 99 adresses."
+              : copieGroupe === "ok"
+                ? "Les adresses ont été copiées dans le presse-papiers."
+                : copieGroupe === "erreur"
+                  ? "La copie a échoué. Vérifiez l’autorisation du presse-papiers."
+                  : "Les adresses seront copiées, séparées par des virgules."}
+          </span>
+          <button
+            type="button"
+            className="contacts-cours-action contacts-cours-action--mail"
+            disabled={groupe.emails.length === 0}
+            onClick={ouvrirBrouillon}
+          >
+            <Mail size={18} aria-hidden="true" />
+            Ouvrir le brouillon
+          </button>
+        </div>
       </section>
 
       {data === undefined ? (

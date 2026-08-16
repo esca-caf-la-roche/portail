@@ -86,6 +86,37 @@ export function emailsUniques(values: Array<string | null | undefined>): string[
   return [...uniques.values()];
 }
 
+export const TAILLE_LOT_EMAILS = 99;
+export const SEUIL_COPIE_DIRECTE_EMAILS = 100;
+
+export function doitCopierEmailsParLots(nombreEmails: number): boolean {
+  return nombreEmails > SEUIL_COPIE_DIRECTE_EMAILS;
+}
+
+export function decouperEmailsEnLots(emails: string[]): string[][] {
+  const lots: string[][] = [];
+
+  for (let index = 0; index < emails.length; index += TAILLE_LOT_EMAILS) {
+    lots.push(emails.slice(index, index + TAILLE_LOT_EMAILS));
+  }
+
+  return lots;
+}
+
+export function creerEmpreinteEmails(emails: string[]): string {
+  const contenu = emails
+    .map((email) => email.toLocaleLowerCase("fr"))
+    .join("\n");
+  let hash = 2166136261;
+
+  for (let index = 0; index < contenu.length; index += 1) {
+    hash ^= contenu.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return `v1-${emails.length}-${(hash >>> 0).toString(36)}`;
+}
+
 export function normaliserAdresseEmailUnique(
   value: string | null | undefined,
 ): string | null {

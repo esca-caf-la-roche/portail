@@ -179,6 +179,23 @@ Ces scénarios sont manuels tant qu'aucune suite navigateur n'est installée :
    `coursescalade@caflarochebonneville.fr`, sans appel d'envoi email côté
    serveur. Cliquer aussi sur un email individuel et vérifier le même compte
    Gmail avec l'adresse en destinataire principal.
+9. avec 1 à 100 adresses valides uniques, cliquer sur « Copier les emails » et
+   vérifier une copie directe, séparée par des virgules ; avec 101 adresses,
+   vérifier la navigation vers `/contacts-cours/copier` et les lots de 99 ;
+10. sur la page de copie, vérifier qu'une adresse est affichée par ligne, que le
+    bloc n'est grisé qu'après une copie réussie, qu'un échec du presse-papiers ne
+    le marque pas comme copié, puis recharger et revenir dans le même onglet :
+    la progression doit être conservée ; modifier la sélection doit la remettre
+    à zéro ;
+11. ouvrir directement `/contacts-cours/copier` sans état de navigation : la
+    page doit annoncer une sélection expirée. Vérifier aussi qu'aucun email
+    n'apparaît dans l'URL, l'historique ou `sessionStorage`, et que cette page ne
+    relance pas la synchronisation externe.
+
+Le test Vitest `src/utils/contactsCours.test.ts` couvre le découpage pur aux
+limites 0, 99, 100, 101, 198 et 199 emails, le branchement exact entre copie
+directe (100) et page de lots (101), ainsi que l'invalidation de la progression
+si l'ordre des destinataires change.
 
 ### Scénarios ciblés — Licences élèves en cours
 

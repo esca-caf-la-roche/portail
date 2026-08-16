@@ -52,7 +52,7 @@ tâches internes. Il n'existe pas de serveur HTTP applicatif séparé.
 | Ensemble | Routes principales | Protection |
 |---|---|---|
 | Public | `/login`, `/abonnements`, `/compteur` | Selon le parcours |
-| Staff | `/`, `/compta`, `/paiements`, `/budget`, `/licences-cours`, `/contacts-cours`, `/remboursements-eleves` | `Layout` puis `RequireAccess` |
+| Staff | `/`, `/compta`, `/paiements`, `/budget`, `/licences-cours`, `/contacts-cours`, `/contacts-cours/copier`, `/remboursements-eleves` | `Layout` puis `RequireAccess` |
 | Administration | `/configurations`, `/gestion-abonnements` | Rôle admin ou tuile dédiée |
 
 Le routage par hash permet de servir toutes les routes depuis GitHub Pages sans
@@ -159,6 +159,14 @@ iPadOS tactile) ou de WhatsApp Web sur ordinateur, et composition dans Gmail
 avec le compte `coursescalade@caflarochebonneville.fr`. Le brouillon de groupe
 place les destinataires en CCI. Aucun email n'est envoyé par Convex depuis cette
 tuile.
+
+La copie d'un groupe de 1 à 100 emails est directe. Au-delà de 100 adresses,
+`/contacts-cours/copier` reconstitue la sélection depuis les filtres transmis
+dans l'état de navigation, sans adresse dans l'URL ni dans l'historique. Cette
+page ne relance aucune synchronisation et répartit les emails en lots de 99.
+Elle conserve dans `sessionStorage` uniquement une empreinte de la sélection et
+les numéros des lots copiés ; une sélection différente réinitialise la
+progression et aucune adresse email n'est stockée.
 
 La page `/licences-cours` n'ouvre aucun service de messagerie. Le staff peut
 copier l'adresse d'un élève ou les adresses dédupliquées d'une sélection dans le

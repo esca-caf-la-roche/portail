@@ -1845,6 +1845,18 @@ a.btn-primary {
   background: var(--primary);
 }
 
+.contacts-cours-action--copy {
+  background: var(--info);
+}
+
+.contacts-cours-group-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
 .contacts-cours-action:hover:not(:disabled),
 .contacts-cours-icon-button:hover:not(:disabled):not(.is-disabled) {
   transform: translate(2px, 2px);
@@ -2000,6 +2012,141 @@ a.btn-primary {
   background: var(--warning);
 }
 
+.contacts-cours-copy-page {
+  max-width: 960px;
+}
+
+.contacts-cours-back-button {
+  min-height: 44px;
+  padding: 0.5rem 0.25rem;
+  border: 0;
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+  cursor: pointer;
+}
+
+.contacts-cours-back-button:focus-visible {
+  outline: 3px solid var(--info);
+  outline-offset: 3px;
+}
+
+.contacts-cours-copy-heading {
+  margin-top: 1rem;
+}
+
+.contacts-cours-copy-heading h1 {
+  font-size: clamp(2rem, 5vw, 4rem);
+  line-height: 0.95;
+}
+
+.contacts-cours-copy-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  border: var(--border-width) solid var(--border-color);
+  box-shadow: var(--shadow);
+  background: var(--warning);
+}
+
+.contacts-cours-copy-summary strong {
+  text-transform: uppercase;
+}
+
+.contacts-cours-copy-summary span {
+  font-weight: 600;
+}
+
+.contacts-cours-copy-list {
+  display: grid;
+  gap: 1.5rem;
+  padding: 0;
+  list-style: none;
+}
+
+.contacts-cours-copy-lot {
+  border: var(--border-width) solid var(--border-color);
+  box-shadow: var(--shadow);
+  background: var(--card);
+}
+
+.contacts-cours-copy-lot.is-copied {
+  filter: grayscale(1);
+  background: color-mix(in srgb, var(--foreground) 12%, var(--card));
+}
+
+.contacts-cours-copy-lot-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.8rem 1rem;
+  border-bottom: var(--border-width) solid var(--border-color);
+  background: var(--info);
+}
+
+.contacts-cours-copy-lot.is-copied .contacts-cours-copy-lot-header {
+  background: color-mix(in srgb, var(--foreground) 25%, var(--card));
+}
+
+.contacts-cours-copy-lot-header > div {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+
+.contacts-cours-copy-lot-header h2 {
+  font-size: 1.2rem;
+  text-transform: uppercase;
+}
+
+.contacts-cours-copy-lot-header span {
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.contacts-cours-copy-lot pre {
+  max-height: 24rem;
+  overflow: auto;
+  padding: 1rem;
+  border-bottom: 2px solid var(--border-color);
+  background: var(--foreground);
+  color: var(--card);
+  font: 700 0.9rem/1.55 ui-monospace, SFMono-Regular, Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.contacts-cours-copy-lot.is-copied pre {
+  background: color-mix(in srgb, var(--foreground) 75%, var(--card));
+}
+
+.contacts-cours-copy-lot pre:focus-visible {
+  outline: 3px solid var(--warning);
+  outline-offset: -5px;
+}
+
+.contacts-cours-copy-status {
+  min-height: 2.5rem;
+  padding: 0.55rem 1rem;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.contacts-cours-copy-session-note {
+  margin: -0.5rem 0 1.5rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.contacts-cours-copy-lot.is-copied .contacts-cours-copy-status {
+  text-transform: uppercase;
+}
+
 @media (max-width: 1050px) {
   .contacts-cours-filter-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2027,6 +2174,21 @@ a.btn-primary {
 
   .contacts-cours-action {
     width: 100%;
+  }
+
+  .contacts-cours-group-actions,
+  .contacts-cours-copy-summary,
+  .contacts-cours-copy-lot-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .contacts-cours-group-actions {
+    width: 100%;
+  }
+
+  .contacts-cours-copy-lot-header > div {
+    justify-content: space-between;
   }
 
   .contacts-cours-card {
