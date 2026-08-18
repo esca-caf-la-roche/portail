@@ -29,8 +29,35 @@ import type { Doc, Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
 import { requireAboIdentity, requireAboAdmin } from "./auth";
 import { parisWallToUtcMs } from "./config";
+import { getAboStaffActifsIds, getAboStaffActifsParId } from "../users";
 
 const SLOT_MS = 20 * 60 * 1000; // slot de base = 20 min
+const MAX_CRENEAUX_STAFF = 200;
+
+const creneauStaffValidator = v.object({
+  creneauId: v.id("abo_test_creneaux"),
+  date_jour: v.string(),
+  heure_debut: v.string(),
+  heure_fin: v.string(),
+  participants: v.array(v.object({
+    nomAffiche: v.string(),
+    estMoi: v.boolean(),
+  })),
+  monCreneauId: v.union(v.id("abo_test_creneaux"), v.null()),
+});
+
+async function exigerNomStaffConfigure(
+  ctx: QueryCtx | MutationCtx,
+  userId: Id<"users">,
+): Promise<void> {
+  const staffActifs = await getAboStaffActifsParId(ctx, [userId]);
+  if (!staffActifs.get(userId)?.name?.trim()) {
+    throw new ConvexError({
+      code: "ABO_TEST_NOM_STAFF_REQUIS",
+      message: "Complétez votre nom dans Configurations avant de proposer ou rejoindre un créneau.",
+    });
+  }
+}
 
 function estReservationActive(r: Doc<"abo_test_reservations">): boolean {
   return r.statut === "active";
@@ -47,7 +74,14 @@ interface Tranche {
 }
 
 async function calculerTranches(ctx: QueryCtx | MutationCtx): Promise<Tranche[]> {
-  const creneaux = await ctx.db.query("abo_test_creneaux").collect();
+  const creneauxLus = await ctx.db.query("abo_test_creneaux").collect();
+  const staffActifs = await getAboStaffActifsIds(
+    ctx,
+    creneauxLus.map((creneau) => creneau.admin_id),
+  );
+  const creneaux = creneauxLus.filter((creneau) =>
+    staffActifs.has(creneau.admin_id),
+  );
 
   // 1. Capacité par slot de 20 min : Map<instant utc ms, Set<adminId>>.
   const parSlot = new Map<number, Set<string>>();
@@ -478,6 +512,112 @@ export const getMesCreneaux = authenticatedQuery({
   },
 });
 
+// Créneaux à venir de toute l'équipe, regroupés par plage exacte.
+// La borne est fournie par le front afin que la query reste stable et n'utilise
+// pas Date.now(). Les identifiants et emails des autres membres ne sont jamais
+// exposés : seul leur nom d'affichage est utile à la coordination du staff.
+export const getCreneauxStaff = authenticatedQuery({
+  args: { dateDebut: v.string(), instantReference: v.string() },
+  returns: v.array(creneauStaffValidator),
+  handler: async (ctx, args) => {
+    const id = await requireAboAdmin(ctx);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(args.dateDebut)) {
+      throw new ConvexError({
+        code: "22023",
+        message: "Date de début requise (AAAA-MM-JJ).",
+      });
+    }
+    const instantReferenceMs = Date.parse(args.instantReference);
+    if (
+      !Number.isFinite(instantReferenceMs) ||
+      new Date(instantReferenceMs).toISOString() !== args.instantReference
+    ) {
+      throw new ConvexError({
+        code: "22023",
+        message: "Instant de référence ISO invalide.",
+      });
+    }
+
+    const creneauxLus = await ctx.db
+      .query("abo_test_creneaux")
+      .withIndex("by_date", (q) => q.gte("date_jour", args.dateDebut))
+      .take(MAX_CRENEAUX_STAFF + 1);
+    if (creneauxLus.length > MAX_CRENEAUX_STAFF) {
+      throw new ConvexError({
+        code: "ABO_TEST_TROP_DE_CRENEAUX",
+        message: "Trop de créneaux futurs existent pour afficher une vue complète.",
+      });
+    }
+    const staffActifs = await getAboStaffActifsParId(
+      ctx,
+      creneauxLus.map((creneau) => creneau.admin_id),
+    );
+    const creneaux = creneauxLus.filter((creneau) => {
+      const debut = parisWallToUtcMs(
+        `${creneau.date_jour}T${creneau.heure_debut}`,
+      );
+      return (
+        staffActifs.has(creneau.admin_id) &&
+        debut !== null &&
+        debut > instantReferenceMs
+      );
+    });
+
+    const adminIds = [...new Set(creneaux.map((creneau) => creneau.admin_id))];
+    const nomsParAdmin = new Map(
+      adminIds.map((adminId) => [
+        adminId,
+        staffActifs.get(adminId)?.name?.trim() || "Nom à compléter",
+      ]),
+    );
+
+    const groupes = new Map<string, Doc<"abo_test_creneaux">[]>();
+    for (const creneau of creneaux) {
+      const cle = `${creneau.date_jour}\u0000${creneau.heure_debut}\u0000${creneau.heure_fin}`;
+      const groupe = groupes.get(cle) ?? [];
+      groupe.push(creneau);
+      groupes.set(cle, groupe);
+    }
+
+    return [...groupes.values()]
+      .map((groupe) => {
+        const reference = groupe[0];
+        const parAdmin = new Map<Id<"users">, Doc<"abo_test_creneaux">>();
+        for (const creneau of groupe) {
+          if (!parAdmin.has(creneau.admin_id)) {
+            parAdmin.set(creneau.admin_id, creneau);
+          }
+        }
+        const monCreneau = parAdmin.get(id.userId);
+        const participants = [...parAdmin.keys()]
+          .map((adminId) => ({
+            nomAffiche: nomsParAdmin.get(adminId) ?? "Nom à compléter",
+            estMoi: adminId === id.userId,
+          }))
+          .sort((a, b) =>
+            a.nomAffiche.localeCompare(b.nomAffiche, "fr", {
+              sensitivity: "base",
+            }),
+          );
+
+        return {
+          creneauId: reference._id,
+          date_jour: reference.date_jour,
+          heure_debut: reference.heure_debut,
+          heure_fin: reference.heure_fin,
+          participants,
+          monCreneauId: monCreneau?._id ?? null,
+        };
+      })
+      .sort(
+        (a, b) =>
+          a.date_jour.localeCompare(b.date_jour) ||
+          a.heure_debut.localeCompare(b.heure_debut) ||
+          a.heure_fin.localeCompare(b.heure_fin),
+      );
+  },
+});
+
 // Date du jour (Europe/Paris) au format 'YYYY-MM-DD' pour interdire le passé.
 function todayParisISO(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Paris" }).format(
@@ -498,8 +638,10 @@ function hhmmEnMinutes(t: string): number | null {
 // ── Admin : créer un créneau (aligné 20 min, durée ≥ 40 min) ─────────
 export const creerTestCreneau = authenticatedMutation({
   args: { date: v.string(), debut: v.string(), fin: v.string() },
+  returns: v.id("abo_test_creneaux"),
   handler: async (ctx, args) => {
     const id = await requireAboAdmin(ctx);
+    await exigerNomStaffConfigure(ctx, id.userId);
 
     const err = (message: string) => {
       throw new ConvexError({ code: "22023", message });
@@ -531,11 +673,88 @@ export const creerTestCreneau = authenticatedMutation({
       err("Le début du créneau doit être dans le futur.");
     }
 
+    const creneauxDuJour = await ctx.db
+      .query("abo_test_creneaux")
+      .withIndex("by_date", (q) => q.eq("date_jour", args.date))
+      .take(MAX_CRENEAUX_STAFF + 1);
+    const existant = creneauxDuJour.find(
+      (creneau) =>
+        creneau.admin_id === id.userId &&
+        creneau.heure_debut === args.debut &&
+        creneau.heure_fin === args.fin,
+    );
+    if (existant) return existant._id;
+    if (creneauxDuJour.length >= MAX_CRENEAUX_STAFF) {
+      throw new ConvexError({
+        code: "ABO_TEST_TROP_DE_CRENEAUX",
+        message: "Trop de créneaux existent déjà pour cette journée.",
+      });
+    }
+
     return await ctx.db.insert("abo_test_creneaux", {
       admin_id: id.userId,
       date_jour: args.date,
       heure_debut: args.debut,
       heure_fin: args.fin,
+    });
+  },
+});
+
+// Rejoindre la plage exacte d'un autre membre du staff. La mutation est
+// idempotente : rejouer le clic renvoie le créneau existant de l'appelant.
+export const rejoindreTestCreneau = authenticatedMutation({
+  args: { creneauId: v.id("abo_test_creneaux") },
+  returns: v.id("abo_test_creneaux"),
+  handler: async (ctx, args) => {
+    const id = await requireAboAdmin(ctx);
+    await exigerNomStaffConfigure(ctx, id.userId);
+    const reference = await ctx.db.get(args.creneauId);
+    if (!reference) {
+      throw new ConvexError({ code: "P0002", message: "Créneau introuvable." });
+    }
+    const proprietairesActifs = await getAboStaffActifsIds(ctx, [
+      reference.admin_id,
+    ]);
+    if (!proprietairesActifs.has(reference.admin_id)) {
+      throw new ConvexError({
+        code: "ABO_TEST_STAFF_INACTIF",
+        message: "Ce créneau n'est plus proposé par un membre du staff Abonnements.",
+      });
+    }
+
+    const debutCreneau = parisWallToUtcMs(
+      `${reference.date_jour}T${reference.heure_debut}`,
+    );
+    if (debutCreneau == null || debutCreneau <= Date.now()) {
+      throw new ConvexError({
+        code: "P0016",
+        message: "Ce créneau est passé, vous ne pouvez plus le rejoindre.",
+      });
+    }
+
+    const creneauxDuJour = await ctx.db
+      .query("abo_test_creneaux")
+      .withIndex("by_date", (q) => q.eq("date_jour", reference.date_jour))
+      .take(MAX_CRENEAUX_STAFF + 1);
+    const existant = creneauxDuJour.find(
+      (creneau) =>
+        creneau.admin_id === id.userId &&
+        creneau.heure_debut === reference.heure_debut &&
+        creneau.heure_fin === reference.heure_fin,
+    );
+    if (existant) return existant._id;
+    if (creneauxDuJour.length >= MAX_CRENEAUX_STAFF) {
+      throw new ConvexError({
+        code: "ABO_TEST_TROP_DE_CRENEAUX",
+        message: "Trop de créneaux existent déjà pour cette journée.",
+      });
+    }
+
+    return await ctx.db.insert("abo_test_creneaux", {
+      admin_id: id.userId,
+      date_jour: reference.date_jour,
+      heure_debut: reference.heure_debut,
+      heure_fin: reference.heure_fin,
     });
   },
 });
@@ -563,7 +782,19 @@ export const supprimerTestCreneau = authenticatedMutation({
       });
     }
 
-    await ctx.db.delete(args.creneauId);
+    const creneauxDuCaller = await ctx.db
+      .query("abo_test_creneaux")
+      .withIndex("by_admin", (q) => q.eq("admin_id", id.userId))
+      .collect();
+    const doublonsExacts = creneauxDuCaller.filter(
+      (ligne) =>
+        ligne.date_jour === creneau.date_jour &&
+        ligne.heure_debut === creneau.heure_debut &&
+        ligne.heure_fin === creneau.heure_fin,
+    );
+    for (const doublon of doublonsExacts) {
+      await ctx.db.delete(doublon._id);
+    }
 
     // Capacités recalculées (sans ce créneau).
     const tranches = await calculerTranches(ctx);

@@ -5,8 +5,77 @@ import { authenticatedQuery, authenticatedMutation } from "./customFunctions";
 import { getUserSettings, requireAdmin, TILES } from "./access";
 import { champsModifies } from "./dbUtils";
 import { canoniserEmailUnique } from "./emailValidation";
+import { parisWallToUtcMs } from "./abo/config";
+import type { Doc, Id } from "./_generated/dataModel";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
 
 const MAX_USERS_FALLBACK_EMAIL = 2_000;
+
+export async function getAboStaffActifsIds(
+  ctx: QueryCtx | MutationCtx,
+  userIds: readonly Id<"users">[],
+): Promise<Set<Id<"users">>> {
+  const idsUniques = [...new Set(userIds)];
+  const resultats = await Promise.all(idsUniques.map(async (userId) => {
+    const settings = await ctx.db
+      .query("userSettings")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .first();
+    return settings?.allowedTiles.includes("abonnements") ? userId : null;
+  }));
+
+  return new Set(resultats.filter((userId) => userId !== null));
+}
+
+export async function getAboStaffActifsParId(
+  ctx: QueryCtx | MutationCtx,
+  userIds: readonly Id<"users">[],
+): Promise<Map<Id<"users">, Doc<"users">>> {
+  const idsActifs = await getAboStaffActifsIds(ctx, userIds);
+  const resultats = await Promise.all([...idsActifs].map(async (userId) => {
+    const user = await ctx.db.get(userId);
+    return user ? ([userId, user] as const) : null;
+  }));
+
+  return new Map(resultats.filter((resultat) => resultat !== null));
+}
+
+function tableauxStringEgaux(
+  gauche: readonly string[],
+  droite: readonly string[],
+): boolean {
+  const valeursGauche = new Set(gauche);
+  const valeursDroite = new Set(droite);
+  return (
+    valeursGauche.size === valeursDroite.size &&
+    [...valeursGauche].every((valeur) => valeursDroite.has(valeur))
+  );
+}
+
+async function exigerAucunCreneauAboFutur(
+  ctx: MutationCtx,
+  userId: Id<"users">,
+): Promise<void> {
+  // Lecture ciblée par propriétaire : aucun index composite admin/date
+  // n'existe, et la garde doit rester exacte avant une révocation d'accès.
+  const creneaux = await ctx.db
+    .query("abo_test_creneaux")
+    .withIndex("by_admin", (q) => q.eq("admin_id", userId))
+    .collect();
+  const maintenant = Date.now();
+  const aUnCreneauFutur = creneaux.some((creneau) => {
+    const debut = parisWallToUtcMs(
+      `${creneau.date_jour}T${creneau.heure_debut}`,
+    );
+    return debut !== null && debut > maintenant;
+  });
+  if (aUnCreneauFutur) {
+    throw new ConvexError({
+      code: "ABO_TEST_CRENEAU_FUTUR",
+      message: "Ce membre possède encore un créneau futur de test d'autonomie. Il doit d'abord le retirer.",
+    });
+  }
+}
 
 function emailCanoniqueSiValide(email: unknown): string | null {
   if (typeof email !== "string") return null;
@@ -222,6 +291,7 @@ export const removeUser = authenticatedMutation({
   args: { userId: v.id("users") },
   handler: async (ctx, args) => {
     await requireAdmin(ctx, ctx.userId);
+    await exigerAucunCreneauAboFutur(ctx, args.userId);
 
     const settings = await ctx.db
       .query("userSettings")
@@ -322,10 +392,23 @@ export const updateUserSettings = authenticatedMutation({
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
       .first();
 
-    await ctx.db.patch(args.userId, { name });
+    const retireTuileAbonnements =
+      settings?.allowedTiles.includes("abonnements") === true &&
+      !allowedTiles.includes("abonnements");
+    if (retireTuileAbonnements) {
+      await exigerAucunCreneauAboFutur(ctx, args.userId);
+    }
+
+    const user = await ctx.db.get(args.userId);
+    if (!user) {
+      throw new ConvexError("Utilisateur introuvable.");
+    }
+    if (champsModifies(user, { name })) {
+      await ctx.db.patch(args.userId, { name });
+    }
       
     if (settings) {
-      await ctx.db.patch(settings._id, {
+      const nouvellesSettings = {
         allowedTiles,
         role: args.role,
         canManageAboConfiguration,
@@ -333,7 +416,13 @@ export const updateUserSettings = authenticatedMutation({
         // par le nouveau droit : une ancienne autorisation ne peut pas survivre
         // à une révocation explicite.
         canResetAboSeason: false,
-      });
+      };
+      if (
+        !tableauxStringEgaux(settings.allowedTiles, allowedTiles) ||
+        champsModifies(settings, nouvellesSettings, ["allowedTiles"])
+      ) {
+        await ctx.db.patch(settings._id, nouvellesSettings);
+      }
     } else {
       await ctx.db.insert("userSettings", {
         userId: args.userId,

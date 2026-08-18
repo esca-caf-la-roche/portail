@@ -30,11 +30,42 @@ const dureeLabel = (min: number) => {
 const hhmm = (t: string) => (t ?? "").slice(0, 5);
 const todayISO = () =>
   new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Paris" }).format(new Date());
+const borneTemporelle = () => {
+  const instant = new Date();
+  instant.setMinutes(Math.floor(instant.getMinutes() / 20) * 20, 0, 0);
+  return {
+    dateDebut: new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Paris" }).format(instant),
+    instantReference: instant.toISOString(),
+  };
+};
 
 export default function Tests({ licenceInitiale }: { licenceInitiale: string | null }) {
-  const creneaux = useQuery(api.abo.tests.getMesCreneaux);
+  const [borneCreneaux, setBorneCreneaux] = useState(borneTemporelle);
+  useEffect(() => {
+    let timeoutId: number;
+    const planifierProchainPalier = () => {
+      const maintenant = new Date();
+      const prochainPalier = new Date(maintenant);
+      prochainPalier.setMinutes(
+        Math.floor(maintenant.getMinutes() / 20) * 20 + 20,
+        0,
+        0,
+      );
+      timeoutId = window.setTimeout(() => {
+        setBorneCreneaux(borneTemporelle());
+        planifierProchainPalier();
+      }, Math.max(1_000, prochainPalier.getTime() - maintenant.getTime()));
+    };
+    planifierProchainPalier();
+    return () => window.clearTimeout(timeoutId);
+  }, []);
+  const creneaux = useQuery(api.abo.tests.getCreneauxStaff, {
+    dateDebut: borneCreneaux.dateDebut,
+    instantReference: borneCreneaux.instantReference,
+  });
   const inscrits = useQuery(api.abo.tests.testInscritsAdmin);
   const creer = useMutation(api.abo.tests.creerTestCreneau);
+  const rejoindre = useMutation(api.abo.tests.rejoindreTestCreneau);
   const supprimer = useMutation(api.abo.tests.supprimerTestCreneau);
 
   return (
@@ -53,8 +84,12 @@ export default function Tests({ licenceInitiale }: { licenceInitiale: string | n
       <hr className="abo-admin-separator" />
 
       <section>
-        <h3 className="abo-admin-subheading">Mes créneaux</h3>
-        <MesCreneaux creneaux={creneaux} supprimer={supprimer} />
+        <h3 className="abo-admin-subheading">Créneaux de l'équipe</h3>
+        <p className="abo-admin-intro">
+          Retrouvez les disponibilités de tous les encadrants et rejoignez-les pour
+          organiser les tests à plusieurs.
+        </p>
+        <CreneauxStaff creneaux={creneaux} rejoindre={rejoindre} supprimer={supprimer} />
       </section>
 
       <hr className="abo-admin-separator" />
@@ -588,65 +623,126 @@ function PickerCreneau({
   );
 }
 
-// ── Mes créneaux (liste + suppression avec résolution du surbooking) ──
-function MesCreneaux({
+// ── Créneaux de l'équipe (ajout/retrait de l'admin connecté) ──────────
+function CreneauxStaff({
   creneaux,
+  rejoindre,
   supprimer,
 }: {
-  creneaux: ReturnType<typeof useQuery<typeof api.abo.tests.getMesCreneaux>>;
+  creneaux: ReturnType<typeof useQuery<typeof api.abo.tests.getCreneauxStaff>>;
+  rejoindre: ReturnType<typeof useMutation<typeof api.abo.tests.rejoindreTestCreneau>>;
   supprimer: ReturnType<typeof useMutation<typeof api.abo.tests.supprimerTestCreneau>>;
 }) {
   const [msg, setMsg] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  async function ajouter(creneauId: Id<"abo_test_creneaux">) {
+    setBusyId(creneauId);
+    setMsg(null);
+    try {
+      await rejoindre({ creneauId });
+      setMsg("Vous avez rejoint ce créneau.");
+    } catch (err) {
+      setMsg(`Échec : ${aboError(err).message}`);
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   async function retirer(id: Id<"abo_test_creneaux">) {
     const ok = window.confirm(
-      "Supprimer ce créneau ?\n\nSi des candidats sont inscrits au-delà de la nouvelle " +
+      "Vous retirer de ce créneau ?\n\nSi des candidats sont inscrits au-delà de la nouvelle " +
         "capacité, les derniers inscrits seront automatiquement désinscrits (et notifiés).",
     );
     if (!ok) return;
+    setBusyId(id);
     setMsg(null);
     try {
       const n = await supprimer({ creneauId: id });
       setMsg(
         n > 0
-          ? `Créneau supprimé. ${n} réservation${n > 1 ? "s" : ""} en surplus annulée${n > 1 ? "s" : ""}.`
-          : "Créneau supprimé.",
+          ? `Vous avez quitté ce créneau. ${n} réservation${n > 1 ? "s" : ""} en surplus ${n > 1 ? "ont été annulées" : "a été annulée"} et les personnes notifiées.`
+          : "Vous avez quitté ce créneau.",
       );
     } catch (err) {
       setMsg(`Échec : ${aboError(err).message}`);
+    } finally {
+      setBusyId(null);
     }
   }
 
   if (creneaux === undefined) return <p>Chargement…</p>;
-  if (creneaux.length === 0) {
-    return <p className="abo-admin-empty">Vous n'avez proposé aucun créneau pour l'instant.</p>;
-  }
 
   return (
     <>
-      <ul className="abo-admin-list">
-        {creneaux.map((c) => (
-          <li
-            key={c.id}
-            className="abo-admin-card abo-admin-list-row"
-          >
-            <span>
-              {formatDateJour(c.date_jour)} ·{" "}
-              <strong>
-                {hhmm(c.heure_debut)}–{hhmm(c.heure_fin)}
-              </strong>
-            </span>
-            <button
-              type="button"
-              onClick={() => retirer(c.id as Id<"abo_test_creneaux">)}
-              className="abo-admin-link-button abo-admin-link-button--danger"
+      {msg && (
+        <p
+          className={`abo-admin-status${msg.startsWith("Échec") ? " abo-admin-status--error" : " abo-admin-status--success"}`}
+          role="status"
+          aria-live="polite"
+        >
+          {msg}
+        </p>
+      )}
+      {creneaux.length === 0 ? (
+        <p className="abo-admin-empty">Aucun encadrant n'a proposé de créneau pour l'instant.</p>
+      ) : (
+        <ul className="abo-admin-list abo-admin-staff-slots">
+          {creneaux.map((c) => (
+            <li
+              key={c.creneauId}
+              className={`abo-admin-card abo-admin-staff-slot${c.monCreneauId ? " abo-admin-staff-slot--joined" : ""}`}
             >
-              ✕ Supprimer
-            </button>
-          </li>
-        ))}
-      </ul>
-      {msg && <p className="abo-admin-status">{msg}</p>}
+              <div className="abo-admin-staff-slot-main">
+                <p className="abo-admin-staff-slot-time">
+                  {formatDateJour(c.date_jour)} ·{" "}
+                  <strong>
+                    {hhmm(c.heure_debut)}–{hhmm(c.heure_fin)}
+                  </strong>
+                </p>
+                <div className="abo-admin-staff-slot-members">
+                  <span className="abo-admin-meta">
+                    {c.participants.length} encadrant{c.participants.length > 1 ? "s" : ""}
+                  </span>
+                  <ul className="abo-admin-staff-names" aria-label="Encadrants présents">
+                    {c.participants.map((encadrant, index) => (
+                      <li key={`${encadrant.nomAffiche}-${index}`}>
+                        <span>{encadrant.nomAffiche}</span>
+                        {encadrant.estMoi && (
+                          <span className="abo-admin-badge abo-admin-badge--success">
+                            Vous participez
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+              {c.monCreneauId ? (
+                <button
+                  type="button"
+                  onClick={() => void retirer(c.monCreneauId!)}
+                  className="abo-admin-button abo-admin-button--danger abo-admin-staff-slot-action"
+                  disabled={busyId !== null}
+                  aria-label={`${busyId === c.monCreneauId ? "Retrait en cours" : "Me retirer"} du créneau du ${formatDateJour(c.date_jour)}, de ${hhmm(c.heure_debut)} à ${hhmm(c.heure_fin)}`}
+                >
+                  {busyId === c.monCreneauId ? "Retrait…" : "Me retirer"}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void ajouter(c.creneauId)}
+                  className="abo-admin-button abo-admin-button--secondary abo-admin-staff-slot-action"
+                  disabled={busyId !== null}
+                  aria-label={`${busyId === c.creneauId ? "Ajout en cours" : "M'ajouter"} au créneau du ${formatDateJour(c.date_jour)}, de ${hhmm(c.heure_debut)} à ${hhmm(c.heure_fin)}`}
+                >
+                  {busyId === c.creneauId ? "Ajout…" : "Je m'ajoute"}
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
     </>
   );
 }

@@ -374,10 +374,13 @@ déploiement `npx.cmd convex dev` actif.
   Couvrir l'accès public supprimé puis refusé par `abo-otp`, le compte staff
   conservé et les deux notifications planifiées,
   sans aucune modification du site club.
-- [ ] **Test d'autonomie** : créer des créneaux (plusieurs admins) → tranches
-  40/60 min à capacité cumulée ; une demande validée, sans licence, âge ni
-  autonomie connus, réserve un RDV provisoire ; réserver/annuler ; supprimer un
-  créneau surbooké → délogement LIFO + email `test_annule`.
+- [ ] **Test d'autonomie** : créer un créneau avec un premier membre du staff,
+  vérifier qu'un second voit son nom puis peut s'ajouter depuis la liste
+  partagée ; contrôler la capacité cumulée des tranches de 40/60 min. Une
+  demande validée, sans licence, âge ni autonomie connus, réserve un RDV
+  provisoire ; réserver/annuler ; retirer un encadrant d'un créneau surbooké →
+  délogement LIFO + email `test_annule`. Vérifier qu'un staff sans la tuile
+  `abonnements` ne voit pas la liste et ne peut pas la rejoindre.
 - [ ] **Réévaluation et rappel du test** : après un scrap, seul un match de
   licence exact confirme un RDV lorsque le test est requis et l'âge est d'au
   moins 16 ans, ou l'annule lorsque les conditions connues ne le permettent pas.

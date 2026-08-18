@@ -230,4 +230,62 @@ describe("saisons et administration globale", () => {
       }),
     );
   });
+
+  test("bloque le retrait de la tuile Abonnements et la suppression avec un créneau futur", async () => {
+    const t = convexTest(schema, modules);
+    const targetId = await createUser(t, { tiles: ["abonnements"] });
+    const admin = t.withIdentity({
+      subject: await createUser(t, { tiles: [], role: "admin" }),
+    });
+    await t.run((ctx) => ctx.db.insert("abo_test_creneaux", {
+      admin_id: targetId,
+      date_jour: "2099-06-02",
+      heure_debut: "10:00",
+      heure_fin: "10:40",
+    }));
+
+    await expect(admin.mutation(api.users.updateUserSettings, {
+      userId: targetId,
+      name: "Encadrant",
+      role: "user",
+      allowedTiles: [],
+      canManageAboConfiguration: false,
+    })).rejects.toThrow("doit d'abord le retirer");
+    await expect(admin.mutation(api.users.removeUser, {
+      userId: targetId,
+    })).rejects.toThrow("doit d'abord le retirer");
+
+    const settings = await t.run((ctx) => ctx.db
+      .query("userSettings")
+      .withIndex("by_userId", (q) => q.eq("userId", targetId))
+      .first());
+    expect(settings?.allowedTiles).toContain("abonnements");
+    expect(await t.run((ctx) => ctx.db.get(targetId))).not.toBeNull();
+  });
+
+  test("autorise le retrait de tuile puis la suppression sans créneau futur", async () => {
+    const t = convexTest(schema, modules);
+    const targetId = await createUser(t, { tiles: ["abonnements"] });
+    const admin = t.withIdentity({
+      subject: await createUser(t, { tiles: [], role: "admin" }),
+    });
+    await t.run((ctx) => ctx.db.insert("abo_test_creneaux", {
+      admin_id: targetId,
+      date_jour: "2020-06-02",
+      heure_debut: "10:00",
+      heure_fin: "10:40",
+    }));
+
+    await expect(admin.mutation(api.users.updateUserSettings, {
+      userId: targetId,
+      name: "Ancien encadrant",
+      role: "user",
+      allowedTiles: [],
+      canManageAboConfiguration: false,
+    })).resolves.toBeNull();
+    await expect(admin.mutation(api.users.removeUser, {
+      userId: targetId,
+    })).resolves.toBeNull();
+    expect(await t.run((ctx) => ctx.db.get(targetId))).toBeNull();
+  });
 });

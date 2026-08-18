@@ -844,6 +844,15 @@ textarea.abo-input {
 .abo-admin-test-upload { display: grid; gap: 0.65rem; max-width: 36rem; }
 .abo-admin-test-upload--compact { width: min(100%, 26rem); }
 .abo-admin-test-upload .abo-admin-button { justify-self: start; }
+.abo-admin-staff-slots { grid-template-columns: repeat(auto-fit, minmax(min(100%, 21rem), 1fr)); }
+.abo-admin-staff-slot { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 1rem; }
+.abo-admin-staff-slot--joined { background: var(--success); }
+.abo-admin-staff-slot-main,
+.abo-admin-staff-slot-members { display: grid; min-width: 0; gap: 0.6rem; }
+.abo-admin-staff-slot-time { margin: 0; font-size: 1.05rem; }
+.abo-admin-staff-names { display: flex; flex-wrap: wrap; gap: 0.45rem; margin: 0; padding: 0; list-style: none; }
+.abo-admin-staff-names > li { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; padding: 0.35rem 0.5rem; border: 2px solid var(--border-color); background: var(--card); font-weight: 800; }
+.abo-admin-staff-slot-action { min-width: 8.5rem; }
 .abo-admin-reglement-search { align-items: end; }
 .abo-admin-reglement-fieldset { display: grid; gap: 0.65rem; min-width: 0; margin: 0; padding: 0.75rem; border: 2px solid var(--border-color); }
 .abo-admin-reglement-fieldset legend { padding: 0 0.35rem; font-weight: 800; text-transform: uppercase; }
@@ -879,6 +888,11 @@ textarea.abo-input {
 .abo-admin-jauge-track { height: 1.35rem; overflow: hidden; border: var(--border-width) solid var(--border-color); background: var(--card); }
 .abo-admin-jauge-fill { display: block; height: 100%; background: var(--success); }
 .abo-admin-jauge--warning .abo-admin-jauge-fill { background: var(--warning); }
+
+@media (max-width: 640px) {
+  .abo-admin-staff-slot { grid-template-columns: minmax(0, 1fr); }
+  .abo-admin-staff-slot-action { width: 100%; }
+}
 .abo-admin-jauge--danger .abo-admin-jauge-fill { background: var(--danger); }
 .abo-admin-jauge-detail { margin: 0; font-size: 0.85rem; font-weight: 600; }
 .abo-admin-jauge-anomalies { color: #555; font-size: 0.8rem; }
