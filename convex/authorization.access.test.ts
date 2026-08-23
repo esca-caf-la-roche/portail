@@ -145,6 +145,68 @@ describe("saisons et administration globale", () => {
     await expect(admin.query(api.transactions.getStats, { saison: "2026-27" })).rejects.toThrow("Accès refusé");
   });
 
+  test("réserve l'ajout, la modification et la suppression du staff aux admins", async () => {
+    const t = convexTest(schema, modules);
+    const staff = t.withIdentity({
+      subject: await createUser(t, { tiles: [] }),
+    });
+    const targetId = await createUser(t, { tiles: [] });
+
+    await expect(staff.mutation(api.users.addUser, {
+      email: "nouveau-staff@example.test",
+      name: "Nouveau staff",
+    })).rejects.toThrow("Réservé aux administrateurs");
+    await expect(staff.mutation(api.users.updateUserSettings, {
+      userId: targetId,
+      name: "Staff modifié",
+      role: "user",
+      allowedTiles: [],
+      canManageAboConfiguration: false,
+    })).rejects.toThrow("Réservé aux administrateurs");
+    await expect(staff.mutation(api.users.removeUser, {
+      userId: targetId,
+    })).rejects.toThrow("Réservé aux administrateurs");
+  });
+
+  test("liste uniquement le staff et protège les comptes publics Abonnements", async () => {
+    const t = convexTest(schema, modules);
+    const adminId = await createUser(t, { tiles: [], role: "admin" });
+    const staffId = await createUser(t, { tiles: ["compta"] });
+    const publicId = await createUser(t);
+    const publicProfileId = await t.run((ctx) => ctx.db.insert("abo_profiles", {
+      userId: publicId,
+      email: "public@example.test",
+      role: "utilisateur",
+    }));
+    const admin = t.withIdentity({ subject: adminId });
+
+    const listedIds = (await admin.query(api.users.listUsers, {}))
+      .map((user) => user._id);
+    expect(listedIds).toContain(adminId);
+    expect(listedIds).toContain(staffId);
+    expect(listedIds).not.toContain(publicId);
+
+    const modification = admin.mutation(api.users.updateUserSettings, {
+      userId: publicId,
+      name: "Compte public",
+      role: "user",
+      allowedTiles: ["compta"],
+      canManageAboConfiguration: false,
+    });
+    await expect(modification).rejects.toThrow("n'est pas un membre du staff");
+    await expect(admin.mutation(api.users.removeUser, {
+      userId: publicId,
+    })).rejects.toThrow("n'est pas un membre du staff");
+
+    expect(await t.run((ctx) => ctx.db.get(publicId))).not.toBeNull();
+    expect(await t.run((ctx) => ctx.db.get(publicProfileId))).not.toBeNull();
+    const publicSettings = await t.run((ctx) => ctx.db
+      .query("userSettings")
+      .withIndex("by_userId", (q) => q.eq("userId", publicId))
+      .first());
+    expect(publicSettings).toBeNull();
+  });
+
   test("addUser canonise l'email et refuse une collision canonique", async () => {
     const t = convexTest(schema, modules);
     const admin = t.withIdentity({

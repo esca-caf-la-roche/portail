@@ -10,6 +10,26 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 
 const MAX_USERS_FALLBACK_EMAIL = 2_000;
+const MAX_STAFF_USERS = 500;
+
+async function exigerMembreStaff(
+  ctx: QueryCtx | MutationCtx,
+  userId: Id<"users">,
+): Promise<Doc<"userSettings">> {
+  const settings = await ctx.db
+    .query("userSettings")
+    .withIndex("by_userId", (q) => q.eq("userId", userId))
+    .first();
+
+  if (!settings) {
+    throw new ConvexError({
+      code: "USER_NOT_STAFF",
+      message: "Ce compte n'est pas un membre du staff.",
+    });
+  }
+
+  return settings;
+}
 
 export async function getAboStaffActifsIds(
   ctx: QueryCtx | MutationCtx,
@@ -202,21 +222,24 @@ export const listUsers = authenticatedQuery({
     // Expose tous les emails/accès : réservé à la page Configurations (admin).
     await requireAdmin(ctx, ctx.userId);
 
-    const users = await ctx.db.query("users").collect();
-    const userSettings = await ctx.db.query("userSettings").collect();
-    
-    return users.map(user => {
-      const settings = userSettings.find(s => s.userId === user._id) || {
-        allowedTiles: [] as string[],
-        role: "user",
-        canResetAboSeason: false,
-        canManageAboConfiguration: false,
-      };
-      return {
-        ...user,
-        settings
-      };
-    });
+    // IO-BOUNDED: la page Configurations ne gère que le staff du club ; le
+    // plafond détecte une croissance anormale sans parcourir les comptes
+    // publics Abonnements stockés dans la table Convex Auth partagée.
+    const userSettings = await ctx.db
+      .query("userSettings")
+      .take(MAX_STAFF_USERS + 1);
+    if (userSettings.length > MAX_STAFF_USERS) {
+      throw new ConvexError(
+        "La liste du staff dépasse la limite prévue. Une pagination est nécessaire.",
+      );
+    }
+
+    const staff = await Promise.all(userSettings.map(async (settings) => {
+      const user = await ctx.db.get(settings.userId);
+      return user ? { ...user, settings } : null;
+    }));
+
+    return staff.filter((user) => user !== null);
   },
 });
 
@@ -291,17 +314,10 @@ export const removeUser = authenticatedMutation({
   args: { userId: v.id("users") },
   handler: async (ctx, args) => {
     await requireAdmin(ctx, ctx.userId);
+    const settings = await exigerMembreStaff(ctx, args.userId);
     await exigerAucunCreneauAboFutur(ctx, args.userId);
 
-    const settings = await ctx.db
-      .query("userSettings")
-      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
-      .first();
-      
-    if (settings) {
-      await ctx.db.delete(settings._id);
-    }
-    
+    await ctx.db.delete(settings._id);
     await ctx.db.delete(args.userId);
   },
 });
@@ -374,6 +390,7 @@ export const updateUserSettings = authenticatedMutation({
   },
   handler: async (ctx, args) => {
     await requireAdmin(ctx, ctx.userId);
+    const settings = await exigerMembreStaff(ctx, args.userId);
 
     const name = args.name.trim();
     if (!name) {
@@ -387,13 +404,8 @@ export const updateUserSettings = authenticatedMutation({
       (args.canManageAboConfiguration ?? args.canResetAboSeason ?? false)
       && allowedTiles.includes("abonnements");
 
-    const settings = await ctx.db
-      .query("userSettings")
-      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
-      .first();
-
     const retireTuileAbonnements =
-      settings?.allowedTiles.includes("abonnements") === true &&
+      settings.allowedTiles.includes("abonnements") &&
       !allowedTiles.includes("abonnements");
     if (retireTuileAbonnements) {
       await exigerAucunCreneauAboFutur(ctx, args.userId);
@@ -407,30 +419,20 @@ export const updateUserSettings = authenticatedMutation({
       await ctx.db.patch(args.userId, { name });
     }
       
-    if (settings) {
-      const nouvellesSettings = {
-        allowedTiles,
-        role: args.role,
-        canManageAboConfiguration,
-        // Dès qu'une fiche est enregistrée, la décision est portée uniquement
-        // par le nouveau droit : une ancienne autorisation ne peut pas survivre
-        // à une révocation explicite.
-        canResetAboSeason: false,
-      };
-      if (
-        !tableauxStringEgaux(settings.allowedTiles, allowedTiles) ||
-        champsModifies(settings, nouvellesSettings, ["allowedTiles"])
-      ) {
-        await ctx.db.patch(settings._id, nouvellesSettings);
-      }
-    } else {
-      await ctx.db.insert("userSettings", {
-        userId: args.userId,
-        allowedTiles,
-        role: args.role,
-        canManageAboConfiguration,
-        canResetAboSeason: false,
-      });
+    const nouvellesSettings = {
+      allowedTiles,
+      role: args.role,
+      canManageAboConfiguration,
+      // Dès qu'une fiche est enregistrée, la décision est portée uniquement
+      // par le nouveau droit : une ancienne autorisation ne peut pas survivre
+      // à une révocation explicite.
+      canResetAboSeason: false,
+    };
+    if (
+      !tableauxStringEgaux(settings.allowedTiles, allowedTiles) ||
+      champsModifies(settings, nouvellesSettings, ["allowedTiles"])
+    ) {
+      await ctx.db.patch(settings._id, nouvellesSettings);
     }
   },
 });
