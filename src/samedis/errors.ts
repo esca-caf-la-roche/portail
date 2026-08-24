@@ -23,6 +23,15 @@ export function formatSamediDate(date: string): string {
   }).format(new Date(`${date}T12:00:00+02:00`));
 }
 
+export function formatMois(date: string): string {
+  const libelle = new Intl.DateTimeFormat("fr-FR", {
+    month: "long",
+    year: "numeric",
+    timeZone: "Europe/Paris",
+  }).format(new Date(`${date}T12:00:00+02:00`));
+  return libelle.charAt(0).toUpperCase() + libelle.slice(1);
+}
+
 export function formatSyncDate(timestamp: number | null): string {
   if (timestamp === null) return "Jamais synchronisé";
   return new Intl.DateTimeFormat("fr-FR", {

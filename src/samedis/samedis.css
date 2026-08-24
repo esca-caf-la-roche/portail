@@ -234,10 +234,11 @@
 .samedis-rope-list--manager .samedis-slot { padding-left: 2.5rem; }
 .samedis-rope-list--manager .samedis-carabiner { left: -0.35rem; }
 .samedis-agenda { display: grid; gap: 1.25rem; }
+.samedis-agenda--participant { max-width: 900px; margin: 0 auto; }
 .samedis-agenda-month { border-left: 8px solid var(--border-color); }
 .samedis-agenda-month > header { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 0.7rem; padding: 0.65rem 0.8rem; border: 3px solid var(--border-color); border-left: 0; background: var(--warning); }
 .samedis-agenda-month > header > span { display: grid; width: 2.2rem; height: 2.2rem; place-items: center; border: 2px solid var(--border-color); background: var(--card); font-weight: 900; }
-.samedis-agenda-month > header h3 { font-size: 1.35rem; text-transform: uppercase; }
+.samedis-agenda-month > header h2, .samedis-agenda-month > header h3 { font-size: 1.35rem; text-transform: uppercase; }
 .samedis-agenda-month > header small { font-weight: 800; text-transform: uppercase; }
 .samedis-agenda-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.65rem; padding: 0.65rem 0 0 0.65rem; list-style: none; }
 .samedis-agenda-grid .samedis-slot { padding-left: 0; }

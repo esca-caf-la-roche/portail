@@ -4,6 +4,7 @@ import { describe, expect, test } from "vitest";
 import { api, internal } from "./_generated/api";
 import schema from "./schema";
 import {
+  lireVacances,
   samediBloqueParPeriodeScolaire,
   semaineDuSamediEnVacances,
 } from "./samedis/sync";
@@ -172,15 +173,37 @@ describe("vacances scolaires des samedis", () => {
     expect(semaineDuSamediEnVacances("2026-10-17", debut, fin)).toBe(false);
     expect(semaineDuSamediEnVacances("2026-10-24", debut, fin)).toBe(true);
     expect(semaineDuSamediEnVacances("2026-10-31", debut, fin)).toBe(true);
+    expect(semaineDuSamediEnVacances("2026-11-07", debut, fin)).toBe(false);
   });
 
-  test("bloque le samedi du pont de l'Ascension même si son lundi est travaillé", () => {
+  test("conserve les fermetures officielles d'une seule journée", () => {
+    expect(lireVacances({
+      results: [{
+        start_date: "2027-05-07T00:00:00+02:00",
+        end_date: "2027-05-07T00:00:00+02:00",
+        description: "Pont de l'Ascension",
+      }],
+    })).toEqual([{
+      start_date: "2027-05-07",
+      end_date: "2027-05-07",
+      description: "Pont de l'Ascension",
+    }]);
+  });
+
+  test("bloque le samedi après le vendredi du pont de l'Ascension", () => {
     expect(samediBloqueParPeriodeScolaire(
       "2027-05-08",
-      "2027-05-05",
-      "2027-05-10",
-      "Pont de l'Ascension",
+      "2027-05-07",
+      "2027-05-07",
     )).toBe(true);
+  });
+
+  test("ne bloque pas un samedi qui marque seulement le début des vacances", () => {
+    expect(samediBloqueParPeriodeScolaire(
+      "2027-07-03",
+      "2027-07-03",
+      "2027-07-03",
+    )).toBe(false);
   });
 });
 

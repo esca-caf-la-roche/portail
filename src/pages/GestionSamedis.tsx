@@ -5,15 +5,10 @@ import type { Id } from "../../convex/_generated/dataModel";
 import { api } from "../../convex/_generated/api";
 import { useSeason } from "../contexts/SeasonContext";
 import ManagerSlot from "../samedis/ManagerSlot";
-import { formatSyncDate, samediError } from "../samedis/errors";
+import { formatMois, formatSyncDate, samediError } from "../samedis/errors";
 import "../samedis/samedis.css";
 
 type Message = { type: "ok" | "erreur"; texte: string } | null;
-
-function libelleMois(date: string): string {
-  const libelle = new Intl.DateTimeFormat("fr-FR", { month: "long", year: "numeric", timeZone: "Europe/Paris" }).format(new Date(`${date}T12:00:00+02:00`));
-  return libelle.charAt(0).toUpperCase() + libelle.slice(1);
-}
 
 export default function GestionSamedis() {
   const { season } = useSeason();
@@ -54,7 +49,7 @@ export default function GestionSamedis() {
   const moisAgenda = new Map<string, { libelle: string; creneaux: typeof calendrier.creneaux }>();
   for (const creneau of calendrier.creneaux) {
     const cle = creneau.date.slice(0, 7);
-    const groupe = moisAgenda.get(cle) ?? { libelle: libelleMois(creneau.date), creneaux: [] };
+    const groupe = moisAgenda.get(cle) ?? { libelle: formatMois(creneau.date), creneaux: [] };
     groupe.creneaux.push(creneau);
     moisAgenda.set(cle, groupe);
   }

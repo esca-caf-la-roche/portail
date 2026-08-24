@@ -4,7 +4,7 @@ import { useAuthActions } from "@convex-dev/auth/react";
 import { CalendarCheck, CircleAlert, Clock3, LogOut, ShieldX, UserRound } from "lucide-react";
 import { api } from "../../convex/_generated/api";
 import { useSeason } from "../contexts/SeasonContext";
-import { formatSamediDate, samediError } from "./errors";
+import { formatMois, formatSamediDate, samediError } from "./errors";
 
 export default function ParticipantCalendar() {
   const { signOut } = useAuthActions();
@@ -31,6 +31,13 @@ export default function ParticipantCalendar() {
 
   if (calendrier === undefined) return <div className="samedis-state" role="status"><Clock3 aria-hidden="true" /> Chargement du calendrier…</div>;
   const calendrierVerifie = calendrier.configuration?.statutSynchronisation === "ok";
+  const moisAgenda = new Map<string, { libelle: string; creneaux: typeof calendrier.creneaux }>();
+  for (const creneau of calendrier.creneaux) {
+    const cle = creneau.date.slice(0, 7);
+    const groupe = moisAgenda.get(cle) ?? { libelle: formatMois(creneau.date), creneaux: [] };
+    groupe.creneaux.push(creneau);
+    moisAgenda.set(cle, groupe);
+  }
 
   return (
     <div className="samedis-participant-shell">
@@ -56,8 +63,8 @@ export default function ParticipantCalendar() {
         ) : calendrier.creneaux.length === 0 ? (
           <div className="samedis-state"><CalendarCheck aria-hidden="true" /> Aucun samedi pour cette saison.</div>
         ) : (
-          <ol className="samedis-rope-list">
-            {calendrier.creneaux.map((creneau) => {
+          <div className="samedis-agenda samedis-agenda--participant">
+            {Array.from(moisAgenda, ([cle, mois]) => <section key={cle} className="samedis-agenda-month"><header><span>{cle.slice(5)}</span><h2>{mois.libelle}</h2><small>{mois.creneaux.length} samedi{mois.creneaux.length > 1 ? "s" : ""}</small></header><ol className="samedis-agenda-grid">{mois.creneaux.map((creneau) => {
               const libre = calendrierVerifie && !creneau.reservation && !creneau.estBloque;
               const mien = creneau.reservation?.estLaMienne === true;
               const reservationId = creneau.reservation?.estLaMienne
@@ -65,9 +72,8 @@ export default function ParticipantCalendar() {
                 : null;
               return (
                 <li key={creneau._id} className={`samedis-slot ${mien ? "is-mine" : ""} ${creneau.estBloque ? "is-blocked" : ""}`}>
-                  <span className="samedis-carabiner" aria-hidden="true" />
                   <article>
-                    <div className="samedis-slot-date"><CalendarCheck aria-hidden="true" /><h2>{formatSamediDate(creneau.date)}</h2></div>
+                    <div className="samedis-slot-date"><CalendarCheck aria-hidden="true" /><h3>{formatSamediDate(creneau.date)}</h3></div>
                     {creneau.estBloque && <div className="samedis-status samedis-status--blocked"><ShieldX aria-hidden="true" /><span><strong>Date bloquée</strong>{creneau.motifsBlocage.join(" · ")}</span></div>}
                     {creneau.reservation && <div className={`samedis-status ${mien ? "samedis-status--mine" : ""}`}><UserRound aria-hidden="true" /><span><strong>{mien ? "Votre permanence" : "Déjà réservé"}</strong>{mien ? "Vous êtes inscrit sur cette date." : "Ce samedi n’est plus disponible."}</span></div>}
                     {libre && <button className="samedis-button samedis-button--success" disabled={enCours === creneau._id} onClick={() => void agir(creneau._id, () => reserver({ saison: season, creneauId: creneau._id }))}>{enCours === creneau._id ? "Réservation…" : "Je prends ce samedi"}</button>}
@@ -75,8 +81,8 @@ export default function ParticipantCalendar() {
                   </article>
                 </li>
               );
-            })}
-          </ol>
+            })}</ol></section>)}
+          </div>
         )}
       </main>
     </div>

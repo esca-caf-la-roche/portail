@@ -201,7 +201,7 @@ function lireJoursFeries(payload: unknown): Map<string, string> {
   return resultat;
 }
 
-function lireVacances(payload: unknown): VacancesRecord[] {
+export function lireVacances(payload: unknown): VacancesRecord[] {
   if (!estObjet(payload) || !Array.isArray(payload.results)) {
     throw new Error("Réponse vacances scolaires invalide.");
   }
@@ -210,9 +210,9 @@ function lireVacances(payload: unknown): VacancesRecord[] {
     if (!estObjet(ligne) || typeof ligne.start_date !== "string" || typeof ligne.end_date !== "string") continue;
     const startDate = ligne.start_date.slice(0, 10);
     const endDate = ligne.end_date.slice(0, 10);
-    // L'API décrit des intervalles civils [début, fin[. Un intervalle vide
-    // (ou inversé) ne doit donc bloquer aucun samedi.
-    if (endDate <= startDate) continue;
+    // Les vacances longues sont des intervalles [début, fin[, mais l'API
+    // représente certaines fermetures d'une journée avec deux dates égales.
+    if (endDate < startDate) continue;
     resultat.push({
       start_date: startDate,
       end_date: endDate,
@@ -227,31 +227,31 @@ export function semaineDuSamediEnVacances(
   debutVacances: string,
   finVacances: string,
 ) {
-  // Le samedi appartient à la semaine scolaire commencée le lundi précédent.
-  // Cela évite de bloquer le premier samedi lorsque les vacances commencent
-  // seulement après les cours de cette journée.
-  const date = new Date(`${samedi}T00:00:00Z`);
-  date.setUTCDate(date.getUTCDate() - 5);
-  const lundi = date.toISOString().slice(0, 10);
-  return lundi >= debutVacances && lundi < finVacances;
+  return samediBloqueParPeriodeScolaire(samedi, debutVacances, finVacances);
+}
+
+function lendemain(dateIso: string): string {
+  const date = new Date(`${dateIso}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString().slice(0, 10);
 }
 
 export function samediBloqueParPeriodeScolaire(
   samedi: string,
   debut: string,
   fin: string,
-  description?: string,
 ) {
-  const libelle = (description ?? "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLocaleLowerCase("fr");
-  if (libelle.includes("ascension")) {
-    // Le pont est une fermeture courte en milieu de semaine : le lundi n'est
-    // pas en vacances, mais le samedi compris dans l'intervalle est bien fermé.
-    return samedi >= debut && samedi < fin;
-  }
-  return semaineDuSamediEnVacances(samedi, debut, fin);
+  if (fin < debut) return false;
+
+  // Un samedi est indisponible si la fermeture officielle touche au moins un
+  // jour de sa semaine scolaire, du lundi inclus au samedi exclu. Cette règle
+  // laisse disponible le samedi où les vacances commencent après les cours,
+  // mais couvre une fermeture ponctuelle le vendredi (pont de l'Ascension).
+  const date = new Date(`${samedi}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() - 5);
+  const lundi = date.toISOString().slice(0, 10);
+  const finExclusive = fin === debut ? lendemain(fin) : fin;
+  return debut < samedi && lundi < finExclusive;
 }
 
 export const synchroniser = authenticatedAction({
@@ -318,7 +318,6 @@ export const synchroniser = authenticatedAction({
             date,
             periode.start_date,
             periode.end_date,
-            periode.description,
           ),
         );
         const descriptions = [...new Set(periodes.map((periode) => periode.description ?? "Vacances scolaires"))];

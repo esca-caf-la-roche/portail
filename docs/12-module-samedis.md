@@ -22,17 +22,17 @@ afin que ces derniers n'entrent jamais dans les autres tuiles du portail.
   L'agenda la signale « à régulariser » : le gestionnaire la maintient, ou
   l'annule.
 
-Pour les vacances scolaires, le samedi suit l'état de la semaine commencée le
-lundi précédent. Le samedi où les vacances débutent après les cours reste donc
-disponible ; les samedis des semaines effectivement en vacances sont bloqués.
-Le pont de l'Ascension est traité comme une fermeture courte : son samedi est
-bloqué dès qu'il appartient à l'intervalle officiel, même si le lundi de cette
-semaine était travaillé.
+Pour les vacances scolaires, un samedi est bloqué lorsqu'une fermeture
+officielle touche au moins un jour de sa semaine, du lundi au vendredi. Le
+samedi où les vacances débutent après les cours reste donc disponible, tandis
+que le samedi suivant le vendredi chômé du pont de l'Ascension est bloqué. La
+règle repose sur les dates et couvre aussi les fermetures officielles d'un seul
+jour, sans dépendre de leur libellé.
 
-L'interface gestionnaire présente les samedis sous forme d'agenda groupé par
-mois. Les badges « Jour férié », « Vacances scolaires » et « Blocage du club »
-sont textuels et visuellement distincts ; la couleur n'est pas la seule source
-d'information.
+Les interfaces gestionnaire et participant présentent les samedis sous forme
+d'agenda groupé par mois. Les badges « Jour férié », « Vacances scolaires » et
+« Blocage du club » sont textuels et visuellement distincts ; la couleur n'est
+pas la seule source d'information.
 
 ## Accès et routes
 
