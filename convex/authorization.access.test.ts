@@ -117,6 +117,7 @@ describe("saisons et administration globale", () => {
     ["compta", "bg-info"], ["paiements", "bg-success"], ["budget", "bg-warning"],
     ["abonnements", "bg-primary"], ["licences_cours", "bg-danger"], ["contacts_cours", "bg-orange"],
     ["remboursements_eleves", "bg-pink"],
+    ["samedis", "bg-lime"],
   ] as const;
   const configuration = { tiles: tiles.map(([id, color]) => ({ id, color })) };
 

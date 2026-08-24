@@ -57,6 +57,11 @@ Pour tout changement fonctionnel :
 Pour le module Abonnements, utiliser la checklist e2e de
 [5-module-abonnements.md](5-module-abonnements.md).
 
+Pour le module Samedis après-midi, utiliser la checklist détaillée dans
+[12-module-samedis.md](12-module-samedis.md). Elle complète les tests Convex par
+des contrôles d'agenda, d'OTP, de synchronisation officielle et de restitution
+mobile.
+
 ### Scénario ciblé — Messagerie Abonnements
 
 1. avec un compte public `abo-otp`, envoyer un message depuis le suivi d'un
@@ -285,6 +290,11 @@ Les premiers scénarios devraient couvrir :
 - propriété d'un dossier et d'un fil de discussion ;
 - idempotence des synchronisations et upserts ;
 - suppression ou conservation des données lors d'un changement de saison.
+
+Les règles Samedis à couvrir en priorité sont l'unicité d'une réservation par
+date, le refus d'un participant absent ou inactif, l'absence de passe-droit du
+rôle admin, le forçage explicite d'une date bloquée et la régularisation d'une
+réservation devenue incompatible après synchronisation.
 
 ### Priorité 3 : parcours navigateur
 

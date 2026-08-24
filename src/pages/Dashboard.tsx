@@ -9,6 +9,7 @@ import {
   ShieldCheck,
   Contact,
   HandCoins,
+  CalendarCheck,
   type LucideIcon,
 } from "lucide-react";
 import { useQuery } from "convex/react";
@@ -27,6 +28,7 @@ const TILE_DETAILS: Record<TileId, { icon: LucideIcon; to: string }> = {
   licences_cours: { icon: ShieldCheck, to: "/licences-cours" },
   contacts_cours: { icon: Contact, to: "/contacts-cours" },
   remboursements_eleves: { icon: HandCoins, to: "/remboursements-eleves" },
+  samedis: { icon: CalendarCheck, to: "/gestion-samedis" },
 };
 
 export default function Dashboard() {

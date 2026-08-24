@@ -47,6 +47,11 @@ export async function getAboIdentity(
     .withIndex("by_userId", (q) => q.eq("userId", userId))
     .first();
 
+  // Un compte issu d'un autre portail public (par exemple samedi-otp) n'est
+  // pas, par défaut, un abonné. Le staff reste reconnu grâce à userSettings,
+  // même lorsqu'il n'a jamais créé de profil Abonnements.
+  if (!settings && !profile) return null;
+
   return {
     userId,
     aboRole: isStaffAdmin ? "admin" : "utilisateur",

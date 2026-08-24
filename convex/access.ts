@@ -23,6 +23,7 @@ export const TILES = [
   "licences_cours",
   "contacts_cours",
   "remboursements_eleves",
+  "samedis",
 ] as const;
 export type Tile = (typeof TILES)[number];
 
@@ -69,6 +70,7 @@ const tileValidator = v.union(
   v.literal("licences_cours"),
   v.literal("contacts_cours"),
   v.literal("remboursements_eleves"),
+  v.literal("samedis"),
 );
 
 // Les actions n'ont pas accès à ctx.db : elles délèguent cette garde à cette

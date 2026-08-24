@@ -75,7 +75,15 @@ describe("archive des tests d'autonomie", () => {
   test("refuse la préparation à un compte sans tuile Abonnements", async () => {
     const t = convexTest(schema, modules);
     await ajouterLicence(t);
-    const userId = await t.run((ctx) => ctx.db.insert("users", { email: "sans-tuile@example.test" }));
+    const userId = await t.run(async (ctx) => {
+      const id = await ctx.db.insert("users", { email: "sans-tuile@example.test" });
+      await ctx.db.insert("abo_profiles", {
+        userId: id,
+        email: "sans-tuile@example.test",
+        role: "utilisateur",
+      });
+      return id;
+    });
     const caller = t.withIdentity({ subject: userId });
 
     await expect(caller.mutation(api.abo.testDocuments.preparerDepot, {

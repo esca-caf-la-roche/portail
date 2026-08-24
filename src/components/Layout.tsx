@@ -13,6 +13,8 @@ export default function Layout() {
   // Discriminant staff vs abonné public : un abonné public (auto-inscrit via
   // abo-otp) n'a pas de userSettings et ne doit jamais voir l'app compta.
   const me = useQuery(api.abo.identity.me);
+  const doitVerifierSamedi = isAuthenticated && me !== undefined && !me?.isStaff;
+  const samediIdentity = useQuery(api.samedis.identity.me, doitVerifierSamedi ? {} : "skip");
   const currentUser = useQuery(api.users.current);
 
   // Les parties Paiements et Abonnements ne fonctionnent pas avec les saisons
@@ -36,11 +38,11 @@ export default function Layout() {
 
   // Authentifié mais pas staff → abonné public : on le renvoie vers son espace
   // (sans révéler l'existence du portail compta).
-  if (me === undefined) {
+  if (me === undefined || (doitVerifierSamedi && samediIdentity === undefined)) {
     return <div className="loading-screen">Chargement...</div>;
   }
-  if (me && !me.isStaff) {
-    return <Navigate to="/abonnements" replace />;
+  if (!me?.isStaff) {
+    return <Navigate to={samediIdentity?.autorise ? "/samedis" : "/abonnements"} replace />;
   }
 
   return (

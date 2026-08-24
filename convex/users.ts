@@ -114,6 +114,7 @@ const dashboardTileValidator = v.union(
   v.literal("licences_cours"),
   v.literal("contacts_cours"),
   v.literal("remboursements_eleves"),
+  v.literal("samedis"),
 );
 
 const dashboardColorValidator = v.union(

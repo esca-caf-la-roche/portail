@@ -1,11 +1,12 @@
 # Authentification par OTP avec Convex Auth
 
-La sécurité repose sur `@convex-dev/auth` et deux providers OTP à 6 chiffres :
+La sécurité repose sur `@convex-dev/auth` et trois providers OTP à 6 chiffres :
 
 | Population | Provider | Création du compte | Espace accessible |
 |---|---|---|---|
 | Staff et bénévoles | `google-otp` | Email créé au préalable par un administrateur | Tuiles attribuées dans `userSettings.allowedTiles` |
 | Abonnés publics | `abo-otp` | Auto-inscription | Parcours isolé `/#/abonnements` |
+| Participants aux samedis | `samedi-otp` | Email préautorisé dans la gestion des samedis | Parcours isolé `/#/samedis` |
 
 L'auto-inscription publique ne concerne donc que le module Abonnements. Elle ne
 crée aucun `userSettings` et ne donne accès à aucune tuile staff. Voir
@@ -51,6 +52,37 @@ L'absence de `userSettings` empêche ce compte d'accéder au tableau de bord et
 aux modules staff. Les autorisations du domaine Abonnements sont dérivées côté
 serveur par `convex/abo/auth.ts`.
 
+## Connexion des participants aux samedis
+
+Le provider `samedi-otp` est réservé aux personnes actives préautorisées depuis
+`/#/gestion-samedis`. La fiche participant porte le nom et l'adresse canonique ;
+elle est reliée au compte technique lors de la première connexion. Cette
+création ne produit ni `userSettings`, ni profil Abonnements, et n'accorde donc
+aucun accès au portail staff ou au dossier public Abonnements.
+
+L'écran `/#/samedis` est une mini-app dédiée : saisie de l'adresse, code à six
+chiffres, renvoi temporisé, calendrier et déconnexion. Un compte staff qui
+possède la tuile `samedis` est redirigé vers la page de gestion. Le frontend
+affiche des messages génériques. Le backend prévoit une limitation globale et
+par adresse pour les demandes traitées.
+
+### Limite connue d'énumération
+
+Avec la version actuelle de `@convex-dev/auth`, la callback
+`createOrUpdateUser` est appelée avant `sendVerificationRequest`. Répondre comme
+si une adresse inconnue était autorisée obligerait donc à créer un compte, un
+`authAccount` et un code OTP pour cette adresse. Le module privilégie la liste
+blanche stricte : aucun compte ni e-mail n'est créé pour une adresse inconnue,
+mais l'éligibilité reste distinguable dans la réponse réseau malgré les messages
+génériques de l'interface. La transaction refusée pour une adresse inconnue peut
+également annuler la consommation du rate limit : ce mécanisme ne doit donc pas
+être présenté comme une protection suffisante contre cette énumération.
+
+La correction structurelle envisagée est un OTP applicatif avec provider
+`Credentials` personnalisé, capable de répondre de façon identique sans créer
+d'identité non autorisée. Cette limite doit être réévaluée avant d'exposer la
+connexion à un public plus large.
+
 ## Gestion des accès staff
 
 Toutes les routes staff sont encapsulées dans le composant `Layout.tsx`.
@@ -61,3 +93,8 @@ est redirigé vers `/login`.
 `RequireAccess` vérifie ensuite la tuile demandée, et les helpers Convex répètent
 ce contrôle côté backend. Le rôle administrateur n'accorde pas automatiquement
 les tuiles : il est réservé à la page Configurations.
+
+Pour les samedis, `allowedTiles` contenant `samedis` définit le rôle de
+gestionnaire. Le rôle `admin` seul ne constitue pas un passe-droit. La route
+`/#/gestion-samedis`, les queries, mutations et actions Convex répètent cette
+garde. Les participants préautorisés restent une population séparée.

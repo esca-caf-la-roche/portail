@@ -138,3 +138,37 @@ export const sendAboEmail = action({
     }
   },
 });
+
+// Envoi dédié à la tuile Samedis. Les mêmes secrets que le portail staff sont
+// utilisés, sans exposer un endpoint public d'envoi arbitraire.
+export const sendSamediEmail = action({
+  args: {
+    to: v.string(),
+    subject: v.string(),
+    text: v.string(),
+  },
+  returns: v.null(),
+  handler: async (_ctx, args) => {
+    const destinataire = canoniserEmailUnique(args.to);
+    const senderEmail = process.env.EMAIL_SENDER;
+    const senderPassword = process.env.EMAIL_PASSWORD;
+    if (!senderEmail || !senderPassword) {
+      console.warn("[Samedis] Configuration SMTP indisponible.");
+      throw new Error("L'envoi de l'e-mail Samedis est temporairement indisponible.");
+    }
+    try {
+      await envoyerEmail(
+        senderEmail,
+        senderPassword,
+        `Samedis Escalade CAF LRB <${senderEmail}>`,
+        destinataire,
+        args.subject,
+        args.text,
+      );
+      return null;
+    } catch {
+      console.error("[Samedis] Échec de l'envoi SMTP.");
+      throw new Error("L'envoi de l'e-mail Samedis est temporairement indisponible.");
+    }
+  },
+});

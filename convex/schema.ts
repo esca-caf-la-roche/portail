@@ -176,6 +176,7 @@ export default defineSchema({
           v.literal("licences_cours"),
           v.literal("contacts_cours"),
           v.literal("remboursements_eleves"),
+          v.literal("samedis"),
         ),
         color: v.union(
           v.literal("bg-info"),
@@ -195,6 +196,105 @@ export default defineSchema({
       }),
     ),
   }).index("by_cle", ["cle"]),
+
+  // --- GESTION DES SAMEDIS APRÈS-MIDI ---
+
+  // Une configuration unique par saison. L'unicité est contrôlée en mutation
+  // via l'index `by_saison` et `.unique()`.
+  samedis_configurations: defineTable({
+    saison: v.string(),
+    dateDebut: v.string(), // date civile ISO `YYYY-MM-DD`
+    dateFin: v.string(), // date civile ISO `YYYY-MM-DD`
+    lieuParDefaut: v.string(),
+    academie: v.literal("Grenoble"),
+    zone: v.literal("A"),
+    derniereSynchronisation: v.optional(v.number()),
+    statutSynchronisation: v.optional(
+      v.union(v.literal("ok"), v.literal("erreur")),
+    ),
+    erreurSynchronisation: v.optional(v.string()),
+    updatedAt: v.number(),
+    updatedBy: v.id("users"),
+  }).index("by_saison", ["saison"]),
+
+  // Un document par samedi inclus dans la période configurée. Les motifs et
+  // sources sont des listes bornées (au plus férié, vacances et manuel).
+  samedis_creneaux: defineTable({
+    saison: v.string(),
+    date: v.string(), // date civile ISO `YYYY-MM-DD`
+    lieu: v.string(),
+    estBloque: v.boolean(),
+    motifsBlocage: v.array(v.string()),
+    sourcesBlocage: v.array(
+      v.union(
+        v.literal("ferie"),
+        v.literal("vacances"),
+        v.literal("manuel"),
+      ),
+    ),
+    modificationManuelle: v.optional(v.boolean()),
+    updatedAt: v.number(),
+    updatedBy: v.id("users"),
+  })
+    .index("by_saison", ["saison"])
+    .index("by_saison_and_date", ["saison", "date"]),
+
+  // SAISON-EXEMPT: liste d'accès OTP durable et partagée entre les saisons.
+  samedis_participants: defineTable({
+    nom: v.string(),
+    email: v.string(),
+    emailNormalise: v.string(),
+    userId: v.optional(v.id("users")),
+    actif: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_emailNormalise", ["emailNormalise"])
+    .index("by_userId", ["userId"]),
+
+  // L'unicité d'une réservation par samedi est garantie en mutation avec
+  // `by_creneauId(...).unique()` ; la transaction Convex sérialise les conflits.
+  samedis_reservations: defineTable({
+    saison: v.string(),
+    creneauId: v.id("samedis_creneaux"),
+    participantId: v.id("samedis_participants"),
+    createdBy: v.id("users"),
+    mode: v.union(v.literal("participant"), v.literal("gestionnaire")),
+    forcee: v.boolean(),
+    motifForcage: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_saison", ["saison"])
+    .index("by_creneauId", ["creneauId"])
+    .index("by_saison_and_participantId", ["saison", "participantId"]),
+
+  // SAISON-EXEMPT: outbox technique et journal d'audit transversal. `saison`
+  // contextualise un message sans piloter sa conservation lors d'une suppression.
+  samedis_notifications: defineTable({
+    saison: v.optional(v.string()), // SAISON-EXEMPT: contexte d'audit, pas un axe de conservation.
+    typeModification: v.union(
+      v.literal("configuration_modifiee"),
+      v.literal("participant_ajoute"),
+      v.literal("participant_modifie"),
+      v.literal("creneau_modifie"),
+      v.literal("reservation_creee"),
+      v.literal("reservation_annulee"),
+      v.literal("reservation_regularisee"),
+      v.literal("calendrier_synchronise"),
+    ),
+    acteurUserId: v.id("users"),
+    resume: v.string(),
+    destinataire: v.string(),
+    statut: v.union(
+      v.literal("a_envoyer"),
+      v.literal("envoye"),
+      v.literal("echec"),
+    ),
+    tentatives: v.number(),
+    derniereErreur: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_statut", ["statut"]),
 
   // --- TABLES POUR SUIVI PAIEMENTS ---
   // Modèle relationnel : un "dossier" = une commande HelloAsso (regroupe les

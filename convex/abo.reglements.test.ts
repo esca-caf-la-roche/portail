@@ -90,9 +90,15 @@ describe("règlements signés", () => {
       { licence: "111111111111", nom: "DUPONT", prenom: "Clara" },
     ]);
 
-    const userId = await t.run((ctx) =>
-      ctx.db.insert("users", { email: "sans-tuile@example.test" }),
-    );
+    const userId = await t.run(async (ctx) => {
+      const id = await ctx.db.insert("users", { email: "sans-tuile@example.test" });
+      await ctx.db.insert("abo_profiles", {
+        userId: id,
+        email: "sans-tuile@example.test",
+        role: "utilisateur",
+      });
+      return id;
+    });
     await expect(
       t.withIdentity({ subject: userId }).query(
         api.abo.reglements.rechercherLicencesParNom,
@@ -192,6 +198,11 @@ describe("règlements signés", () => {
     await ajouterLicence(t, "123456789012", "DUPONT", "Claire", "DUPONT CLAIRE");
     const owner = await t.run(async (ctx) => {
       const ownerId = await ctx.db.insert("users", { email: "owner@example.test" });
+      await ctx.db.insert("abo_profiles", {
+        userId: ownerId,
+        email: "owner@example.test",
+        role: "utilisateur",
+      });
       const dossierId = await ctx.db.insert("abo_dossiers", {
         email: "owner@example.test",
         owner_id: ownerId,
@@ -241,6 +252,11 @@ describe("règlements signés", () => {
     await lier(t, adminId, "123456789012");
     const owner = await t.run(async (ctx) => {
       const ownerId = await ctx.db.insert("users", { email: "oracle@example.test" });
+      await ctx.db.insert("abo_profiles", {
+        userId: ownerId,
+        email: "oracle@example.test",
+        role: "utilisateur",
+      });
       const dossierId = await ctx.db.insert("abo_dossiers", {
         email: "oracle@example.test",
         owner_id: ownerId,
