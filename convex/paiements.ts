@@ -216,23 +216,33 @@ export const deleteGroup = authenticatedMutation({
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// RESPONSABLES (= utilisateurs ; is_superuser = role admin)
+// RESPONSABLES (= staff ayant la tuile Paiements ; is_superuser = role admin)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const getResponsibles = authenticatedQuery({
   args: {},
   handler: async (ctx) => {
     await requireTile(ctx, ctx.userId, "paiements");
-    const users = await ctx.db.query("users").collect();
+    // IO-BOUNDED: userSettings ne contient que le staff du club (moins de
+    // 500 comptes attendus), contrairement à users qui contient aussi les
+    // abonnés publics.
     const settings = await ctx.db.query("userSettings").collect();
-    return users.map((u) => {
-      const s = settings.find((x) => x.userId === u._id);
-      return {
-        id: u._id,
-        name: u.name ?? u.email ?? "Sans nom",
-        is_superuser: s?.role === "admin",
-      };
-    });
+    const responsibles = await Promise.all(
+      settings
+        .filter((staffSettings) =>
+          staffSettings.allowedTiles.includes("paiements"),
+        )
+        .map(async (staffSettings) => {
+          const user = await ctx.db.get(staffSettings.userId);
+          if (!user) return null;
+          return {
+            id: user._id,
+            name: user.name ?? user.email ?? "Sans nom",
+            is_superuser: staffSettings.role === "admin",
+          };
+        }),
+    );
+    return responsibles.filter((responsible) => responsible !== null);
   },
 });
 
