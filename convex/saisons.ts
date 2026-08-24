@@ -155,6 +155,19 @@ export const remove = mutation({
       );
     }
 
+    // Les réservations des samedis sont des inscriptions réelles : leur
+    // présence bloque la suppression de la saison afin d'éviter toute perte
+    // silencieuse ou réservation orpheline.
+    const reservationSamedi = await ctx.db
+      .query("samedis_reservations")
+      .withIndex("by_saison", (q) => q.eq("saison", saison.nom))
+      .first();
+    if (reservationSamedi) {
+      throw new ConvexError(
+        "Cette saison contient des réservations de samedis : annulez-les d'abord.",
+      );
+    }
+
     // Données dérivées, générées automatiquement (createNext / planning des cours) :
     // on les nettoie en cascade pour ne pas laisser d'orphelins.
     await deleteBySaison(ctx, "previsionnels", saison.nom); // lignes auto restantes
@@ -162,6 +175,9 @@ export const remove = mutation({
     await deleteBySaison(ctx, "salairesSaison", saison.nom);
     await deleteBySaison(ctx, "cours", saison.nom);
     await deleteBySaison(ctx, "budgetEffectifs", saison.nom);
+    // IO-BOUNDED: une configuration et au plus 53 créneaux hebdomadaires par saison.
+    await deleteBySaison(ctx, "samedis_configurations", saison.nom);
+    await deleteBySaison(ctx, "samedis_creneaux", saison.nom);
 
     await ctx.db.delete(args.id);
   },
@@ -174,7 +190,9 @@ type SaisonTable =
   | "parametresPaie"
   | "salairesSaison"
   | "cours"
-  | "budgetEffectifs";
+  | "budgetEffectifs"
+  | "samedis_configurations"
+  | "samedis_creneaux";
 
 async function deleteBySaison(ctx: MutationCtx, table: SaisonTable, saison: string) {
   const rows = await ctx.db

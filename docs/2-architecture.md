@@ -14,7 +14,7 @@ Navigateur
 API publique Convex
   |
   +-- fonctions applicatives authentifiées
-  +-- fonctions publiques limitées à l'auth et au portail Abonnements
+  +-- fonctions publiques limitées à l'auth et aux parcours isolés
   +-- fonctions internes pour les traitements orchestrés
   |
   +-- base Convex et stockage de fichiers
@@ -51,8 +51,8 @@ tâches internes. Il n'existe pas de serveur HTTP applicatif séparé.
 
 | Ensemble | Routes principales | Protection |
 |---|---|---|
-| Public | `/login`, `/abonnements`, `/compteur` | Selon le parcours |
-| Staff | `/`, `/compta`, `/paiements`, `/budget`, `/licences-cours`, `/contacts-cours`, `/contacts-cours/copier`, `/remboursements-eleves` | `Layout` puis `RequireAccess` |
+| Public ou isolé | `/login`, `/abonnements`, `/compteur`, `/samedis` | Selon le parcours et le provider OTP |
+| Staff | `/`, `/compta`, `/paiements`, `/budget`, `/licences-cours`, `/contacts-cours`, `/contacts-cours/copier`, `/remboursements-eleves`, `/gestion-samedis` | `Layout` puis `RequireAccess` |
 | Administration | `/configurations`, `/gestion-abonnements` | Rôle admin ou tuile dédiée |
 
 Le routage par hash permet de servir toutes les routes depuis GitHub Pages sans
@@ -65,9 +65,9 @@ sont des préférences globales, hors saison, administrables depuis Configuratio
 Elles ne modifient jamais les autorisations : celles-ci restent définies
 uniquement par `allowedTiles`.
 
-Les styles globaux sont dans `src/index.css`. Le module Abonnements complète ces
-règles avec `src/abonnements/abo.css` ; le design n'est donc plus contenu dans un
-fichier CSS unique.
+Les styles globaux sont dans `src/index.css`. Les mini-apps isolées complètent
+ces règles avec `src/abonnements/abo.css` et `src/samedis/samedis.css` ; le
+design n'est donc plus contenu dans un fichier CSS unique.
 
 ## Backend Convex
 
@@ -88,7 +88,9 @@ consultables par recherche dans Drive, sans conserver dans Convex leur ancien
 état de traitement.
 
 Les fichiers à la racine de `convex/` portent les domaines partagés ou staff.
-`convex/abo/` isole le domaine Abonnements. Les fonctions réutilisables de
+`convex/abo/` isole le domaine Abonnements et `convex/samedis/` regroupe le
+calendrier, les réservations, la synchronisation et les notifications des
+samedis. Les fonctions réutilisables de
 contrôle d'accès sont dans `convex/access.ts`, `convex/abo/auth.ts` et
 `convex/customFunctions.ts`.
 
@@ -104,7 +106,7 @@ internes et aux rares surfaces volontairement publiques, notamment le processus
 d'authentification, l'identité Abonnements et le compteur public. Une fonction
 authentifiée peut encore exiger une tuile ou un rôle via les helpers d'accès.
 
-Voir [3-authentification.md](3-authentification.md) pour les deux populations et
+Voir [3-authentification.md](3-authentification.md) pour les populations et
 [6-conventions.md](6-conventions.md) pour les règles applicables aux nouveaux
 endpoints.
 
@@ -132,6 +134,13 @@ campagne achevée, dont les archives Convex des tests et règlements ainsi que
 les fusions et leurs notifications. Google Drive reste l'historique des
 documents des campagnes précédentes. Seuls le snapshot des abonnés N-1 et le
 cache courant de l'annuaire des licences sont conservés dans Convex.
+
+Le module Samedis suit la saison globale. Les configurations, créneaux et
+réservations portent la saison et sont lus par index. Une saison contenant des
+réservations ne peut pas être supprimée ; il faut les annuler auparavant. Les
+participants et l'outbox de notifications sont transverses : l'autorisation
+d'une personne et la traçabilité d'un envoi ne disparaissent pas lors d'une
+suppression de saison.
 
 Les relations et index sont définis dans `convex/schema.ts`. Les collections
 potentiellement volumineuses doivent être bornées, paginées ou parcourues par
@@ -185,6 +194,13 @@ reste toujours prioritaire sur le marqueur manuel.
 `convex/crons.ts` est volontairement vide. Un cron ne doit être réintroduit que
 si une donnée doit rester fraîche sans présence utilisateur, à cadence justifiée
 et avec le commentaire requis `// CRON-OK: <raison>`.
+
+Le calendrier officiel des samedis suit le même principe à la demande, sans
+cron. Un gestionnaire déclenche la lecture des jours fériés métropolitains et
+du calendrier scolaire de Grenoble (zone A). Un verrou partagé et une fenêtre
+d'une heure évitent les appels concurrents ou répétés. En cas d'échec, le
+dernier état connu reste affiché et les réservations demeurent fermées tant que
+la configuration courante n'a pas été vérifiée avec succès.
 
 À l'ouverture de `/remboursements-eleves`, une action authentifiée actualise
 indépendamment le snapshot des élèves et les deux formulaires HelloAsso dédiés

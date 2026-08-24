@@ -22,6 +22,8 @@ const ApprobationsPaiements = lazy(() => import("./pages/Paiements/Approbations"
 const AttentePaiements = lazy(() => import("./pages/Paiements/Attente"));
 const AboApp = lazy(() => import("./abonnements/AboApp"));
 const AboAdmin = lazy(() => import("./abonnements/admin/AboAdmin"));
+const SamedisApp = lazy(() => import("./samedis/SamedisApp"));
+const GestionSamedis = lazy(() => import("./pages/GestionSamedis"));
 
 function RouteLoadingFallback() {
   return (
@@ -88,6 +90,7 @@ function App() {
             {/* Espace PUBLIC abonnés — isolé, hors du Layout compta.
                 Les abonnés n'ont pas connaissance de l'outil de gestion. */}
             <Route path="/abonnements" element={<LazyRoute><AboApp /></LazyRoute>} />
+            <Route path="/samedis" element={<LazyRoute><SamedisApp /></LazyRoute>} />
 
             {/* Compteur public ANONYME (iframe embarquable sur le site club) —
                 hors Layout et hors auth ; ne renvoie que des nombres. */}
@@ -107,6 +110,7 @@ function App() {
               <Route path="/contacts-cours" element={<RequireAccess tile="contacts_cours"><ContactsCours /></RequireAccess>} />
               <Route path="/contacts-cours/copier" element={<RequireAccess tile="contacts_cours"><ContactsCoursCopie /></RequireAccess>} />
               <Route path="/remboursements-eleves" element={<RequireAccess tile="remboursements_eleves"><RemboursementsEleves /></RequireAccess>} />
+              <Route path="/gestion-samedis" element={<RequireAccess tile="samedis"><LazyRoute><GestionSamedis /></LazyRoute></RequireAccess>} />
 
               {/* Routes Paiements */}
               <Route path="/paiements" element={<RequireAccess tile="paiements"><LazyRoute><PaiementsLayout /></LazyRoute></RequireAccess>}>

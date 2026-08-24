@@ -5,6 +5,10 @@ import type { ActionCtx, MutationCtx } from "./_generated/server";
 import { consommerDemandeAboOtp } from "./aboOtp";
 import { canoniserEmailUnique } from "./emailValidation";
 import { consommerDemandeOtpStaff } from "./staffOtp";
+import {
+  consommerDemandeSamediOtp,
+  participantSamediActif,
+} from "./samediOtp";
 import { ConvexError } from "convex/values";
 
 const MAX_USERS_FALLBACK_EMAIL = 2_000;
@@ -116,8 +120,27 @@ const AboOTP = Email({
   },
 });
 
+// --- Provider SAMEDIS : accès réservé à la liste gérée depuis la tuile. ---
+const SamediOTP = Email({
+  id: "samedi-otp",
+  apiKey: "dummy",
+  maxAge: 60 * 10,
+  generateVerificationToken: genererCode,
+  // @ts-expect-error ctx is passed by Convex Auth but the EmailConfig type only expects 1 argument
+  sendVerificationRequest: async (
+    { identifier: email, token: code }: { identifier: string; token: string },
+    ctx: ActionCtx,
+  ) => {
+    await ctx.scheduler.runAfter(0, internal.samediOtp.dispatchEmail, {
+      email: canoniserEmailUnique(email),
+      code,
+      shouldSend: true,
+    });
+  },
+});
+
 export const { auth, signIn, signOut, store } = convexAuth({
-  providers: [GoogleOTP, AboOTP],
+  providers: [GoogleOTP, AboOTP, SamediOTP],
   callbacks: {
     async createOrUpdateUser(ctx, args) {
       const emailBrut = args.profile.email;
@@ -139,6 +162,17 @@ export const { auth, signIn, signOut, store } = convexAuth({
       if (args.type === "email") {
         if (args.provider.id === "abo-otp") {
           await consommerDemandeAboOtp(appCtx, email);
+        } else if (args.provider.id === "samedi-otp") {
+          const demande = await consommerDemandeSamediOtp(appCtx, email);
+          // Limite de @convex-dev/auth 0.0.94 : createOrUpdateUser s'exécute
+          // dans createVerificationCode, avant sendVerificationRequest. Pour
+          // répondre 200 à une adresse inconnue, il faudrait retourner un
+          // userId ; la librairie créerait alors un authAccount et un code pour
+          // cette adresse. On préfère ne créer aucun compte non autorisé :
+          // erreur générique et aucun email envoyé. L'éligibilité reste
+          // toutefois distinguable au niveau réseau ; voir la documentation
+          // sécurité du module avant une éventuelle refonte en OTP applicatif.
+          if (!demande.autorise) throw new Error("Code incorrect ou expiré.");
         }
       }
       const existingUser = await trouverUtilisateurParEmailCanonique(appCtx, email);
@@ -168,6 +202,18 @@ export const { auth, signIn, signOut, store } = convexAuth({
             existingUser !== null,
           );
           if (!demande.autorise) throw new Error("Code incorrect ou expiré.");
+      }
+
+      // --- Participants samedis : allowlist stricte, sans userSettings ni
+      // profil Abonnements. Le lien est conservé sur la fiche participant. ---
+      if (args.provider.id === "samedi-otp") {
+        const { participant } = await participantSamediActif(appCtx, email);
+        if (!participant) throw new Error("Code incorrect ou expiré.");
+        const userId = existingUser?._id ?? (await db.insert("users", { email }));
+        if (participant.userId !== userId) {
+          await db.patch(participant._id, { userId });
+        }
+        return userId;
       }
 
       // --- Abonnés publics (provider abo-otp) : find-or-create sans gate ni

@@ -13,7 +13,7 @@ le détail métier de chaque module.
 | Autorisation par tuile | `src/components/RequireAccess.tsx` | `convex/access.ts` |
 | Saison courante | `src/contexts/SeasonContext.tsx` | `convex/saisons.ts`, `convex/saisonUtils.ts` |
 | Utilisateurs et tuiles | `src/pages/Configurations.tsx` | `convex/users.ts` |
-| Authentification | `src/pages/Login.tsx` | `convex/auth.ts`, `convex/auth.config.ts`, `convex/http.ts`, `convex/staffOtp.ts`, `convex/aboOtp.ts` |
+| Authentification | `src/pages/Login.tsx` | `convex/auth.ts`, `convex/auth.config.ts`, `convex/http.ts`, `convex/staffOtp.ts`, `convex/aboOtp.ts`, `convex/samediOtp.ts` |
 | Schéma | — | `convex/schema.ts` |
 | Wrappers sécurisés | — | `convex/customFunctions.ts` |
 
@@ -28,10 +28,23 @@ le détail métier de chaque module.
 | Licences `/licences-cours` | `src/pages/LicencesEnCours.tsx` | `convex/abo/licencesEnCours.ts`, `convex/abo/licences.ts`, `convex/abo/sync.ts` |
 | Contacts des cours `/contacts-cours`, `/contacts-cours/copier` | `src/pages/ContactsCours.tsx`, `src/pages/ContactsCoursCopie.tsx`, `src/utils/contactsCours.ts` | `convex/contactsCours.ts`, `convex/abo/sync.ts` |
 | Remboursements élèves `/remboursements-eleves` | `src/pages/RemboursementsEleves.tsx`, `src/utils/remboursements.ts` | `convex/remboursements.ts`, `convex/remboursementsHelloAsso.ts` |
+| Samedis — gestion `/gestion-samedis` | `src/pages/GestionSamedis.tsx`, `src/samedis/ManagerSlot.tsx` | `convex/samedis/admin.ts`, `convex/samedis/calendrier.ts`, `convex/samedis/reservations.ts`, `convex/samedis/sync.ts`, `convex/samedis/notifications.ts` |
 | Administration `/configurations` | `src/pages/Configurations.tsx`, `src/components/Configurations/DashboardTilesPanel.tsx` | `convex/users.ts`, `convex/saisons.ts`, `convex/bootstrap.ts` |
 
 Les routes `/adherents`, `/evenements` et `/statistiques` sont actuellement des
 placeholders déclarés dans `src/App.tsx`, sans module métier associé.
+
+## Module Samedis après-midi
+
+La documentation fonctionnelle complète est dans
+[12-module-samedis.md](12-module-samedis.md).
+
+| Parcours | Frontend | Backend |
+|---|---|---|
+| Connexion et identité dédiées `/samedis` | `src/samedis/SamedisApp.tsx`, `src/samedis/SamediLogin.tsx` | `convex/auth.ts`, `convex/samediOtp.ts`, `convex/samedis/identity.ts` |
+| Calendrier participant | `src/samedis/ParticipantCalendar.tsx` | `convex/samedis/calendrier.ts`, `convex/samedis/reservations.ts` |
+| Agenda gestionnaire | `src/pages/GestionSamedis.tsx`, `src/samedis/ManagerSlot.tsx` | `convex/samedis/admin.ts`, `convex/samedis/calendrier.ts`, `convex/samedis/reservations.ts` |
+| Sources officielles et notifications | états intégrés à la page de gestion | `convex/samedis/sync.ts`, `convex/samedis/notifications.ts`, `convex/email.ts` |
 
 ## Module Abonnements
 
@@ -78,6 +91,8 @@ La documentation fonctionnelle complète est dans
 | DocuSeal / webhook n8n des règlements | `convex/abo/reglementsWebhook.ts`, `convex/abo/reglementsImports.ts` |
 | Site du club et snapshot des élèves en cours | `convex/abo/scrap.ts`, `convex/abo/sync.ts` |
 | Annuaire des licences | `convex/abo/licences.ts` |
+| Jours fériés et calendrier scolaire | `convex/samedis/sync.ts` |
+| Synthèses des samedis | `convex/samedis/notifications.ts`, `convex/email.ts` |
 
 Les secrets associés résident dans les variables d'environnement Convex. Le
 frontend ne reçoit que `VITE_CONVEX_URL`.
