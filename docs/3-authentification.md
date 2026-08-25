@@ -66,6 +66,13 @@ possède la tuile `samedis` est redirigé vers la page de gestion. Le frontend
 affiche des messages génériques. Le backend prévoit une limitation globale et
 par adresse pour les demandes traitées.
 
+Le gestionnaire peut partager l'URL publique de cette mini-app : elle ne
+contient aucun secret et ne contourne pas la liste d'adresses autorisées. Une
+modification d'e-mail dissocie l'ancienne identité de la fiche Samedis. La
+suppression de la fiche révoque de la même façon l'accès au module, sans
+supprimer le compte technique qui peut aussi servir au staff ou aux
+Abonnements.
+
 ### Limite connue d'énumération
 
 Avec la version actuelle de `@convex-dev/auth`, la callback

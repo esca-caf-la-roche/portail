@@ -88,7 +88,8 @@ Depuis `/#/gestion-samedis`, un gestionnaire :
 
 1. sélectionne la saison globale puis définit la période ;
 2. synchronise les jours fériés et vacances de Grenoble ;
-3. ajoute les participants autorisés par nom et e-mail, ou désactive un accès ;
+3. partage le lien de connexion, ajoute les participants autorisés par nom et
+   e-mail, puis modifie, désactive ou supprime leur accès ;
 4. suit le compteur individuel et l'état libre, attribué ou indisponible de
    chaque date dans l'agenda ;
 5. ouvre les actions avancées d'un samedi pour poser un blocage manuel ;
@@ -98,6 +99,13 @@ Depuis `/#/gestion-samedis`, un gestionnaire :
 Modifier la période peut retirer les samedis non réservés qui sortent du nouvel
 intervalle ; l'interface demande confirmation. Une date portant une réservation
 n'est pas retirée automatiquement.
+
+Le lien affiché dans le panneau Participants ouvre la mini-app `/#/samedis`.
+Il ne contient aucun jeton : la liste d'adresses actives et le code OTP restent
+les seules conditions d'accès. La suppression d'une fiche est refusée tant que
+la personne possède au moins une réservation, quelle que soit la saison. Le
+gestionnaire doit d'abord annuler explicitement ces permanences. Seule la fiche
+Samedis est alors supprimée ; le compte utilisateur partagé est conservé.
 
 ## Notifications de modification
 
@@ -127,28 +135,33 @@ Convex et ne doivent pas être placées dans le frontend ou la documentation.
 4. simuler une panne des sources officielles : le dernier calendrier connu doit
    rester visible, l'erreur doit apparaître et une configuration non validée ne
    doit accepter aucune réservation ;
-5. ajouter un participant, se connecter sur `/#/samedis` avec `samedi-otp`,
-   réserver une date libre puis l'annuler. Le compteur doit suivre et l'identité
-   d'un autre réservant ne doit jamais être exposée ;
+5. copier le lien participant et vérifier qu'il conserve le sous-chemin de
+   déploiement avant d'ouvrir `/#/samedis`. Ajouter un participant, se connecter
+   avec `samedi-otp`, réserver une date libre puis l'annuler. Le compteur doit
+   suivre et l'identité d'un autre réservant ne doit jamais être exposée ;
 6. désactiver ce participant et vérifier le refus de la connexion et des
    mutations. Essayer une adresse inconnue : aucun compte ne doit être créé et
    l'interface doit rester générique ; contrôler séparément la limite réseau
    documentée dans [3-authentification.md](3-authentification.md) ;
-7. faire réserver simultanément la même date par deux personnes : une seule
+7. modifier le nom et l'e-mail d'un participant, puis vérifier que l'ancienne
+   identité perd l'accès. Tenter de supprimer une personne encore réservée : la
+   suppression doit être refusée. Après annulation de toutes ses permanences,
+   supprimer sa fiche et vérifier que son compte utilisateur existe toujours ;
+8. faire réserver simultanément la même date par deux personnes : une seule
    réservation doit réussir ; vérifier qu'une personne ne peut annuler que sa
    propre réservation ;
-8. depuis l'agenda staff, attribuer une date libre. Sur une date fériée, de
+9. depuis l'agenda staff, attribuer une date libre. Sur une date fériée, de
    vacances ou bloquée manuellement, vérifier que le forçage est confirmé sans
    demander de motif ;
-9. créer une réservation ordinaire, puis synchroniser un blocage officiel sur
+10. créer une réservation ordinaire, puis synchroniser un blocage officiel sur
    cette date. Elle doit rester présente avec l'alerte de régularisation ; tester
    les deux sorties : annulation ou maintien explicite ;
-10. provoquer un échec SMTP : la modification métier doit rester enregistrée,
+11. provoquer un échec SMTP : la modification métier doit rester enregistrée,
     l'échec doit apparaître dans la page de gestion et **Réessayer** doit relancer
     l'outbox sans rejouer la modification ;
-11. changer de saison et vérifier l'isolation des configurations, créneaux,
+12. changer de saison et vérifier l'isolation des configurations, créneaux,
     réservations et compteurs, tout en conservant la liste des participants ;
-12. contrôler l'agenda au clavier, sur mobile et sur desktop : libellés de
+13. contrôler l'agenda au clavier, sur mobile et sur desktop : libellés de
     blocage lisibles, actions tactiles, formulaires et messages d'erreur.
 
 Les appels aux API officielles et au SMTP doivent être simulés dans les tests

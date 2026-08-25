@@ -1,10 +1,10 @@
 import { useState, type FormEvent } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { CalendarCheck, CircleAlert, CloudDownload, MailCheck, Plus, RefreshCcw, Save, ShieldCheck, UsersRound } from "lucide-react";
-import type { Id } from "../../convex/_generated/dataModel";
+import { CalendarCheck, CircleAlert, CloudDownload, MailCheck, RefreshCcw, Save, ShieldCheck } from "lucide-react";
 import { api } from "../../convex/_generated/api";
 import { useSeason } from "../contexts/SeasonContext";
 import ManagerSlot from "../samedis/ManagerSlot";
+import ParticipantManager from "../samedis/ParticipantManager";
 import { formatMois, formatSyncDate, samediError } from "../samedis/errors";
 import "../samedis/samedis.css";
 
@@ -16,12 +16,8 @@ export default function GestionSamedis() {
   const participants = useQuery(api.samedis.admin.listParticipants);
   const notificationsEchec = useQuery(api.samedis.notifications.listEchecs);
   const saveConfig = useMutation(api.samedis.admin.upsertConfiguration);
-  const addParticipant = useMutation(api.samedis.admin.addParticipant);
-  const updateParticipant = useMutation(api.samedis.admin.updateParticipant);
   const synchroniser = useAction(api.samedis.sync.synchroniser);
   const reessayerNotification = useMutation(api.samedis.notifications.reessayer);
-  const [nom, setNom] = useState("");
-  const [email, setEmail] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<Message>(null);
 
@@ -37,11 +33,6 @@ export default function GestionSamedis() {
     if (calendrier?.configuration && !window.confirm("Modifier la période peut retirer du planning les samedis non réservés situés hors des nouvelles dates. Continuer ?")) return;
     const donnees = new FormData(event.currentTarget);
     void executer("config", () => saveConfig({ saison: season, dateDebut: String(donnees.get("dateDebut") ?? ""), dateFin: String(donnees.get("dateFin") ?? "") }), "La période et les samedis ont été enregistrés.");
-  }
-
-  function ajouterParticipant(event: FormEvent) {
-    event.preventDefault();
-    void executer("participant", async () => { await addParticipant({ nom, email }); setNom(""); setEmail(""); }, "La personne peut maintenant se connecter avec son e-mail.");
   }
 
   if (calendrier === undefined || participants === undefined) return <div className="samedis-state" role="status"><CalendarCheck aria-hidden="true" /> Chargement de la gestion des samedis…</div>;
@@ -62,7 +53,7 @@ export default function GestionSamedis() {
       <section className="samedis-manager-grid">
         <article className="samedis-panel"><div className="samedis-panel-title"><CalendarCheck aria-hidden="true" /><div><p className="samedis-kicker">01 · Saison</p><h2>Période</h2></div></div><form key={`${season}-${config?.dateDebut ?? "nouveau"}-${config?.dateFin ?? ""}`} className="samedis-form samedis-config-form" onSubmit={enregistrerConfiguration}><label>Premier jour<input name="dateDebut" type="date" required defaultValue={config?.dateDebut ?? ""} /></label><label>Dernier jour<input name="dateFin" type="date" required defaultValue={config?.dateFin ?? ""} /></label><button className="samedis-button samedis-button--primary" disabled={busy === "config"}><Save aria-hidden="true" />{busy === "config" ? "Enregistrement…" : config ? "Enregistrer la période" : "Générer les samedis"}</button></form>{config && config.statutSynchronisation !== "ok" && <div className="samedis-alert"><CircleAlert aria-hidden="true" /><span><strong>Vérification officielle requise</strong><br />Actualisez les jours fériés et vacances avant d’attribuer les samedis.</span></div>}{config && <div className="samedis-sync"><span><CloudDownload aria-hidden="true" /><strong>Calendrier officiel</strong><small>{formatSyncDate(config.derniereSynchronisation)}{config.erreurSynchronisation ? ` · ${config.erreurSynchronisation}` : ""}</small></span><button className="samedis-button samedis-button--small samedis-button--warning" disabled={busy === "sync"} onClick={() => void executer("sync", async () => { const resultat = await synchroniser({ saison: season, actualiserMemeSiRecent: true }); if (!resultat.lancee) throw new Error("Une synchronisation est déjà en cours. Réessayez dans quelques secondes."); }, "Jours fériés et vacances de Grenoble actualisés.")}><CloudDownload aria-hidden="true" />{busy === "sync" ? "Synchronisation…" : "Vérifier le calendrier"}</button></div>}</article>
 
-        <article className="samedis-panel"><div className="samedis-panel-title"><UsersRound aria-hidden="true" /><div><p className="samedis-kicker">02 · Accès</p><h2>Participants</h2></div><span className="samedis-count-badge">{participants.filter((p) => p.actif).length} actifs</span></div><form className="samedis-inline-form samedis-add-person" onSubmit={ajouterParticipant}><label>Nom<input required value={nom} onChange={(e) => setNom(e.target.value)} /></label><label>E-mail<input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></label><button className="samedis-button samedis-button--success samedis-button--small" disabled={busy === "participant"}><Plus aria-hidden="true" />Ajouter</button></form>{participants.length === 0 ? <div className="samedis-empty-people"><UsersRound aria-hidden="true" />Aucun participant. Ajoutez la première personne pour pouvoir attribuer un samedi.</div> : <ul className="samedis-people-list">{participants.map((participant) => { const compteur = calendrier.compteurs.find((item) => item.participantId === participant._id)?.nombreReservations ?? 0; return <li key={participant._id}><span><strong>{participant.nom}</strong><small>{participant.email} · {participant.connecte ? "compte activé" : "jamais connecté"}</small></span><span className="samedis-person-count">{compteur} samedi{compteur > 1 ? "s" : ""}</span><button className={`samedis-toggle ${participant.actif ? "is-active" : ""}`} disabled={busy === participant._id} onClick={() => void executer(participant._id, () => updateParticipant({ participantId: participant._id as Id<"samedis_participants">, nom: participant.nom, email: participant.email, actif: !participant.actif }), participant.actif ? "Participant désactivé." : "Participant réactivé.")} aria-pressed={participant.actif}>{participant.actif ? "Actif" : "Inactif"}</button></li>; })}</ul>}</article>
+        <ParticipantManager participants={participants} compteurs={calendrier.compteurs} onMessage={setMessage} />
       </section>
 
       {notificationsEchec === undefined ? (
