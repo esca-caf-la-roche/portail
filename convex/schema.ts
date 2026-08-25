@@ -205,18 +205,11 @@ export default defineSchema({
     saison: v.string(),
     dateDebut: v.string(), // date civile ISO `YYYY-MM-DD`
     dateFin: v.string(), // date civile ISO `YYYY-MM-DD`
-    // Migration transitoire : ces champs legacy sont supprimés par les
-    // migrations `removeSamedis*LegacyFields`, puis retirés du schéma.
-    lieuParDefaut: v.optional(v.string()),
-    academie: v.optional(v.literal("Grenoble")),
-    zone: v.optional(v.literal("A")),
     derniereSynchronisation: v.optional(v.number()),
     statutSynchronisation: v.optional(
       v.union(v.literal("ok"), v.literal("erreur")),
     ),
     erreurSynchronisation: v.optional(v.string()),
-    updatedAt: v.optional(v.number()),
-    updatedBy: v.optional(v.id("users")),
   }).index("by_saison", ["saison"]),
 
   // Un document par samedi inclus dans la période configurée. Les motifs et
@@ -224,7 +217,6 @@ export default defineSchema({
   samedis_creneaux: defineTable({
     saison: v.string(),
     date: v.string(), // date civile ISO `YYYY-MM-DD`
-    lieu: v.optional(v.string()),
     estBloque: v.boolean(),
     motifsBlocage: v.array(v.string()),
     sourcesBlocage: v.array(
@@ -234,9 +226,6 @@ export default defineSchema({
         v.literal("manuel"),
       ),
     ),
-    modificationManuelle: v.optional(v.boolean()),
-    updatedAt: v.optional(v.number()),
-    updatedBy: v.optional(v.id("users")),
   })
     .index("by_saison", ["saison"])
     .index("by_saison_and_date", ["saison", "date"]),
@@ -263,7 +252,6 @@ export default defineSchema({
     createdBy: v.id("users"),
     mode: v.union(v.literal("participant"), v.literal("gestionnaire")),
     forcee: v.boolean(),
-    motifForcage: v.optional(v.string()),
     createdAt: v.number(),
   })
     .index("by_saison", ["saison"])
