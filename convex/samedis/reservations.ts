@@ -170,7 +170,7 @@ export const regulariserReservation = authenticatedMutation({
         "Cette réservation n'est pas située sur un samedi bloqué.",
       );
     }
-    const patch = { forcee: true, motifForcage: undefined };
+    const patch = { forcee: true };
     if (champsModifies(reservation, patch)) {
       // createdBy et mode décrivent la création historique et sont conservés.
       await ctx.db.patch(reservation._id, patch);

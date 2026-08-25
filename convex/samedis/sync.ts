@@ -123,10 +123,8 @@ export const appliquerSync = internalMutation({
           ? creneau.sourcesBlocage
           : nouvellesSources,
         estBloque,
-        updatedAt: Date.now(),
-        updatedBy: args.acteurUserId,
       };
-      if (champsModifies(creneau, patch, ["updatedAt", "updatedBy"])) {
+      if (champsModifies(creneau, patch)) {
         await ctx.db.patch(creneau._id, patch);
         modifications += 1;
       }

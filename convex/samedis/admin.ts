@@ -61,9 +61,6 @@ export const upsertConfiguration = authenticatedMutation({
       .query("samedis_configurations")
       .withIndex("by_saison", (q) => q.eq("saison", saison))
       .unique();
-    // Champ historique conservé pour compatibilité avec les données déjà
-    // créées. Le lieu n'est plus une donnée configurable ni exposée à l'UI.
-    const lieuInterne = existante?.lieuParDefaut ?? "Filière Grimpe";
     const creneaux = await lireBorne(
       ctx.db
         .query("samedis_creneaux")
@@ -87,22 +84,12 @@ export const upsertConfiguration = authenticatedMutation({
       }
     }
 
-    const now = Date.now();
     const configuration = {
       saison,
       dateDebut: args.dateDebut,
       dateFin: args.dateFin,
-      lieuParDefaut: lieuInterne,
-      academie: "Grenoble" as const,
-      zone: "A" as const,
-      updatedAt: now,
-      updatedBy: ctx.userId,
     };
-    const parametresModifies = !existante || champsModifies(
-      existante,
-      configuration,
-      ["updatedAt", "updatedBy"],
-    );
+    const parametresModifies = !existante || champsModifies(existante, configuration);
     let modificationEffectuee = false;
     if (!existante) {
       await ctx.db.insert("samedis_configurations", configuration);
@@ -126,12 +113,9 @@ export const upsertConfiguration = authenticatedMutation({
         await ctx.db.insert("samedis_creneaux", {
           saison,
           date,
-          lieu: lieuInterne,
           estBloque: false,
           motifsBlocage: [],
           sourcesBlocage: [],
-          updatedAt: now,
-          updatedBy: ctx.userId,
         });
         modificationEffectuee = true;
       }
@@ -270,11 +254,8 @@ export const updateCreneau = authenticatedMutation({
       sourcesBlocage: tableauxEgaux(creneau.sourcesBlocage, nouvellesSources)
         ? creneau.sourcesBlocage
         : nouvellesSources,
-      modificationManuelle: true,
-      updatedAt: Date.now(),
-      updatedBy: ctx.userId,
     };
-    if (champsModifies(creneau, patch, ["updatedAt", "updatedBy"])) {
+    if (champsModifies(creneau, patch)) {
       await ctx.db.patch(creneau._id, patch);
       await creerNotification(ctx, {
         saison: creneau.saison,

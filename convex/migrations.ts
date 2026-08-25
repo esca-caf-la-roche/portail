@@ -14,6 +14,34 @@ export const migrations = new Migrations<DataModel, typeof schema>(
   { schema },
 );
 
+// WIDEN -> migrate -> NARROW : supprime les champs legacy du module Samedis.
+// Le code applicatif n'écrit déjà plus ces champs pendant la migration.
+export const removeSamedisConfigurationsLegacyFields = migrations.define({
+  table: "samedis_configurations",
+  migrateOne: () => ({
+    lieuParDefaut: undefined,
+    academie: undefined,
+    zone: undefined,
+    updatedAt: undefined,
+    updatedBy: undefined,
+  }),
+});
+
+export const removeSamedisCreneauxLegacyFields = migrations.define({
+  table: "samedis_creneaux",
+  migrateOne: () => ({
+    lieu: undefined,
+    modificationManuelle: undefined,
+    updatedAt: undefined,
+    updatedBy: undefined,
+  }),
+});
+
+export const removeSamedisReservationsLegacyFields = migrations.define({
+  table: "samedis_reservations",
+  migrateOne: () => ({ motifForcage: undefined }),
+});
+
 export const migrateSaisonsTransactions = migrations.define({
   table: "transactions",
   migrateOne: async (ctx, t) => {

@@ -43,32 +43,21 @@ async function fixture(statutSynchronisation?: "ok" | "erreur") {
       saison: "2026-27",
       dateDebut: "2026-09-01",
       dateFin: "2027-06-30",
-      lieuParDefaut: "Filière Grimpe",
-      academie: "Grenoble",
-      zone: "A",
       statutSynchronisation,
-      updatedAt: 1,
-      updatedBy: managerId,
     });
     const creneau1 = await ctx.db.insert("samedis_creneaux", {
       saison: "2026-27",
       date: "2026-09-05",
-      lieu: "Filière Grimpe",
       estBloque: false,
       motifsBlocage: [],
       sourcesBlocage: [],
-      updatedAt: 1,
-      updatedBy: managerId,
     });
     const creneau2 = await ctx.db.insert("samedis_creneaux", {
       saison: "2026-27",
       date: "2026-09-12",
-      lieu: "CT74",
       estBloque: false,
       motifsBlocage: [],
       sourcesBlocage: [],
-      updatedAt: 1,
-      updatedBy: managerId,
     });
     return {
       managerId,
