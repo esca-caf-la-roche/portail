@@ -205,16 +205,18 @@ export default defineSchema({
     saison: v.string(),
     dateDebut: v.string(), // date civile ISO `YYYY-MM-DD`
     dateFin: v.string(), // date civile ISO `YYYY-MM-DD`
-    lieuParDefaut: v.string(),
-    academie: v.literal("Grenoble"),
-    zone: v.literal("A"),
+    // WIDEN transitoire : PROD contient déjà des documents nettoyés de ces
+    // champs legacy. Ils resteront optionnels jusqu'à la migration DEV/PROD.
+    lieuParDefaut: v.optional(v.string()),
+    academie: v.optional(v.literal("Grenoble")),
+    zone: v.optional(v.literal("A")),
     derniereSynchronisation: v.optional(v.number()),
     statutSynchronisation: v.optional(
       v.union(v.literal("ok"), v.literal("erreur")),
     ),
     erreurSynchronisation: v.optional(v.string()),
-    updatedAt: v.number(),
-    updatedBy: v.id("users"),
+    updatedAt: v.optional(v.number()),
+    updatedBy: v.optional(v.id("users")),
   }).index("by_saison", ["saison"]),
 
   // Un document par samedi inclus dans la période configurée. Les motifs et
@@ -222,7 +224,9 @@ export default defineSchema({
   samedis_creneaux: defineTable({
     saison: v.string(),
     date: v.string(), // date civile ISO `YYYY-MM-DD`
-    lieu: v.string(),
+    // WIDEN transitoire : mêmes champs legacy que la configuration, conservés
+    // optionnels jusqu'à la migration contrôlée sur les deux déploiements.
+    lieu: v.optional(v.string()),
     estBloque: v.boolean(),
     motifsBlocage: v.array(v.string()),
     sourcesBlocage: v.array(
@@ -233,8 +237,8 @@ export default defineSchema({
       ),
     ),
     modificationManuelle: v.optional(v.boolean()),
-    updatedAt: v.number(),
-    updatedBy: v.id("users"),
+    updatedAt: v.optional(v.number()),
+    updatedBy: v.optional(v.id("users")),
   })
     .index("by_saison", ["saison"])
     .index("by_saison_and_date", ["saison", "date"]),
