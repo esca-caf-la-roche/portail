@@ -222,14 +222,6 @@ export function lireVacances(payload: unknown): VacancesRecord[] {
   return resultat;
 }
 
-export function semaineDuSamediEnVacances(
-  samedi: string,
-  debutVacances: string,
-  finVacances: string,
-) {
-  return samediBloqueParPeriodeScolaire(samedi, debutVacances, finVacances);
-}
-
 function lendemain(dateIso: string): string {
   const date = new Date(`${dateIso}T00:00:00Z`);
   date.setUTCDate(date.getUTCDate() + 1);
@@ -243,15 +235,31 @@ export function samediBloqueParPeriodeScolaire(
 ) {
   if (fin < debut) return false;
 
-  // Un samedi est indisponible si la fermeture officielle touche au moins un
-  // jour de sa semaine scolaire, du lundi inclus au samedi exclu. Cette règle
-  // laisse disponible le samedi où les vacances commencent après les cours,
-  // mais couvre une fermeture ponctuelle le vendredi (pont de l'Ascension).
-  const date = new Date(`${samedi}T00:00:00Z`);
-  date.setUTCDate(date.getUTCDate() - 5);
-  const lundi = date.toISOString().slice(0, 10);
-  const finExclusive = fin === debut ? lendemain(fin) : fin;
-  return debut < samedi && lundi < finExclusive;
+  // L'API exprime une période ordinaire du départ après les cours jusqu'au
+  // matin de la reprise : seuls les samedis strictement entre les deux bornes
+  // sont donc des samedis de vacances.
+  if (debut < fin) return debut < samedi && samedi < fin;
+
+  // Certaines fermetures ponctuelles, notamment le pont de l'Ascension 2027,
+  // sont publiées avec deux bornes égales au vendredi. Elles ferment aussi le
+  // samedi qui suit. Une fermeture ponctuelle un samedi ne bloque pas ce samedi.
+  const jour = new Date(`${debut}T00:00:00Z`).getUTCDay();
+  return jour === 5 && samedi === lendemain(debut);
+}
+
+export function samedisBloquesParVacances(
+  samedis: string[],
+  periodes: VacancesRecord[],
+): string[] {
+  return samedis.filter((samedi) =>
+    periodes.some((periode) =>
+      samediBloqueParPeriodeScolaire(
+        samedi,
+        periode.start_date,
+        periode.end_date,
+      ),
+    ),
+  );
 }
 
 export const synchroniser = authenticatedAction({

@@ -22,12 +22,13 @@ afin que ces derniers n'entrent jamais dans les autres tuiles du portail.
   L'agenda la signale « à régulariser » : le gestionnaire la maintient, ou
   l'annule.
 
-Pour les vacances scolaires, un samedi est bloqué lorsqu'une fermeture
-officielle touche au moins un jour de sa semaine, du lundi au vendredi. Le
-samedi où les vacances débutent après les cours reste donc disponible, tandis
-que le samedi suivant le vendredi chômé du pont de l'Ascension est bloqué. La
-règle repose sur les dates et couvre aussi les fermetures officielles d'un seul
-jour, sans dépendre de leur libellé.
+Pour les vacances scolaires ordinaires, les dates officielles indiquent le
+départ après les cours et la reprise des cours le matin. Seuls les samedis
+strictement compris entre ces deux dates sont donc bloqués : le samedi de
+départ reste disponible, une semaine complète bloque un samedi et deux semaines
+complètes en bloquent deux. Une fermeture officielle ponctuelle publiée sur un
+vendredi, comme le pont de l'Ascension 2027, bloque le samedi qui la suit ; une
+fermeture ponctuelle publiée sur un samedi ne bloque pas ce samedi.
 
 Les interfaces gestionnaire et participant présentent les samedis sous forme
 d'agenda groupé par mois. Les badges « Jour férié », « Vacances scolaires » et
