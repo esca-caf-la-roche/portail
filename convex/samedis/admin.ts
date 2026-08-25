@@ -230,6 +230,35 @@ export const updateParticipant = authenticatedMutation({
   },
 });
 
+export const removeParticipant = authenticatedMutation({
+  args: { participantId: v.id("samedis_participants") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requireGestionnaire(ctx, ctx.userId);
+    const participant = await ctx.db.get(args.participantId);
+    if (!participant) {
+      throw erreur("SAMEDIS_PARTICIPANT_ABSENT", "Participant introuvable.");
+    }
+    const reservation = await ctx.db
+      .query("samedis_reservations")
+      .withIndex("by_participantId", (q) => q.eq("participantId", participant._id))
+      .first();
+    if (reservation) {
+      throw erreur(
+        "SAMEDIS_PARTICIPANT_RESERVE",
+        `Ce participant possède une réservation en saison ${reservation.saison}. Annulez toutes ses réservations avant de le supprimer.`,
+      );
+    }
+    await ctx.db.delete(participant._id);
+    await creerNotification(ctx, {
+      typeModification: "participant_supprime",
+      acteurUserId: ctx.userId,
+      resume: `Participant supprimé : ${participant.nom} <${participant.email}>.`,
+    });
+    return null;
+  },
+});
+
 export const updateCreneau = authenticatedMutation({
   args: {
     creneauId: v.id("samedis_creneaux"),

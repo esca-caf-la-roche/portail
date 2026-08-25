@@ -43,7 +43,7 @@ La documentation fonctionnelle complète est dans
 |---|---|---|
 | Connexion et identité dédiées `/samedis` | `src/samedis/SamedisApp.tsx`, `src/samedis/SamediLogin.tsx` | `convex/auth.ts`, `convex/samediOtp.ts`, `convex/samedis/identity.ts` |
 | Calendrier participant | `src/samedis/ParticipantCalendar.tsx` | `convex/samedis/calendrier.ts`, `convex/samedis/reservations.ts` |
-| Agenda gestionnaire | `src/pages/GestionSamedis.tsx`, `src/samedis/ManagerSlot.tsx` | `convex/samedis/admin.ts`, `convex/samedis/calendrier.ts`, `convex/samedis/reservations.ts` |
+| Agenda et participants gestionnaire | `src/pages/GestionSamedis.tsx`, `src/samedis/ManagerSlot.tsx`, `src/samedis/ParticipantManager.tsx` | `convex/samedis/admin.ts`, `convex/samedis/calendrier.ts`, `convex/samedis/reservations.ts` |
 | Sources officielles et notifications | états intégrés à la page de gestion | `convex/samedis/sync.ts`, `convex/samedis/notifications.ts`, `convex/email.ts` |
 
 ## Module Abonnements

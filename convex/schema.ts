@@ -266,6 +266,7 @@ export default defineSchema({
   })
     .index("by_saison", ["saison"])
     .index("by_creneauId", ["creneauId"])
+    .index("by_participantId", ["participantId"])
     .index("by_saison_and_participantId", ["saison", "participantId"]),
 
   // SAISON-EXEMPT: outbox technique et journal d'audit transversal. `saison`
@@ -276,6 +277,7 @@ export default defineSchema({
       v.literal("configuration_modifiee"),
       v.literal("participant_ajoute"),
       v.literal("participant_modifie"),
+      v.literal("participant_supprime"),
       v.literal("creneau_modifie"),
       v.literal("reservation_creee"),
       v.literal("reservation_annulee"),

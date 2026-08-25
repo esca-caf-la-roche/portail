@@ -210,6 +210,15 @@
 .samedis-panel-title > svg { width: 2rem; height: 2rem; }
 .samedis-panel-title h2, .samedis-calendar-heading h2 { text-transform: uppercase; }
 .samedis-count-badge { margin-left: auto; padding: 0.25rem 0.5rem; border: 2px solid var(--border-color); background: var(--info); font-size: 0.72rem; font-weight: 800; }
+.samedis-share-link { display: grid; gap: 0.65rem; margin-bottom: 1rem; padding: 0.75rem; border: 3px solid var(--border-color); background: var(--warning); box-shadow: 3px 3px 0 var(--border-color); }
+.samedis-share-link > div:first-child { display: flex; align-items: center; gap: 0.55rem; }
+.samedis-share-link > div:first-child svg { flex: 0 0 1.3rem; }
+.samedis-share-link > div:first-child span { display: grid; }
+.samedis-share-link small { font-size: 0.7rem; font-weight: 650; }
+.samedis-share-controls { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 0.55rem; }
+.samedis-share-controls input { min-width: 0; min-height: 44px; padding: 0.55rem; border: 3px solid var(--border-color); background: var(--card); color: var(--foreground); font: 700 0.75rem var(--font-sans); }
+.samedis-share-open { background: var(--card); text-decoration: none; }
+.samedis-visually-hidden { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border: 0 !important; }
 .samedis-config-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .samedis-config-form button { grid-column: 1 / -1; }
 .samedis-sync { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-top: 1rem; padding-top: 1rem; border-top: 2px dashed var(--border-color); }
@@ -218,10 +227,18 @@
 .samedis-inline-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)) auto; align-items: end; gap: 0.6rem; }
 .samedis-people-list { display: grid; max-height: 23rem; gap: 0.45rem; margin-top: 1rem; padding: 0; overflow-y: auto; list-style: none; }
 .samedis-empty-people { display: flex; align-items: center; gap: 0.5rem; margin-top: 1rem; padding: 0.8rem; border: 2px dashed var(--border-color); background: var(--background); font-size: 0.78rem; font-weight: 750; }
-.samedis-people-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 0.55rem; padding: 0.55rem; border: 2px solid var(--border-color); }
-.samedis-people-list li > span:first-child { display: grid; min-width: 0; }
+.samedis-person-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.55rem; padding: 0.55rem; border: 2px solid var(--border-color); }
+.samedis-person-item.is-editing { background: color-mix(in srgb, var(--info) 20%, var(--card)); }
+.samedis-person-identity { display: grid; min-width: 0; }
 .samedis-people-list small { overflow-wrap: anywhere; font-size: 0.68rem; }
 .samedis-person-count { padding: 0.25rem 0.4rem; background: var(--warning); font-size: 0.68rem; font-weight: 800; }
+.samedis-person-actions { display: flex; grid-column: 1 / -1; flex-wrap: wrap; justify-content: flex-end; gap: 0.45rem; padding-top: 0.55rem; border-top: 2px dashed var(--border-color); }
+.samedis-person-edit { background: var(--info); }
+.samedis-person-edit-form { display: grid; width: 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.55rem; }
+.samedis-person-edit-form label { display: grid; gap: 0.35rem; font-size: 0.75rem; font-weight: 800; }
+.samedis-person-edit-form input { min-width: 0; min-height: 44px; padding: 0.55rem; border: 3px solid var(--border-color); background: var(--card); color: var(--foreground); font: 700 0.82rem var(--font-sans); }
+.samedis-person-edit-actions { display: flex; grid-column: 1 / -1; justify-content: flex-end; gap: 0.45rem; }
+.samedis-person-error { grid-column: 1 / -1; margin: 0; }
 .samedis-toggle { min-height: 34px; padding: 0.3rem 0.5rem; box-shadow: 2px 2px 0 var(--border-color); font-size: 0.65rem; }
 .samedis-toggle.is-active { background: var(--success); }
 .samedis-calendar-section { margin-top: 3rem; }
@@ -288,10 +305,11 @@
   .samedis-public-header select { flex: 1; min-width: 0; }
   .samedis-hero { grid-template-columns: 1fr; }
   .samedis-personal-count { width: 100%; min-height: 7rem; }
-  .samedis-config-form, .samedis-inline-form, .samedis-people-list li, .samedis-manager-reservation { grid-template-columns: 1fr; }
+  .samedis-config-form, .samedis-inline-form, .samedis-person-item, .samedis-person-edit-form, .samedis-manager-reservation, .samedis-share-controls { grid-template-columns: 1fr; }
   .samedis-regularisation .samedis-inline-form { grid-template-columns: 1fr; }
   .samedis-add-person .samedis-button, .samedis-inline-form .samedis-button { width: 100%; }
-  .samedis-people-list .samedis-toggle { width: 100%; }
+  .samedis-person-actions, .samedis-person-edit-actions { flex-direction: column; }
+  .samedis-person-actions button, .samedis-person-edit-actions button, .samedis-share-controls button { width: 100%; }
   .samedis-notifications li { align-items: stretch; flex-direction: column; }
   .samedis-calendar-summary { display: grid; grid-template-columns: repeat(3, 1fr); }
   .samedis-calendar-summary span { text-align: center; }

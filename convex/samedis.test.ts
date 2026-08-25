@@ -165,6 +165,102 @@ describe("réservations des samedis", () => {
   });
 });
 
+describe("gestion staff des participants aux samedis", () => {
+  test("réserve l'édition et la suppression au staff ayant la tuile", async () => {
+    const f = await fixture("ok");
+    const participant = f.t.withIdentity({ subject: f.participantUserId });
+
+    await expect(f.t.mutation(api.samedis.admin.removeParticipant, {
+      participantId: f.autreParticipantId,
+    })).rejects.toThrow("Non autorisé");
+    await expect(participant.mutation(api.samedis.admin.updateParticipant, {
+      participantId: f.autreParticipantId,
+      nom: "Bob Modifié",
+      email: "bob.modifie@example.test",
+      actif: true,
+    })).rejects.toThrow("Accès refusé");
+    await expect(participant.mutation(api.samedis.admin.removeParticipant, {
+      participantId: f.autreParticipantId,
+    })).rejects.toThrow("Accès refusé");
+  });
+
+  test("modifie les informations d'un participant", async () => {
+    const f = await fixture("ok");
+    await f.t.withIdentity({ subject: f.managerId }).mutation(
+      api.samedis.admin.updateParticipant,
+      {
+        participantId: f.participantId,
+        nom: "Alice Martin",
+        email: "alice.martin@example.test",
+        actif: false,
+      },
+    );
+
+    const participant = await f.t.run((ctx) => ctx.db.get(f.participantId));
+    expect(participant).toMatchObject({
+      nom: "Alice Martin",
+      email: "alice.martin@example.test",
+      emailNormalise: "alice.martin@example.test",
+      actif: false,
+    });
+    expect(participant?.userId).toBeUndefined();
+  });
+
+  test("refuse la suppression si une réservation existe dans une autre saison", async () => {
+    const f = await fixture("ok");
+    await f.t.run(async (ctx) => {
+      const ancienCreneauId = await ctx.db.insert("samedis_creneaux", {
+        saison: "2025-26",
+        date: "2025-09-06",
+        lieu: "Filière Grimpe",
+        estBloque: false,
+        motifsBlocage: [],
+        sourcesBlocage: [],
+        updatedAt: 1,
+        updatedBy: f.managerId,
+      });
+      await ctx.db.insert("samedis_reservations", {
+        saison: "2025-26",
+        creneauId: ancienCreneauId,
+        participantId: f.participantId,
+        createdBy: f.participantUserId,
+        mode: "participant",
+        forcee: false,
+        createdAt: 1,
+      });
+    });
+
+    await expect(f.t.withIdentity({ subject: f.managerId }).mutation(
+      api.samedis.admin.removeParticipant,
+      { participantId: f.participantId },
+    )).rejects.toThrow("saison 2025-26");
+    expect(await f.t.run((ctx) => ctx.db.get(f.participantId))).not.toBeNull();
+  });
+
+  test("supprime uniquement la fiche participant et journalise l'opération", async () => {
+    const f = await fixture("ok");
+    await f.t.withIdentity({ subject: f.managerId }).mutation(
+      api.samedis.admin.removeParticipant,
+      { participantId: f.participantId },
+    );
+
+    const resultat = await f.t.run(async (ctx) => ({
+      participant: await ctx.db.get(f.participantId),
+      utilisateur: await ctx.db.get(f.participantUserId),
+      notifications: await ctx.db.query("samedis_notifications").collect(),
+    }));
+    expect(resultat.participant).toBeNull();
+    expect(resultat.utilisateur).not.toBeNull();
+    expect(resultat.notifications).toEqual([
+      expect.objectContaining({
+        typeModification: "participant_supprime",
+        acteurUserId: f.managerId,
+        resume: "Participant supprimé : Alice <alice@example.test>.",
+      }),
+    ]);
+  });
+});
+
 describe("vacances scolaires des samedis", () => {
   test("bloque seulement les samedis strictement compris dans les vacances", () => {
     const periodes = [

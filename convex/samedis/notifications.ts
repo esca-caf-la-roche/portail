@@ -11,6 +11,7 @@ export const typeModificationValidator = v.union(
   v.literal("configuration_modifiee"),
   v.literal("participant_ajoute"),
   v.literal("participant_modifie"),
+  v.literal("participant_supprime"),
   v.literal("creneau_modifie"),
   v.literal("reservation_creee"),
   v.literal("reservation_annulee"),
@@ -21,6 +22,7 @@ export type TypeModification =
   | "configuration_modifiee"
   | "participant_ajoute"
   | "participant_modifie"
+  | "participant_supprime"
   | "creneau_modifie"
   | "reservation_creee"
   | "reservation_annulee"
