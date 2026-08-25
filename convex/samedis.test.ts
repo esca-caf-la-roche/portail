@@ -255,6 +255,7 @@ describe("gestion staff des participants aux samedis", () => {
       expect.objectContaining({
         typeModification: "participant_supprime",
         acteurUserId: f.managerId,
+        destinataire: "escalade@caflarochebonneville.fr",
         resume: "Participant supprimé : Alice <alice@example.test>.",
       }),
     ]);

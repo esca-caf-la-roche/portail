@@ -6,7 +6,7 @@ import { canoniserEmailUnique } from "../emailValidation";
 
 export const MAX_SAMEDIS_PAR_SAISON = 60;
 export const MAX_PARTICIPANTS = 500;
-export const DESTINATAIRE_SYNTHESE = "escalade@gmail.com";
+export const DESTINATAIRE_SYNTHESE = "escalade@caflarochebonneville.fr";
 
 export function tableauxEgaux<T>(a: readonly T[], b: readonly T[]): boolean {
   return a.length === b.length && a.every((valeur, index) => valeur === b[index]);
