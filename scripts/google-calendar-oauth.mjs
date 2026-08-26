@@ -11,26 +11,38 @@ const SCOPES = [
   "openid",
   "email",
   "https://www.googleapis.com/auth/calendar.events",
+  "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
 ];
 const DEFAULT_CALLBACK_PATH = "/oauth2callback";
 const CALLBACK_TIMEOUT_MS = 5 * 60_000;
 
 function configurationArguments() {
   const options = process.argv.slice(2);
-  if (options.length !== 2 || !["--dev", "--prod", "--both"].includes(options[0])) {
+  if (
+    (options.length !== 1 && options.length !== 2) ||
+    !["--dev", "--prod", "--both"].includes(options[0])
+  ) {
     throw new Error(
-      "Usage : npm run google-calendar:oauth -- --dev|--prod|--both chemin/vers/client_secret.json",
+      "Usage : npm run google-calendar:oauth -- --dev|--prod|--both [chemin/vers/client_secret.json]",
     );
   }
   return {
     deployments: options[0] === "--both"
       ? [["--deployment", "dev"], ["--prod"]]
       : [options[0] === "--prod" ? ["--prod"] : ["--deployment", "dev"]],
-    credentialsPath: resolve(options[1]),
+    credentialsPath: options[1] ? resolve(options[1]) : undefined,
   };
 }
 
 async function oauthCredentials(credentialsPath) {
+  if (!credentialsPath) {
+    const clientId = process.env.GOOGLE_CALENDAR_OAUTH_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_CALENDAR_OAUTH_CLIENT_SECRET;
+    if (clientId && clientSecret) return { clientId, clientSecret };
+    throw new Error(
+      "Fournissez le fichier JSON OAuth ou les variables GOOGLE_CALENDAR_OAUTH_CLIENT_ID et GOOGLE_CALENDAR_OAUTH_CLIENT_SECRET.",
+    );
+  }
   let document;
   try {
     document = JSON.parse(await readFile(credentialsPath, "utf8"));

@@ -32,9 +32,9 @@ dans **Configurations > Utilisateurs**, y compris pour un administrateur.
 
 Depuis cet écran, un gestionnaire peut :
 
-1. ajouter ou modifier un salarié avec son prénom, son adresse e-mail de
-   connexion et de communication, et l'identifiant de sa ressource Google
-   Calendar ;
+1. récupérer les ressources visibles par le compte Google du club, cocher
+   celles à activer et renseigner uniquement leur adresse e-mail de connexion
+   et de communication ;
 2. désactiver une fiche sans effacer son historique saisonnier ;
 3. synchroniser les samedis depuis Google Calendar ;
 4. attribuer ou retirer un salarié pour un samedi entier ;
@@ -49,6 +49,17 @@ Samedis après-midi ; ces parcours refusent symétriquement une adresse salarié
 La désactivation révoque la connexion dédiée et détache l'identité technique,
 mais ne supprime ni la fiche ni les affectations historiques. Une désactivation
 ou un changement de ressource est refusé tant qu'une affectation à venir existe.
+
+L'inventaire Google est chargé uniquement à la demande et n'est pas stocké dans
+Convex. Il reflète la `CalendarList` de `escalade@caflarochebonneville.fr` : une
+ressource doit donc avoir été ajoutée au calendrier de ce compte pour être
+proposée. L'ajout manuel reste disponible comme solution de secours. Le
+libellé Google devient le prénom proposé et peut ensuite être corrigé avec
+**Modifier**. Une sélection est enregistrée dans une transaction unique : si
+une adresse est refusée, aucune des ressources cochées n'est activée. L'annuaire
+est borné à 50 fiches et l'interface indique le nombre de places restantes.
+La récupération est limitée côté serveur à deux appels par gestionnaire et dix
+appels globaux par minute afin de protéger le quota Google partagé.
 
 ## Parcours salarié isolé
 
@@ -134,13 +145,15 @@ voit l'erreur et peut la relancer ; la relance remet le compteur de tentatives �
 zéro. Une nouvelle attribution du même samedi est refusée tant qu'une de ses
 mises à jour Google n'est pas terminée.
 
-## Alerte urgente à J-7
+## Rappel urgent du lundi
 
 Pour chaque samedi sans salarié affecté, une alerte
-unique est planifiée **sept jours avant à 09 h, heure de Paris**. Si la
+unique est planifiée **le lundi précédent à 09 h, heure de Paris**. Si la
 réconciliation a lieu après cette échéance mais avant la fin du samedi, elle est
 programmée immédiatement ; aucun message historique ne part pour une date déjà
 passée. L'alerte est annulée avant envoi dès qu'un salarié prend la date entière.
+Une tâche issue de l'ancien horaire J-7 qui se déclenche trop tôt est différée
+automatiquement au lundi 09 h.
 
 Le message :
 
@@ -164,9 +177,10 @@ d'une synchronisation du module pour mettre à jour les alertes.
 ## Configuration Convex et Google
 
 La lecture et l'écriture utilisent deux identités distinctes. Le compte de
-service existant lit les calendriers de ressources ; un OAuth utilisateur
+service existant lit les événements des calendriers de ressources ; un OAuth utilisateur
 autorisé par `escalade@caflarochebonneville.fr` modifie les participants avec
-les mêmes droits que cette boîte dans Google Calendar.
+les mêmes droits que cette boîte dans Google Calendar et liste ses calendriers
+de ressources visibles.
 
 | Variable | Usage |
 |---|---|
@@ -198,7 +212,8 @@ Côté Google :
    connecter avec `escalade@caflarochebonneville.fr`, vérifie cette identité et
    enregistre les mêmes secrets dans les déploiements Convex DEV et PROD. Le seul
    périmètre métier demandé est
-   `https://www.googleapis.com/auth/calendar.events` ;
+   `https://www.googleapis.com/auth/calendar.events` et
+   `https://www.googleapis.com/auth/calendar.calendarlist.readonly` ;
 5. supprimer ensuite le fichier JSON téléchargé ou le conserver dans un coffre
    à secrets hors du dépôt ;
 6. partager en lecture avec le compte de service la ressource **À déterminer**
@@ -220,7 +235,7 @@ configuration et remplacer uniquement le jeton de renouvellement.
 ## Limites et risques connus
 
 - Sans cron de rattrapage, un planning jamais synchronisé ou une modification
-  externe non resynchronisée ne peut pas produire l'alerte J-7 attendue.
+  externe non resynchronisée ne peut pas produire le rappel du lundi attendu.
 - Les événements absents de tous les calendriers de ressources gérés sont
   ignorés, tout comme les jours autres que le samedi.
 - La synchronisation est volontairement bornée ; au-delà de 400 créneaux utiles
@@ -239,7 +254,9 @@ configuration et remplacer uniquement le jeton de renouvellement.
 
 - [ ] Attribuer la tuile à un gestionnaire, puis vérifier la tuile, la route et
   le refus complet pour un staff sans cette tuile, y compris administrateur.
-- [ ] Ajouter un salarié, vérifier l'unicité de l'e-mail et de la ressource,
+- [ ] Récupérer les ressources Google, en cocher une, saisir son e-mail puis
+  vérifier son activation ; contrôler aussi le secours d'ajout manuel.
+- [ ] Vérifier l'unicité de l'e-mail et de la ressource,
   puis vérifier le refus d'une adresse déjà utilisée par le portail staff.
 - [ ] Se connecter avec `planning-salaries-otp`, contrôler l'isolement des
   autres tuiles, la redirection depuis une route staff et la révocation après
@@ -257,7 +274,7 @@ configuration et remplacer uniquement le jeton de renouvellement.
   erreur, la conservation de l'affectation locale et la relance manuelle.
 - [ ] Révoquer temporairement l'autorisation OAuth, vérifier qu'une écriture
   échoue sans exposer le jeton, puis reconnecter la boîte du club.
-- [ ] Laisser un samedi sans salarié, vérifier la planification à J-7 09 h de
+- [ ] Laisser un samedi sans salarié, vérifier la planification le lundi précédent à 09 h de
   Paris, le destinataire principal, les salariés actifs en CCI et la liste de
   tous les groupes.
 - [ ] Affecter le samedi avant l'échéance et vérifier l'annulation de l'alerte ;

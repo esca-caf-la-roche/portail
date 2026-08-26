@@ -56,7 +56,7 @@ Voir [13-planning-salaries-samedis.md](13-planning-salaries-samedis.md).
 | Connexion et identité `/planning-salaries-samedis` | `src/planningSalariesSamedis/PlanningSalariesApp.tsx`, `src/planningSalariesSamedis/PlanningSalariesLogin.tsx` | `convex/auth.ts`, `convex/planningSalariesOtp.ts`, `convex/planningSalaries/identity.ts` |
 | Planning partagé et compteurs | `src/planningSalariesSamedis/PlanningBoard.tsx` | `convex/planningSalaries/calendrier.ts`, `convex/planningSalaries/affectations.ts` |
 | Annuaire et gestion | `src/planningSalariesSamedis/GestionPlanningSalaries.tsx` | `convex/planningSalaries/annuaire.ts`, `convex/planningSalaries/calendrier.ts` |
-| Google et alertes J-7 | états intégrés à la gestion | `convex/planningSalaries/google.ts`, `convex/planningSalaries/syncDb.ts`, `convex/planningSalaries/alertes.ts`, `convex/email.ts` |
+| Google et rappels du lundi | états intégrés à la gestion | `convex/planningSalaries/google.ts`, `convex/planningSalaries/syncDb.ts`, `convex/planningSalaries/alertes.ts`, `convex/email.ts` |
 
 ## Module Abonnements
 

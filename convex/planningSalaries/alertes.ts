@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
 import {
@@ -14,10 +14,10 @@ import { MAX_CRENEAUX_PAR_SAISON, MAX_SALARIES, requireGestionnaire } from "./li
 
 function echeanceAlerte(date: string): number {
   const samedi = new Date(`${date}T12:00:00Z`);
-  samedi.setUTCDate(samedi.getUTCDate() - 7);
-  const dateJ7 = samedi.toISOString().slice(0, 10);
-  const valeur = parisWallToUtcMs(`${dateJ7}T09:00`);
-  if (valeur === null) throw new Error("Date d'alerte invalide.");
+  samedi.setUTCDate(samedi.getUTCDate() - 5);
+  const lundi = samedi.toISOString().slice(0, 10);
+  const valeur = parisWallToUtcMs(`${lundi}T09:00`);
+  if (valeur === null) throw new ConvexError("Date d'alerte invalide.");
   return valeur;
 }
 
@@ -75,17 +75,24 @@ export const reconcilierDate = internalMutation({
     if (!aDeterminer || creneaux.length === 0) {
       if (alerte?.scheduledFunctionId) await ctx.scheduler.cancel(alerte.scheduledFunctionId);
       if (alerte && alerte.statut === "planifiee") {
-        await ctx.db.patch(alerte._id, { statut: "annulee", scheduledFunctionId: undefined, updatedAt: Date.now() });
+        await ctx.db.patch(alerte._id, {
+          statut: "annulee",
+          scheduledFunctionId: undefined,
+          updatedAt: args.maintenant,
+        });
       }
       return null;
     }
+    const echeanceAt = echeanceAlerte(args.date);
     if (
       alerte?.statut === "envoyee" ||
-      alerte?.statut === "planifiee" ||
       alerte?.statut === "en_cours" ||
-      alerte?.statut === "echec"
+      alerte?.statut === "echec" ||
+      (alerte?.statut === "planifiee" && alerte.echeanceAt === echeanceAt)
     ) return null;
-    const echeanceAt = echeanceAlerte(args.date);
+    if (alerte?.scheduledFunctionId) {
+      await ctx.scheduler.cancel(alerte.scheduledFunctionId);
+    }
     const lancement = Math.max(args.maintenant, echeanceAt);
     const alerteId = alerte?._id ?? await ctx.db.insert("planning_salaries_alertes", {
       saison: args.saison,
@@ -166,10 +173,27 @@ export const preparerEnvoi = internalMutation({
     if (!alerte || (alerte.statut !== "planifiee" && alerte.statut !== "echec")) {
       return false;
     }
+    const now = Date.now();
+    const echeanceAt = echeanceAlerte(alerte.date);
+    if (now < echeanceAt) {
+      const scheduledFunctionId = await ctx.scheduler.runAt(
+        echeanceAt,
+        internal.planningSalaries.alertes.envoyer,
+        args,
+      );
+      await ctx.db.patch(alerte._id, {
+        statut: "planifiee",
+        scheduledFunctionId,
+        echeanceAt,
+        updatedAt: now,
+      });
+      return false;
+    }
     await ctx.db.patch(alerte._id, {
       statut: "en_cours",
       scheduledFunctionId: undefined,
-      updatedAt: Date.now(),
+      echeanceAt,
+      updatedAt: now,
     });
     return true;
   },

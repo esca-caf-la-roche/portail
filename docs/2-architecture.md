@@ -210,8 +210,8 @@ la configuration courante n'a pas été vérifiée avec succès.
 
 Le planning salarié lit Google Calendar à la demande avec verrou et volumes
 bornés. Une saga persistée applique ensuite chaque changement de ressource,
-réessaie au plus trois fois et expose les échecs au gestionnaire. Les alertes
-J-7 sont des fonctions planifiées réconciliées après synchronisation ou
+réessaie au plus trois fois et expose les échecs au gestionnaire. Les rappels
+du lundi à 09 h sont des fonctions planifiées réconciliées après synchronisation ou
 affectation, pas un cron. Voir
 [13-planning-salaries-samedis.md](13-planning-salaries-samedis.md).
 
