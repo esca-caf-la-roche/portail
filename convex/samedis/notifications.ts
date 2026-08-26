@@ -29,6 +29,152 @@ export type TypeModification =
   | "reservation_regularisee"
   | "calendrier_synchronise";
 
+const LIBELLES_MODIFICATION: Record<TypeModification, string> = {
+  configuration_modifiee: "Configuration modifiée",
+  participant_ajoute: "Participant ajouté",
+  participant_modifie: "Participant modifié",
+  participant_supprime: "Participant supprimé",
+  creneau_modifie: "Créneau modifié",
+  reservation_creee: "Réservation créée",
+  reservation_annulee: "Réservation annulée",
+  reservation_regularisee: "Réservation régularisée",
+  calendrier_synchronise: "Calendrier synchronisé",
+};
+
+function capitaleInitiale(texte: string): string {
+  return texte.length === 0 ? texte : `${texte[0]?.toUpperCase()}${texte.slice(1)}`;
+}
+
+export function formaterDateCivileFrancaise(dateIso: string): string {
+  const correspondance = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateIso);
+  if (!correspondance) return dateIso;
+  const annee = Number(correspondance[1]);
+  const mois = Number(correspondance[2]);
+  const jour = Number(correspondance[3]);
+  const date = new Date(Date.UTC(annee, mois - 1, jour, 12));
+  if (
+    date.getUTCFullYear() !== annee ||
+    date.getUTCMonth() !== mois - 1 ||
+    date.getUTCDate() !== jour
+  ) {
+    return dateIso;
+  }
+  return capitaleInitiale(new Intl.DateTimeFormat("fr-FR", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(date));
+}
+
+export function humaniserDatesDansTexte(texte: string): string {
+  return texte.replace(/\b\d{4}-\d{2}-\d{2}\b/g, formaterDateCivileFrancaise);
+}
+
+export function echapperHtml(texte: string): string {
+  return texte
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+export function construireEmailNotificationSamedis(args: {
+  typeModification: TypeModification;
+  acteur: string;
+  saison?: string;
+  resume: string;
+  createdAt: number;
+}) {
+  const libelle = LIBELLES_MODIFICATION[args.typeModification];
+  const detail = humaniserDatesDansTexte(args.resume);
+  const dateEnregistrement = capitaleInitiale(new Intl.DateTimeFormat("fr-FR", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Europe/Paris",
+  }).format(new Date(args.createdAt)));
+  const sujet = `Samedis après-midi — ${libelle}${args.saison ? ` — saison ${args.saison}` : ""}`;
+  const texte =
+    `SAMEDIS APRÈS-MIDI\n\n` +
+    `${libelle}\n${detail}\n\n` +
+    `Acteur : ${args.acteur}\n` +
+    `${args.saison ? `Saison : ${args.saison}\n` : ""}` +
+    `Enregistré le : ${dateEnregistrement}`;
+
+  const acteurHtml = echapperHtml(args.acteur);
+  const saisonHtml = args.saison ? echapperHtml(args.saison) : null;
+  const libelleHtml = echapperHtml(libelle);
+  const detailHtml = echapperHtml(detail);
+  const dateHtml = echapperHtml(dateEnregistrement);
+  const html = `<!doctype html>
+<html lang="fr">
+  <body style="margin:0;padding:0;background:#e9e7ff;color:#111111;font-family:Arial,Helvetica,sans-serif;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#e9e7ff;">
+      <tr>
+        <td align="center" style="padding:32px 16px 44px;">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:640px;background:#ffffff;border:4px solid #111111;box-shadow:10px 10px 0 #111111;">
+            <tr>
+              <td style="padding:14px 20px;background:#ffd84d;border-bottom:4px solid #111111;font-family:Arial Black,Arial,Helvetica,sans-serif;font-size:13px;font-weight:900;letter-spacing:1.5px;text-transform:uppercase;">
+                CAF La Roche-Bonneville · Samedis après-midi
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:28px 24px 12px;">
+                <div style="display:inline-block;padding:6px 10px;background:#111111;color:#ffffff;font-size:12px;font-weight:800;letter-spacing:1px;text-transform:uppercase;">Modification enregistrée</div>
+                <h1 style="margin:16px 0 0;font-family:Arial Black,Arial,Helvetica,sans-serif;font-size:30px;line-height:1.1;text-transform:uppercase;">${libelleHtml}</h1>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:12px 24px 24px;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#b9f56a;border:3px solid #111111;">
+                  <tr>
+                    <td style="padding:10px 14px;border-bottom:3px solid #111111;font-size:11px;font-weight:900;letter-spacing:1.2px;text-transform:uppercase;">Ce qui a changé</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:18px 14px;font-size:18px;line-height:1.45;font-weight:700;">${detailHtml}</td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0 24px 28px;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border:3px solid #111111;">
+                  <tr>
+                    <td width="34%" style="padding:11px 12px;background:#ff8fab;border-right:3px solid #111111;border-bottom:2px solid #111111;font-size:11px;font-weight:900;text-transform:uppercase;">Acteur</td>
+                    <td style="padding:11px 12px;border-bottom:2px solid #111111;font-size:14px;font-weight:700;overflow-wrap:anywhere;">${acteurHtml}</td>
+                  </tr>
+                  ${saisonHtml ? `<tr>
+                    <td width="34%" style="padding:11px 12px;background:#61dafb;border-right:3px solid #111111;border-bottom:2px solid #111111;font-size:11px;font-weight:900;text-transform:uppercase;">Saison</td>
+                    <td style="padding:11px 12px;border-bottom:2px solid #111111;font-size:14px;font-weight:700;">${saisonHtml}</td>
+                  </tr>` : ""}
+                  <tr>
+                    <td width="34%" style="padding:11px 12px;background:#ffd84d;border-right:3px solid #111111;font-size:11px;font-weight:900;text-transform:uppercase;">Enregistré le</td>
+                    <td style="padding:11px 12px;font-size:14px;font-weight:700;">${dateHtml}</td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:14px 20px;background:#111111;color:#ffffff;font-size:11px;line-height:1.5;font-weight:700;">
+                Notification automatique du portail Escalade CAF La Roche-Bonneville.
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+
+  return { sujet, texte, html };
+}
+
 export async function creerNotification(
   ctx: MutationCtx,
   args: {
@@ -64,23 +210,23 @@ export const contexte = internalQuery({
       destinataire: v.string(),
       sujet: v.string(),
       texte: v.string(),
+      html: v.string(),
     }),
   ),
   handler: async (ctx, args) => {
     const notification = await ctx.db.get(args.notificationId);
     if (!notification || notification.statut === "envoye") return null;
     const acteur = await ctx.db.get(notification.acteurUserId);
-    const saison = notification.saison ? ` — saison ${notification.saison}` : "";
+    const contenu = construireEmailNotificationSamedis({
+      typeModification: notification.typeModification,
+      acteur: acteur?.email ?? notification.acteurUserId,
+      saison: notification.saison,
+      resume: notification.resume,
+      createdAt: notification.createdAt,
+    });
     return {
       destinataire: notification.destinataire,
-      sujet: `Samedis après-midi : modification${saison}`,
-      texte:
-        `Une modification a été enregistrée dans la gestion des samedis après-midi.\n\n` +
-        `Type : ${notification.typeModification}\n` +
-        `Acteur : ${acteur?.email ?? notification.acteurUserId}\n` +
-        `${notification.saison ? `Saison : ${notification.saison}\n` : ""}` +
-        `Détail : ${notification.resume}\n` +
-        `Date : ${new Date(notification.createdAt).toLocaleString("fr-FR", { timeZone: "Europe/Paris" })}`,
+      ...contenu,
     };
   },
 });
@@ -117,7 +263,7 @@ export const envoyer = internalAction({
   args: { notificationId: v.id("samedis_notifications") },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const donnees: { destinataire: string; sujet: string; texte: string } | null =
+    const donnees: { destinataire: string; sujet: string; texte: string; html: string } | null =
       await ctx.runQuery(internal.samedis.notifications.contexte, args);
     if (!donnees) return null;
     try {
@@ -125,6 +271,7 @@ export const envoyer = internalAction({
         to: donnees.destinataire,
         subject: donnees.sujet,
         text: donnees.texte,
+        html: donnees.html,
       });
       await ctx.runMutation(internal.samedis.notifications.marquerResultat, {
         ...args,
