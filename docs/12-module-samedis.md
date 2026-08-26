@@ -22,13 +22,14 @@ afin que ces derniers n'entrent jamais dans les autres tuiles du portail.
   L'agenda la signale « à régulariser » : le gestionnaire la maintient, ou
   l'annule.
 
-Pour les vacances scolaires ordinaires, les dates officielles indiquent le
-départ après les cours et la reprise des cours le matin. Seuls les samedis
-strictement compris entre ces deux dates sont donc bloqués : le samedi de
-départ reste disponible, une semaine complète bloque un samedi et deux semaines
-complètes en bloquent deux. Une fermeture officielle ponctuelle publiée sur un
-vendredi, comme le pont de l'Ascension 2027, bloque le samedi qui la suit ; une
-fermeture ponctuelle publiée sur un samedi ne bloque pas ce samedi.
+Les dates officielles indiquent un départ après les cours le soir de la date de
+début et une reprise le matin de la date de fin. Lorsque le début est annoncé
+un vendredi, le samedi du lendemain reste travaillé ; les autres samedis
+strictement compris entre le début et la fin sont bloqués. Une semaine de
+vacances bloque ainsi un samedi, deux semaines en bloquent deux, et ainsi de
+suite. Pour une fermeture de moins de sept jours, tout samedi strictement
+compris dans l'intervalle est bloqué ; cette règle couvre notamment le pont de
+l'Ascension, qui peut commencer le mercredi après les cours.
 
 Les interfaces gestionnaire et participant présentent les samedis sous forme
 d'agenda groupé par mois. Les badges « Jour férié », « Vacances scolaires » et
@@ -135,9 +136,11 @@ Convex et ne doivent pas être placées dans le frontend ou la documentation.
    apparaissent, dans l'ordre et groupés par mois ; réduire ensuite la période
    et contrôler la confirmation ainsi que la conservation d'une date réservée ;
 3. lancer la synchronisation, vérifier les badges explicites pour un jour férié
-   et des vacances de Grenoble. Vérifier que le premier samedi, lorsque les
-   vacances commencent après les cours, reste disponible ; relancer ensuite
-   dans l'heure : aucun second appel externe ne doit partir ;
+   et des vacances de Grenoble. Vérifier qu'un début annoncé le vendredi laisse
+   le samedi du lendemain disponible, qu'une semaine bloque un seul autre
+   samedi et qu'une fermeture de moins de sept jours comprenant strictement un
+   samedi, comme le pont de l'Ascension, le bloque ; relancer ensuite dans
+   l'heure : aucun second appel externe ne doit partir ;
 4. simuler une panne des sources officielles : le dernier calendrier connu doit
    rester visible, l'erreur doit apparaître et une configuration non validée ne
    doit accepter aucune réservation ;

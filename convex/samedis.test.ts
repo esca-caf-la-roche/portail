@@ -394,6 +394,74 @@ describe("vacances scolaires des samedis", () => {
       }],
     )).toEqual(["2026-05-16"]);
   });
+
+  test("compte un seul samedi pour une semaine commencée le vendredi soir", () => {
+    expect(samedisBloquesParVacances(
+      ["2026-10-17", "2026-10-24", "2026-10-31"],
+      [{
+        start_date: "2026-10-16",
+        end_date: "2026-10-26",
+        description: "Une semaine de vacances",
+      }],
+    )).toEqual(["2026-10-24"]);
+  });
+
+  test("compte deux samedis pour deux semaines commencées le vendredi soir", () => {
+    expect(samedisBloquesParVacances(
+      ["2026-10-17", "2026-10-24", "2026-10-31", "2026-11-07"],
+      [{
+        start_date: "2026-10-16",
+        end_date: "2026-11-02",
+        description: "Deux semaines de vacances",
+      }],
+    )).toEqual(["2026-10-24", "2026-10-31"]);
+  });
+
+  test("bloque le samedi d'un pont de l'Ascension commencé le mercredi soir", () => {
+    expect(samedisBloquesParVacances(
+      ["2027-05-01", "2027-05-08", "2027-05-15"],
+      [{
+        start_date: "2027-05-05",
+        end_date: "2027-05-10",
+        description: "Pont de l'Ascension",
+      }],
+    )).toEqual(["2027-05-08"]);
+  });
+
+  test("ne bloque jamais le samedi matin de la reprise", () => {
+    expect(samediBloqueParPeriodeScolaire(
+      "2027-05-08",
+      "2027-05-03",
+      "2027-05-08",
+    )).toBe(false);
+    expect(samediBloqueParPeriodeScolaire(
+      "2026-10-31",
+      "2026-10-16",
+      "2026-10-31",
+    )).toBe(false);
+  });
+
+  test("bloque le samedi d'une période de sept jours commencée le mercredi", () => {
+    expect(samedisBloquesParVacances(
+      ["2027-05-01", "2027-05-08", "2027-05-15"],
+      [{
+        start_date: "2027-05-05",
+        end_date: "2027-05-12",
+        description: "Fermeture d'une semaine",
+      }],
+    )).toEqual(["2027-05-08"]);
+  });
+
+  test("bloque le samedi d'un pont court commencé le vendredi soir", () => {
+    expect(samedisBloquesParVacances(
+      ["2027-05-01", "2027-05-08", "2027-05-15"],
+      [{
+        start_date: "2027-05-07",
+        end_date: "2027-05-10",
+        description: "Pont court",
+      }],
+    )).toEqual(["2027-05-08"]);
+  });
 });
 
 describe("rafraîchissement du calendrier officiel", () => {
