@@ -64,7 +64,7 @@ mobile.
 
 Pour le planning salarié, la checklist de
 [13-planning-salaries-samedis.md](13-planning-salaries-samedis.md) couvre les
-deux populations, la saison, Google Calendar, les reprises et l'alerte J-7.
+deux populations, la saison, Google Calendar, les reprises et le rappel du lundi.
 
 ### Scénario ciblé — Messagerie Abonnements
 

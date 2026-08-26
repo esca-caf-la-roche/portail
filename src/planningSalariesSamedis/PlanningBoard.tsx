@@ -60,17 +60,15 @@ export default function PlanningBoard() {
           <div className="pss-counter-grid">{planning.compteurs.map((compteur) => <article key={compteur.salarieId ?? "placeholder"} className={compteur.salarieId === null ? "is-open" : ""}><strong>{compteur.prenom}</strong><span>{compteur.samedis} samedi{compteur.samedis > 1 ? "s" : ""}</span></article>)}</div>
         </section>
         {parDate.size === 0 ? <div className="pss-state"><CalendarDays aria-hidden="true" />Aucun samedi n’est encore disponible pour cette saison.</div> : (
-          <ol className="pss-rope-list">{Array.from(parDate).sort(([a], [b]) => a.localeCompare(b)).map(([date, creneaux]) => (
-            <li className="pss-crossing" key={date}>{(() => {
+          <ol className="pss-saturday-grid">{Array.from(parDate).sort(([a], [b]) => a.localeCompare(b)).map(([date, creneaux]) => (
+            <li className="pss-saturday-card" key={date}>{(() => {
               const salarie = creneaux[0]?.salarie ?? null;
               const estMoi = salarie?._id === moi._id;
               const libre = !salarie;
               return <>
-              <header><span className="pss-knot" aria-hidden="true" /><div><span>Samedi</span><h2>{dateLongue(date)}</h2></div><strong>{salarie?.prenom ?? "À déterminer"}</strong></header>
-              <ul>{creneaux.map((creneau) => (
-                <li key={creneau._id} className={estMoi ? "is-mine" : libre ? "is-open" : "is-taken"}>
-                  <div><span className="pss-anchor" aria-hidden="true" /><div><h3>{creneau.groupe}</h3><p>{creneau.debut.slice(11, 16)} – {creneau.fin.slice(11, 16)}</p></div></div>
-                </li>
+              <header><div><span>Samedi</span><h2>{dateLongue(date)}</h2></div><strong className={estMoi ? "is-mine" : libre ? "is-open" : "is-assigned"}>{estMoi ? "Mon samedi" : salarie?.prenom ?? "À déterminer"}</strong></header>
+              <ul className="pss-slot-list">{creneaux.map((creneau) => (
+                <li key={creneau._id}><strong>{creneau.groupe}</strong><span>{creneau.debut.slice(11, 16)} – {creneau.fin.slice(11, 16)}</span></li>
               ))}</ul>
               <div className="pss-saturday-action"><div className="pss-assignee">{estMoi && <Check aria-hidden="true" />}<span><small>{libre ? "Samedi disponible" : "Pris en charge par"}</small><strong>{salarie?.prenom ?? "À déterminer"}</strong></span></div>{(libre || estMoi) && <button className={`pss-button pss-button--small ${estMoi ? "pss-button--plain" : "pss-button--success"}`} disabled={enCours === date} onClick={() => void agir(date, estMoi)}>{enCours === date ? "Mise à jour…" : estMoi ? "Retirer mon inscription" : "Je prends ce samedi"}</button>}</div>
               </>;

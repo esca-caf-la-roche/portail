@@ -428,7 +428,7 @@ export default defineSchema({
     ])
     .index("by_idempotencyKey", ["idempotencyKey"]),
 
-  // Rappel unique J-7 par samedi lorsqu'au moins un groupe reste « À
+  // Rappel unique le lundi précédent à 09 h lorsqu'au moins un groupe reste « À
   // déterminer ». L'unicité saison/date est garantie en mutation via
   // `by_saison_and_date(...).unique()`, afin de ne pas doubler les emails.
   // L'identifiant planifié permet d'annuler un rappel devenu obsolète.

@@ -1,15 +1,29 @@
 "use node";
 
+import { MINUTE, RateLimiter } from "@convex-dev/rate-limiter";
 import { google, type calendar_v3 } from "googleapis";
 import { ConvexError, v } from "convex/values";
 import { authenticatedAction } from "../customFunctions";
-import { internal } from "../_generated/api";
+import { components, internal } from "../_generated/api";
 import { internalAction } from "../_generated/server";
 import {
   bornesSaison,
   MAX_CRENEAUX_PAR_SAISON,
   PLACEHOLDER_RESOURCE,
 } from "./lib";
+
+const rateLimiter = new RateLimiter(components.rateLimiter, {
+  planningRessourcesGoogleGlobal: {
+    kind: "fixed window",
+    rate: 10,
+    period: MINUTE,
+  },
+  planningRessourcesGoogleParGestionnaire: {
+    kind: "fixed window",
+    rate: 2,
+    period: MINUTE,
+  },
+});
 
 function calendrierGoogleLecture() {
   const email = process.env.GOOGLE_DRIVE_SERVICE_ACCOUNT_EMAIL;
@@ -46,6 +60,80 @@ function calendrierGoogleEcriture() {
   auth.setCredentials({ refresh_token: refreshToken });
   return google.calendar({ version: "v3", auth });
 }
+
+export const listerRessources = authenticatedAction({
+  args: {},
+  returns: v.array(v.object({
+    libelle: v.string(),
+    resourceCalendarId: v.string(),
+  })),
+  handler: async (ctx) => {
+    await ctx.runQuery(internal.access.requireTileAccess, {
+      userId: ctx.userId,
+      tile: "planning_salaries_samedis",
+    });
+    const individuel = await rateLimiter.limit(
+      ctx,
+      "planningRessourcesGoogleParGestionnaire",
+      { key: ctx.userId },
+    );
+    if (!individuel.ok) {
+      throw new ConvexError({
+        code: "PLANNING_RESSOURCES_RATE_LIMIT",
+        message: "Les ressources viennent d'être récupérées. Patientez une minute avant d'actualiser.",
+      });
+    }
+    const global = await rateLimiter.limit(
+      ctx,
+      "planningRessourcesGoogleGlobal",
+      { key: "global" },
+    );
+    if (!global.ok) {
+      throw new ConvexError({
+        code: "PLANNING_RESSOURCES_RATE_LIMIT",
+        message: "Les ressources Google sont momentanément très sollicitées. Réessayez dans une minute.",
+      });
+    }
+    try {
+      const calendar = calendrierGoogleEcriture();
+      const ressources = new Map<string, string>();
+      let pageToken: string | undefined;
+      for (let page = 0; page < 5; page += 1) {
+        const response = await calendar.calendarList.list({
+          maxResults: 250,
+          minAccessRole: "freeBusyReader",
+          pageToken,
+          showHidden: true,
+        });
+        for (const item of response.data.items ?? []) {
+          const resourceCalendarId = item.id?.trim().toLowerCase();
+          if (
+            !resourceCalendarId?.endsWith("@resource.calendar.google.com") ||
+            resourceCalendarId === PLACEHOLDER_RESOURCE
+          ) continue;
+          ressources.set(
+            resourceCalendarId,
+            item.summaryOverride?.trim() || item.summary?.trim() || "Ressource Google",
+          );
+          if (ressources.size > 250) {
+            throw new Error("Trop de ressources Google visibles pour cet annuaire.");
+          }
+        }
+        pageToken = response.data.nextPageToken ?? undefined;
+        if (!pageToken) break;
+      }
+      if (pageToken) throw new Error("La liste des ressources Google dépasse la limite prévue.");
+      return [...ressources]
+        .map(([resourceCalendarId, libelle]) => ({ libelle, resourceCalendarId }))
+        .sort((a, b) => a.libelle.localeCompare(b.libelle, "fr"));
+    } catch {
+      throw new ConvexError({
+        code: "PLANNING_RESSOURCES_GOOGLE",
+        message: "Impossible de récupérer les ressources Google. Vérifiez qu’elles sont ajoutées au compte du club et que l’autorisation CalendarList a été accordée.",
+      });
+    }
+  },
+});
 
 function dateParis(instant: string): string {
   if (/^\d{4}-\d{2}-\d{2}$/.test(instant)) return instant;

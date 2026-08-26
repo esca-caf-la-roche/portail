@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import schema from "./schema";
 import { migrerAffectationPlanningVersSamedi } from "./migrations";
@@ -106,6 +106,70 @@ describe("planning des salariés du samedi", () => {
         resourceCalendarId: "manager@resource.calendar.google.com",
       },
     )).rejects.toThrow("portail staff");
+  });
+
+  test("conserve un tableau pour les clients déjà publiés", async () => {
+    const f = await fixture();
+    const annuaire = await f.t.withIdentity({ subject: f.managerId }).query(
+      api.planningSalaries.annuaire.list,
+      {},
+    );
+
+    expect(Array.isArray(annuaire)).toBe(true);
+    expect(annuaire.map(({ prenom }) => prenom)).toEqual(["Alice"]);
+  });
+
+  test("refuse une 51e fiche pour garder l'annuaire lisible", async () => {
+    const f = await fixture();
+    await f.t.run(async (ctx) => {
+      for (let index = 1; index < 50; index += 1) {
+        await ctx.db.insert("planning_salaries_annuaire", {
+          prenom: `Salarié ${index}`,
+          email: `salarie-${index}@example.test`,
+          emailNormalise: `salarie-${index}@example.test`,
+          resourceCalendarId: `salarie-${index}@resource.calendar.google.com`,
+          resourceCalendarIdNormalise: `salarie-${index}@resource.calendar.google.com`,
+          actif: false,
+          createdAt: 1,
+          updatedAt: 1,
+        });
+      }
+    });
+
+    await expect(f.t.withIdentity({ subject: f.managerId }).mutation(
+      api.planningSalaries.annuaire.ajouter,
+      {
+        prenom: "En trop",
+        email: "en-trop@example.test",
+        resourceCalendarId: "en-trop@resource.calendar.google.com",
+      },
+    )).rejects.toThrow("limité à 50 salariés");
+  });
+
+  test("active une sélection de ressources de façon atomique", async () => {
+    const f = await fixture();
+    await expect(f.t.withIdentity({ subject: f.managerId }).mutation(
+      api.planningSalaries.annuaire.ajouterPlusieurs,
+      {
+        salaries: [
+          {
+            prenom: "Bob",
+            email: "bob@example.test",
+            resourceCalendarId: "bob@resource.calendar.google.com",
+          },
+          {
+            prenom: "Robert",
+            email: "robert@example.test",
+            resourceCalendarId: "bob@resource.calendar.google.com",
+          },
+        ],
+      },
+    )).rejects.toThrow("ressource Google est déjà utilisée");
+
+    const annuaire = await f.t.run((ctx) =>
+      ctx.db.query("planning_salaries_annuaire").collect(),
+    );
+    expect(annuaire.map(({ prenom }) => prenom)).toEqual(["Alice"]);
   });
 
   test("refuse de transformer une fiche salariée en compte staff", async () => {
@@ -370,6 +434,77 @@ describe("planning des salariés du samedi", () => {
     const alertes = await f.t.run((ctx) => ctx.db.query("planning_salaries_alertes").collect());
     expect(alertes).toHaveLength(1);
     expect(alertes[0]?.statut).toBe("planifiee");
+    expect(alertes[0]?.echeanceAt).toBe(
+      Date.parse("2026-08-31T07:00:00.000Z"),
+    );
+  });
+
+  test("replanifie au lundi à 9 h une alerte encore calée sur l'ancien J-7", async () => {
+    const f = await fixture();
+    const ancienneEcheance = Date.parse("2026-08-29T07:00:00.000Z");
+    const alerteId = await f.t.run(async (ctx) => {
+      const id = await ctx.db.insert("planning_salaries_alertes", {
+        saison: "2026-27",
+        date: "2026-09-05",
+        echeanceAt: ancienneEcheance,
+        statut: "planifiee",
+        tentatives: 0,
+        createdAt: 1,
+        updatedAt: 1,
+      });
+      const scheduledFunctionId = await ctx.scheduler.runAt(
+        ancienneEcheance,
+        internal.planningSalaries.alertes.envoyer,
+        { alerteId: id },
+      );
+      await ctx.db.patch(id, { scheduledFunctionId });
+      return id;
+    });
+    const avant = await f.t.run((ctx) => ctx.db.get(alerteId));
+
+    await f.t.mutation(internal.planningSalaries.alertes.reconcilierDate, {
+      saison: "2026-27",
+      date: "2026-09-05",
+      maintenant: Date.parse("2026-08-25T07:00:00.000Z"),
+    });
+
+    const apres = await f.t.run((ctx) => ctx.db.get(alerteId));
+    expect(apres).toMatchObject({
+      statut: "planifiee",
+      echeanceAt: Date.parse("2026-08-31T07:00:00.000Z"),
+    });
+    expect(apres?.scheduledFunctionId).not.toBe(avant?.scheduledFunctionId);
+  });
+
+  test("diffère au lundi une ancienne tâche J-7 déclenchée le samedi", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-08-29T07:00:00.000Z"));
+      const f = await fixture();
+      const alerteId = await f.t.run((ctx) =>
+        ctx.db.insert("planning_salaries_alertes", {
+          saison: "2026-27",
+          date: "2026-09-05",
+          echeanceAt: Date.parse("2026-08-29T07:00:00.000Z"),
+          statut: "planifiee",
+          tentatives: 0,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        }),
+      );
+
+      await expect(f.t.mutation(
+        internal.planningSalaries.alertes.preparerEnvoi,
+        { alerteId },
+      )).resolves.toBe(false);
+
+      expect(await f.t.run((ctx) => ctx.db.get(alerteId))).toMatchObject({
+        statut: "planifiee",
+        echeanceAt: Date.parse("2026-08-31T07:00:00.000Z"),
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test("n'envoie pas d'alerte historique pour un samedi passé", async () => {

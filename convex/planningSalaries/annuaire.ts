@@ -26,36 +26,52 @@ const salariePublicValidator = v.object({
 
 const MAX_USERS_FALLBACK_EMAIL = 2_000;
 
-async function refuserEmailStaff(ctx: MutationCtx, email: string) {
-  const [participantSamedi, profilAbo] = await Promise.all([
-    ctx.db.query("samedis_participants")
+async function refuserEmailsStaff(ctx: MutationCtx, emails: string[]) {
+  const verifications = await Promise.all(emails.map(async (email) => ({
+    email,
+    participantSamedi: await ctx.db.query("samedis_participants")
       .withIndex("by_emailNormalise", (q) => q.eq("emailNormalise", email))
       .unique(),
-    ctx.db.query("abo_profiles")
+    profilAbo: await ctx.db.query("abo_profiles")
       .withIndex("by_email", (q) => q.eq("email", email))
       .first(),
-  ]);
-  if (participantSamedi || profilAbo) {
+    user: await ctx.db.query("users")
+      .withIndex("email", (q) => q.eq("email", email))
+      .first(),
+  })));
+  if (verifications.some(({ participantSamedi, profilAbo }) => participantSamedi || profilAbo)) {
     throw new ConvexError(
       "Cette adresse appartient déjà à un autre espace isolé du portail.",
     );
   }
-  let user = await ctx.db.query("users").withIndex("email", (q) => q.eq("email", email)).first();
-  if (!user) {
+
+  const userIdsParEmail = new Map<string, Id<"users">>();
+  for (const { email, user } of verifications) {
+    if (user) userIdsParEmail.set(email, user._id);
+  }
+  if (verifications.some(({ user }) => !user)) {
     const users = await ctx.db.query("users").take(MAX_USERS_FALLBACK_EMAIL + 1);
     if (users.length > MAX_USERS_FALLBACK_EMAIL) {
       throw new ConvexError("Impossible de vérifier les comptes existants : migration des emails requise.");
     }
-    user = users.find((candidate) => {
-      try { return normaliserEmail(candidate.email ?? "") === email; } catch { return false; }
-    }) ?? null;
+    for (const candidate of users) {
+      try {
+        const email = normaliserEmail(candidate.email ?? "");
+        if (emails.includes(email)) userIdsParEmail.set(email, candidate._id);
+      } catch { /* Les comptes historiques sans email exploitable sont ignorés. */ }
+    }
   }
-  if (!user) return;
-  const settings = await ctx.db.query("userSettings")
-    .withIndex("by_userId", (q) => q.eq("userId", user._id)).first();
-  if (settings) {
-    throw new ConvexError("Cette adresse appartient déjà au portail staff et ne peut pas être inscrite comme salarié isolé.");
+  for (const userId of userIdsParEmail.values()) {
+    const settings = await ctx.db.query("userSettings")
+      .withIndex("by_userId", (q) => q.eq("userId", userId)).first();
+    if (settings) {
+      throw new ConvexError("Cette adresse appartient déjà au portail staff et ne peut pas être inscrite comme salarié isolé.");
+    }
   }
+}
+
+async function refuserEmailStaff(ctx: MutationCtx, email: string) {
+  await refuserEmailsStaff(ctx, [email]);
 }
 
 export const list = authenticatedQuery({
@@ -67,6 +83,8 @@ export const list = authenticatedQuery({
     if (salaries.length > MAX_SALARIES) {
       throw new ConvexError("L'annuaire dépasse la limite prévue ; une pagination est nécessaire.");
     }
+    // Conserver un tableau pour rester compatible avec les clients déjà
+    // publiés pendant le déploiement progressif du frontend.
     return salaries
       .sort((a, b) => a.prenom.localeCompare(b.prenom, "fr"))
       .map((salarie) => ({
@@ -151,27 +169,74 @@ async function refuserModificationAvecAffectationFuture(
   }
 }
 
+type SaisieSalarie = {
+  prenom: string;
+  email: string;
+  resourceCalendarId: string;
+};
+
+function normaliserSaisie(args: SaisieSalarie): SaisieSalarie {
+  return {
+    prenom: normaliserPrenom(args.prenom),
+    email: normaliserEmail(args.email),
+    resourceCalendarId: normaliserResource(args.resourceCalendarId),
+  };
+}
+
+async function verifierCapaciteAnnuaire(ctx: MutationCtx, ajouts: number) {
+  const salaries = await ctx.db
+    .query("planning_salaries_annuaire")
+    .take(MAX_SALARIES);
+  if (ajouts < 1 || salaries.length + ajouts > MAX_SALARIES) {
+    throw new ConvexError(
+      `L'annuaire est limité à ${MAX_SALARIES} salariés. Réactivez ou modifiez une fiche existante avant d'en ajouter une nouvelle.`,
+    );
+  }
+}
+
+async function insererSalarie(ctx: MutationCtx, saisie: SaisieSalarie) {
+  await verifierUnicite(ctx, saisie.email, saisie.resourceCalendarId);
+  const now = Date.now();
+  return await ctx.db.insert("planning_salaries_annuaire", {
+    prenom: saisie.prenom,
+    email: saisie.email,
+    emailNormalise: saisie.email,
+    resourceCalendarId: saisie.resourceCalendarId,
+    resourceCalendarIdNormalise: saisie.resourceCalendarId,
+    actif: true,
+    createdAt: now,
+    updatedAt: now,
+  });
+}
+
 export const ajouter = authenticatedMutation({
   args: { prenom: v.string(), email: v.string(), resourceCalendarId: v.string() },
   returns: v.id("planning_salaries_annuaire"),
   handler: async (ctx, args) => {
     await requireGestionnaire(ctx, ctx.userId);
-    const prenom = normaliserPrenom(args.prenom);
-    const email = normaliserEmail(args.email);
-    const resourceCalendarId = normaliserResource(args.resourceCalendarId);
-    await refuserEmailStaff(ctx, email);
-    await verifierUnicite(ctx, email, resourceCalendarId);
-    const now = Date.now();
-    return await ctx.db.insert("planning_salaries_annuaire", {
-      prenom,
-      email,
-      emailNormalise: email,
-      resourceCalendarId,
-      resourceCalendarIdNormalise: resourceCalendarId,
-      actif: true,
-      createdAt: now,
-      updatedAt: now,
-    });
+    await verifierCapaciteAnnuaire(ctx, 1);
+    const saisie = normaliserSaisie(args);
+    await refuserEmailStaff(ctx, saisie.email);
+    return await insererSalarie(ctx, saisie);
+  },
+});
+
+export const ajouterPlusieurs = authenticatedMutation({
+  args: {
+    salaries: v.array(v.object({
+      prenom: v.string(),
+      email: v.string(),
+      resourceCalendarId: v.string(),
+    })),
+  },
+  returns: v.number(),
+  handler: async (ctx, args) => {
+    await requireGestionnaire(ctx, ctx.userId);
+    await verifierCapaciteAnnuaire(ctx, args.salaries.length);
+    const saisies = args.salaries.map(normaliserSaisie);
+    await refuserEmailsStaff(ctx, saisies.map(({ email }) => email));
+    for (const saisie of saisies) await insererSalarie(ctx, saisie);
+    return saisies.length;
   },
 });
 
