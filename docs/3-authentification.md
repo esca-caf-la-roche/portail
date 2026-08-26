@@ -1,12 +1,13 @@
 # Authentification par OTP avec Convex Auth
 
-La sécurité repose sur `@convex-dev/auth` et trois providers OTP à 6 chiffres :
+La sécurité repose sur `@convex-dev/auth` et quatre providers OTP à 6 chiffres :
 
 | Population | Provider | Création du compte | Espace accessible |
 |---|---|---|---|
 | Staff et bénévoles | `google-otp` | Email créé au préalable par un administrateur | Tuiles attribuées dans `userSettings.allowedTiles` |
 | Abonnés publics | `abo-otp` | Auto-inscription | Parcours isolé `/#/abonnements` |
 | Participants aux samedis | `samedi-otp` | Email préautorisé dans la gestion des samedis | Parcours isolé `/#/samedis` |
+| Salariés des cours du samedi | `planning-salaries-otp` | Email actif dans l'annuaire du planning salarié | Parcours isolé `/#/planning-salaries-samedis` |
 
 L'auto-inscription publique ne concerne donc que le module Abonnements. Elle ne
 crée aucun `userSettings` et ne donne accès à aucune tuile staff. Voir
@@ -90,6 +91,23 @@ La correction structurelle envisagée est un OTP applicatif avec provider
 d'identité non autorisée. Cette limite doit être réévaluée avant d'exposer la
 connexion à un public plus large.
 
+## Connexion des salariés du samedi
+
+Le provider `planning-salaries-otp` utilise une liste blanche et un quota
+indépendant. Seule une fiche active de `planning_salaries_annuaire` peut recevoir
+un code. La première connexion lie le compte technique à cette fiche, sans
+créer de `userSettings` ni de profil Abonnements.
+
+Une adresse staff est refusée dans l'annuaire puis à l'authentification.
+Les collisions avec les profils Abonnements et les participants aux permanences
+sont également refusées dans les deux sens afin qu'une session salariée ne
+cumule aucun autre espace applicatif.
+`Layout` redirige cette population isolée vers
+`/#/planning-salaries-samedis`. L'identité, le planning partagé et les propres
+prises/retraits du salarié lui sont ouverts ; l'annuaire, la synchronisation et
+les relances exigent la tuile gestionnaire. La limite d'énumération décrite
+ci-dessus s'applique aussi à ce provider.
+
 ## Gestion des accès staff
 
 Toutes les routes staff sont encapsulées dans le composant `Layout.tsx`.
@@ -105,3 +123,7 @@ Pour les samedis, `allowedTiles` contenant `samedis` définit le rôle de
 gestionnaire. Le rôle `admin` seul ne constitue pas un passe-droit. La route
 `/#/gestion-samedis`, les queries, mutations et actions Convex répètent cette
 garde. Les participants préautorisés restent une population séparée.
+
+Pour ce planning, `allowedTiles` contenant `planning_salaries_samedis` définit
+le gestionnaire. Les salariés isolés ne reçoivent aucune tuile. Voir
+[13-planning-salaries-samedis.md](13-planning-salaries-samedis.md).

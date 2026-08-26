@@ -13,7 +13,7 @@ le détail métier de chaque module.
 | Autorisation par tuile | `src/components/RequireAccess.tsx` | `convex/access.ts` |
 | Saison courante | `src/contexts/SeasonContext.tsx` | `convex/saisons.ts`, `convex/saisonUtils.ts` |
 | Utilisateurs et tuiles | `src/pages/Configurations.tsx` | `convex/users.ts` |
-| Authentification | `src/pages/Login.tsx` | `convex/auth.ts`, `convex/auth.config.ts`, `convex/http.ts`, `convex/staffOtp.ts`, `convex/aboOtp.ts`, `convex/samediOtp.ts` |
+| Authentification | `src/pages/Login.tsx` | `convex/auth.ts`, `convex/auth.config.ts`, `convex/http.ts`, `convex/staffOtp.ts`, `convex/aboOtp.ts`, `convex/samediOtp.ts`, `convex/planningSalariesOtp.ts` |
 | Schéma | — | `convex/schema.ts` |
 | Wrappers sécurisés | — | `convex/customFunctions.ts` |
 
@@ -29,6 +29,7 @@ le détail métier de chaque module.
 | Contacts des cours `/contacts-cours`, `/contacts-cours/copier` | `src/pages/ContactsCours.tsx`, `src/pages/ContactsCoursCopie.tsx`, `src/utils/contactsCours.ts` | `convex/contactsCours.ts`, `convex/abo/sync.ts` |
 | Remboursements élèves `/remboursements-eleves` | `src/pages/RemboursementsEleves.tsx`, `src/utils/remboursements.ts` | `convex/remboursements.ts`, `convex/remboursementsHelloAsso.ts` |
 | Samedis — gestion `/gestion-samedis` | `src/pages/GestionSamedis.tsx`, `src/samedis/ManagerSlot.tsx` | `convex/samedis/admin.ts`, `convex/samedis/calendrier.ts`, `convex/samedis/reservations.ts`, `convex/samedis/sync.ts`, `convex/samedis/notifications.ts` |
+| Planning salariés `/gestion-planning-salaries-samedis` | `src/planningSalariesSamedis/GestionPlanningSalaries.tsx` | `convex/planningSalaries/annuaire.ts`, `convex/planningSalaries/calendrier.ts`, `convex/planningSalaries/affectations.ts`, `convex/planningSalaries/google.ts`, `convex/planningSalaries/alertes.ts` |
 | Administration `/configurations` | `src/pages/Configurations.tsx`, `src/components/Configurations/DashboardTilesPanel.tsx` | `convex/users.ts`, `convex/saisons.ts`, `convex/bootstrap.ts` |
 
 Les routes `/adherents`, `/evenements` et `/statistiques` sont actuellement des
@@ -45,6 +46,17 @@ La documentation fonctionnelle complète est dans
 | Calendrier participant | `src/samedis/ParticipantCalendar.tsx` | `convex/samedis/calendrier.ts`, `convex/samedis/reservations.ts` |
 | Agenda et participants gestionnaire | `src/pages/GestionSamedis.tsx`, `src/samedis/ManagerSlot.tsx`, `src/samedis/ParticipantManager.tsx` | `convex/samedis/admin.ts`, `convex/samedis/calendrier.ts`, `convex/samedis/reservations.ts` |
 | Sources officielles et notifications | états intégrés à la page de gestion | `convex/samedis/sync.ts`, `convex/samedis/notifications.ts`, `convex/email.ts` |
+
+## Planning des salariés du samedi
+
+Voir [13-planning-salaries-samedis.md](13-planning-salaries-samedis.md).
+
+| Parcours | Frontend | Backend |
+|---|---|---|
+| Connexion et identité `/planning-salaries-samedis` | `src/planningSalariesSamedis/PlanningSalariesApp.tsx`, `src/planningSalariesSamedis/PlanningSalariesLogin.tsx` | `convex/auth.ts`, `convex/planningSalariesOtp.ts`, `convex/planningSalaries/identity.ts` |
+| Planning partagé et compteurs | `src/planningSalariesSamedis/PlanningBoard.tsx` | `convex/planningSalaries/calendrier.ts`, `convex/planningSalaries/affectations.ts` |
+| Annuaire et gestion | `src/planningSalariesSamedis/GestionPlanningSalaries.tsx` | `convex/planningSalaries/annuaire.ts`, `convex/planningSalaries/calendrier.ts` |
+| Google et alertes J-7 | états intégrés à la gestion | `convex/planningSalaries/google.ts`, `convex/planningSalaries/syncDb.ts`, `convex/planningSalaries/alertes.ts`, `convex/email.ts` |
 
 ## Module Abonnements
 
@@ -93,6 +105,8 @@ La documentation fonctionnelle complète est dans
 | Annuaire des licences | `convex/abo/licences.ts` |
 | Jours fériés et calendrier scolaire | `convex/samedis/sync.ts` |
 | Synthèses des samedis | `convex/samedis/notifications.ts`, `convex/email.ts` |
+| Google Calendar — planning salariés | `convex/planningSalaries/google.ts`, `convex/planningSalaries/syncDb.ts` |
+| OTP et alertes du planning salariés | `convex/planningSalariesOtp.ts`, `convex/planningSalaries/alertes.ts`, `convex/email.ts` |
 
 Les secrets associés résident dans les variables d'environnement Convex. Le
 frontend ne reçoit que `VITE_CONVEX_URL`.

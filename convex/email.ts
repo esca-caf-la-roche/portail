@@ -192,3 +192,38 @@ export const sendSamediEmail = action({
     }
   },
 });
+
+// Envoi dédié au planning des salariés du samedi. Il réutilise la boîte du
+// portail staff, comme la tuile Samedis, sans exposer d'endpoint arbitraire.
+export const sendPlanningSalariesEmail = action({
+  args: {
+    to: v.string(),
+    bcc: v.array(v.string()),
+    subject: v.string(),
+    text: v.string(),
+  },
+  returns: v.null(),
+  handler: async (_ctx, args) => {
+    const senderEmail = process.env.EMAIL_SENDER;
+    const senderPassword = process.env.EMAIL_PASSWORD;
+    if (!senderEmail || !senderPassword) {
+      throw new Error("La configuration SMTP du planning des samedis est absente.");
+    }
+    const destinataire = canoniserEmailUnique(args.to);
+    const bcc = [...new Set(args.bcc.map(canoniserEmailUnique))]
+      .filter((email) => email !== destinataire);
+    const client = creerTransporteur(senderEmail, senderPassword);
+    try {
+      await client.sendAsync({
+        from: `Escalade CAF La Roche-Bonneville <${senderEmail}>`,
+        to: destinataire,
+        ...(bcc.length > 0 ? { bcc: bcc.join(", ") } : {}),
+        subject: args.subject,
+        text: args.text,
+      });
+      return null;
+    } finally {
+      client.smtp.close();
+    }
+  },
+});

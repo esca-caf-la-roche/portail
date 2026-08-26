@@ -9,6 +9,10 @@ import {
   consommerDemandeSamediOtp,
   participantSamediActif,
 } from "./samediOtp";
+import {
+  consommerDemandePlanningSalariesOtp,
+  salariePlanningActif,
+} from "./planningSalariesOtp";
 import { ConvexError } from "convex/values";
 
 const MAX_USERS_FALLBACK_EMAIL = 2_000;
@@ -139,8 +143,25 @@ const SamediOTP = Email({
   },
 });
 
+// --- Provider PLANNING SALARIÉS : population isolée, sans userSettings. ---
+const PlanningSalariesOTP = Email({
+  id: "planning-salaries-otp",
+  apiKey: "dummy",
+  maxAge: 60 * 10,
+  generateVerificationToken: genererCode,
+  // @ts-expect-error ctx is passed by Convex Auth but the EmailConfig type only expects 1 argument
+  sendVerificationRequest: async (
+    { identifier: email, token: code }: { identifier: string; token: string },
+    ctx: ActionCtx,
+  ) => {
+    await ctx.scheduler.runAfter(0, internal.planningSalariesOtp.dispatchEmail, {
+      email: canoniserEmailUnique(email), code, shouldSend: true,
+    });
+  },
+});
+
 export const { auth, signIn, signOut, store } = convexAuth({
-  providers: [GoogleOTP, AboOTP, SamediOTP],
+  providers: [GoogleOTP, AboOTP, SamediOTP, PlanningSalariesOTP],
   callbacks: {
     async createOrUpdateUser(ctx, args) {
       const emailBrut = args.profile.email;
@@ -153,6 +174,32 @@ export const { auth, signIn, signOut, store } = convexAuth({
       // rétablit les index applicatifs sans affaiblir les requêtes en scans.
       const appCtx = ctx as MutationCtx;
       const db = appCtx.db;
+      if (
+        args.provider.id === "abo-otp" ||
+        args.provider.id === "samedi-otp" ||
+        args.provider.id === "planning-salaries-otp"
+      ) {
+        const [salariePlanning, participantSamedi, profilAbo] = await Promise.all([
+          db.query("planning_salaries_annuaire")
+            .withIndex("by_emailNormalise", (q) => q.eq("emailNormalise", email))
+            .unique(),
+          db.query("samedis_participants")
+            .withIndex("by_emailNormalise", (q) => q.eq("emailNormalise", email))
+            .unique(),
+          db.query("abo_profiles")
+            .withIndex("by_email", (q) => q.eq("email", email))
+            .first(),
+        ]);
+        const collisionPlanning =
+          args.provider.id === "planning-salaries-otp" &&
+          (participantSamedi !== null || profilAbo !== null);
+        const collisionAutreEspace =
+          args.provider.id !== "planning-salaries-otp" &&
+          salariePlanning !== null;
+        if (collisionPlanning || collisionAutreEspace) {
+          throw new Error("Code incorrect ou expiré.");
+        }
+      }
       const emailFusionne = args.provider.id === "abo-otp"
         ? await estEmailFusionneAbo(appCtx, email)
         : false;
@@ -172,6 +219,9 @@ export const { auth, signIn, signOut, store } = convexAuth({
           // erreur générique et aucun email envoyé. L'éligibilité reste
           // toutefois distinguable au niveau réseau ; voir la documentation
           // sécurité du module avant une éventuelle refonte en OTP applicatif.
+          if (!demande.autorise) throw new Error("Code incorrect ou expiré.");
+        } else if (args.provider.id === "planning-salaries-otp") {
+          const demande = await consommerDemandePlanningSalariesOtp(appCtx, email);
           if (!demande.autorise) throw new Error("Code incorrect ou expiré.");
         }
       }
@@ -213,6 +263,20 @@ export const { auth, signIn, signOut, store } = convexAuth({
         if (participant.userId !== userId) {
           await db.patch(participant._id, { userId });
         }
+        return userId;
+      }
+
+      if (args.provider.id === "planning-salaries-otp") {
+        const { salarie } = await salariePlanningActif(appCtx, email);
+        if (!salarie) throw new Error("Code incorrect ou expiré.");
+        if (existingUser) {
+          const staffSettings = await db.query("userSettings")
+            .withIndex("by_userId", (q) => q.eq("userId", existingUser._id))
+            .first();
+          if (staffSettings) throw new Error("Code incorrect ou expiré.");
+        }
+        const userId = existingUser?._id ?? (await db.insert("users", { email }));
+        if (salarie.userId !== userId) await db.patch(salarie._id, { userId, updatedAt: Date.now() });
         return userId;
       }
 

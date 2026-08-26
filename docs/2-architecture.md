@@ -51,8 +51,8 @@ tâches internes. Il n'existe pas de serveur HTTP applicatif séparé.
 
 | Ensemble | Routes principales | Protection |
 |---|---|---|
-| Public ou isolé | `/login`, `/abonnements`, `/compteur`, `/samedis` | Selon le parcours et le provider OTP |
-| Staff | `/`, `/compta`, `/paiements`, `/budget`, `/licences-cours`, `/contacts-cours`, `/contacts-cours/copier`, `/remboursements-eleves`, `/gestion-samedis` | `Layout` puis `RequireAccess` |
+| Public ou isolé | `/login`, `/abonnements`, `/compteur`, `/samedis`, `/planning-salaries-samedis` | Selon le parcours et le provider OTP |
+| Staff | `/`, `/compta`, `/paiements`, `/budget`, `/licences-cours`, `/contacts-cours`, `/contacts-cours/copier`, `/remboursements-eleves`, `/gestion-samedis`, `/gestion-planning-salaries-samedis` | `Layout` puis `RequireAccess` |
 | Administration | `/configurations`, `/gestion-abonnements` | Rôle admin ou tuile dédiée |
 
 Le routage par hash permet de servir toutes les routes depuis GitHub Pages sans
@@ -88,9 +88,10 @@ consultables par recherche dans Drive, sans conserver dans Convex leur ancien
 état de traitement.
 
 Les fichiers à la racine de `convex/` portent les domaines partagés ou staff.
-`convex/abo/` isole le domaine Abonnements et `convex/samedis/` regroupe le
+`convex/abo/` isole le domaine Abonnements, `convex/samedis/` regroupe le
 calendrier, les réservations, la synchronisation et les notifications des
-samedis. Les fonctions réutilisables de
+samedis, et `convex/planningSalaries/` porte l'annuaire, le planning Google,
+les affectations et alertes des salariés. Les fonctions réutilisables de
 contrôle d'accès sont dans `convex/access.ts`, `convex/abo/auth.ts` et
 `convex/customFunctions.ts`.
 
@@ -141,6 +142,11 @@ réservations ne peut pas être supprimée ; il faut les annuler auparavant. Les
 participants et l'outbox de notifications sont transverses : l'autorisation
 d'une personne et la traçabilité d'un envoi ne disparaissent pas lors d'une
 suppression de saison.
+
+Le planning salarié suit aussi la saison globale, du 1er septembre au 31 août.
+Ses affectations bloquent la suppression ; les créneaux importés, opérations
+Google, états de synchronisation et alertes sont supprimés en cascade. Son
+annuaire reste transversal pour conserver identités OTP et ressources Google.
 
 Les relations et index sont définis dans `convex/schema.ts`. Les collections
 potentiellement volumineuses doivent être bornées, paginées ou parcourues par
@@ -201,6 +207,13 @@ du calendrier scolaire de Grenoble (zone A). Un verrou partagé et une fenêtre
 d'une heure évitent les appels concurrents ou répétés. En cas d'échec, le
 dernier état connu reste affiché et les réservations demeurent fermées tant que
 la configuration courante n'a pas été vérifiée avec succès.
+
+Le planning salarié lit Google Calendar à la demande avec verrou et volumes
+bornés. Une saga persistée applique ensuite chaque changement de ressource,
+réessaie au plus trois fois et expose les échecs au gestionnaire. Les alertes
+J-7 sont des fonctions planifiées réconciliées après synchronisation ou
+affectation, pas un cron. Voir
+[13-planning-salaries-samedis.md](13-planning-salaries-samedis.md).
 
 À l'ouverture de `/remboursements-eleves`, une action authentifiée actualise
 indépendamment le snapshot des élèves et les deux formulaires HelloAsso dédiés

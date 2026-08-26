@@ -219,6 +219,222 @@ export const deleteAboReglementsImportsGmailEnErreur = migrations.define({
   },
 });
 
+const MAX_CRENEAUX_PLANNING_PAR_SAMEDI = 25;
+const MAX_AFFECTATIONS_PLANNING_PAR_CRENEAU = 10;
+const MAX_OPERATIONS_PLANNING_PAR_CRENEAU = 25;
+
+async function chargerCreneauxPlanningDuSamedi(
+  ctx: Pick<MutationCtx, "db">,
+  saison: string,
+  date: string,
+) {
+  const creneaux = await ctx.db
+    .query("planning_salaries_creneaux")
+    .withIndex("by_saison_and_date", (q) =>
+      q.eq("saison", saison).eq("date", date),
+    )
+    .take(MAX_CRENEAUX_PLANNING_PAR_SAMEDI + 1);
+  if (creneaux.length > MAX_CRENEAUX_PLANNING_PAR_SAMEDI) {
+    throw new Error(
+      `Migration planning salariés bloquée pour ${saison}/${date} : ` +
+        `plus de ${MAX_CRENEAUX_PLANNING_PAR_SAMEDI} événements le même samedi.`,
+    );
+  }
+  return creneaux;
+}
+
+async function chargerAffectationsPlanningDuSamedi(
+  ctx: Pick<MutationCtx, "db">,
+  saison: string,
+  date: string,
+  creneaux: Doc<"planning_salaries_creneaux">[],
+) {
+  const parId = new Map<
+    string,
+    Doc<"planning_salaries_affectations">
+  >();
+
+  const dejaDatees = await ctx.db
+    .query("planning_salaries_affectations")
+    .withIndex("by_saison_and_date", (q) =>
+      q.eq("saison", saison).eq("date", date),
+    )
+    .take(MAX_CRENEAUX_PLANNING_PAR_SAMEDI + 1);
+  if (dejaDatees.length > MAX_CRENEAUX_PLANNING_PAR_SAMEDI) {
+    throw new Error(
+      `Migration planning salariés bloquée pour ${saison}/${date} : ` +
+        "trop d'affectations déjà datées.",
+    );
+  }
+  for (const affectation of dejaDatees) {
+    parId.set(affectation._id, affectation);
+  }
+
+  for (const creneau of creneaux) {
+    const affectations = await ctx.db
+      .query("planning_salaries_affectations")
+      .withIndex("by_creneauId", (q) => q.eq("creneauId", creneau._id))
+      .take(MAX_AFFECTATIONS_PLANNING_PAR_CRENEAU + 1);
+    if (affectations.length > MAX_AFFECTATIONS_PLANNING_PAR_CRENEAU) {
+      throw new Error(
+        `Migration planning salariés bloquée pour le créneau ${creneau._id} : ` +
+          "trop d'affectations historiques.",
+      );
+    }
+    for (const affectation of affectations) {
+      parId.set(affectation._id, affectation);
+    }
+  }
+
+  return [...parId.values()];
+}
+
+/**
+ * Transforme les affectations historiques par événement en une affectation
+ * unique par samedi. Aucun arbitrage métier n'est fait : deux salariés
+ * distincts sur la même date interrompent la migration avant toute écriture.
+ */
+export async function migrerAffectationPlanningVersSamedi(
+  ctx: Pick<MutationCtx, "db">,
+  affectationInitiale: Doc<"planning_salaries_affectations">,
+) {
+  const creneauInitial = affectationInitiale.creneauId
+    ? await ctx.db.get(
+        "planning_salaries_creneaux",
+        affectationInitiale.creneauId,
+      )
+    : null;
+  if (affectationInitiale.creneauId !== undefined && creneauInitial === null) {
+    throw new Error(
+      `Migration planning salariés bloquée : le créneau de l'affectation ` +
+        `${affectationInitiale._id} n'existe plus.`,
+    );
+  }
+  const date = affectationInitiale.date ?? creneauInitial?.date;
+  if (date === undefined) {
+    throw new Error(
+      `Migration planning salariés bloquée : l'affectation ${affectationInitiale._id} ` +
+        "n'a ni date ni créneau existant.",
+    );
+  }
+  if (
+    creneauInitial !== null &&
+    (creneauInitial.saison !== affectationInitiale.saison ||
+      (affectationInitiale.date !== undefined &&
+        affectationInitiale.date !== creneauInitial.date))
+  ) {
+    throw new Error(
+      `Migration planning salariés bloquée : date ou saison incohérente pour ` +
+        `l'affectation ${affectationInitiale._id}.`,
+    );
+  }
+
+  const creneaux = await chargerCreneauxPlanningDuSamedi(
+    ctx,
+    affectationInitiale.saison,
+    date,
+  );
+  const affectations = await chargerAffectationsPlanningDuSamedi(
+    ctx,
+    affectationInitiale.saison,
+    date,
+    creneaux,
+  );
+  for (const affectation of affectations) {
+    if (
+      affectation.saison !== affectationInitiale.saison ||
+      (affectation.date !== undefined && affectation.date !== date)
+    ) {
+      throw new Error(
+        `Migration planning salariés bloquée : date ou saison incohérente pour ` +
+          `l'affectation ${affectation._id}.`,
+      );
+    }
+  }
+  const salaries = new Set(affectations.map((item) => item.salarieId));
+  if (salaries.size > 1) {
+    throw new Error(
+      `CONFLIT_PLANNING_SALARIES ${affectationInitiale.saison}/${date} : ` +
+        "plusieurs salariés distincts sont affectés. Arbitrage humain requis.",
+    );
+  }
+  if (affectations.length === 0) return;
+
+  const [canonique, ...doublons] = affectations.sort((a, b) => {
+    const aDejaMigree = a.date === date && a.creneauId === undefined ? 0 : 1;
+    const bDejaMigree = b.date === date && b.creneauId === undefined ? 0 : 1;
+    return (
+      aDejaMigree - bDejaMigree ||
+      a.createdAt - b.createdAt ||
+      a._creationTime - b._creationTime ||
+      String(a._id).localeCompare(String(b._id))
+    );
+  });
+  const idsFusionnes = new Set(affectations.map((item) => item._id));
+
+  for (const creneau of creneaux) {
+    const operations = await ctx.db
+      .query("planning_salaries_google_operations")
+      .withIndex("by_creneauId", (q) => q.eq("creneauId", creneau._id))
+      .take(MAX_OPERATIONS_PLANNING_PAR_CRENEAU + 1);
+    if (operations.length > MAX_OPERATIONS_PLANNING_PAR_CRENEAU) {
+      throw new Error(
+        `Migration planning salariés bloquée pour le créneau ${creneau._id} : ` +
+          "trop d'opérations Google historiques.",
+      );
+    }
+    for (const operation of operations) {
+      const affectationId =
+        operation.affectationId !== undefined &&
+        idsFusionnes.has(operation.affectationId)
+          ? canonique._id
+          : operation.affectationId;
+      if (
+        operation.date !== date ||
+        affectationId !== operation.affectationId
+      ) {
+        await ctx.db.patch(operation._id, { date, affectationId });
+      }
+    }
+  }
+
+  if (canonique.date !== date || canonique.creneauId !== undefined) {
+    await ctx.db.patch(canonique._id, { date, creneauId: undefined });
+  }
+  for (const doublon of doublons) {
+    await ctx.db.delete(doublon._id);
+  }
+}
+
+// WIDEN -> MIGRATE : définition uniquement. Exécuter sur DEV puis PROD après
+// dry-run et résolution manuelle de chaque CONFLIT_PLANNING_SALARIES.
+export const migratePlanningSalariesAffectationsParSamedi = migrations.define({
+  table: "planning_salaries_affectations",
+  batchSize: 10,
+  migrateOne: migrerAffectationPlanningVersSamedi,
+});
+
+// Complète les opérations sans affectation (ou non rencontrées par la fusion).
+// À chaîner après migratePlanningSalariesAffectationsParSamedi.
+export const migratePlanningSalariesOperationsDate = migrations.define({
+  table: "planning_salaries_google_operations",
+  batchSize: 50,
+  migrateOne: async (ctx, operation) => {
+    if (operation.date !== undefined) return;
+    const creneau = await ctx.db.get(
+      "planning_salaries_creneaux",
+      operation.creneauId,
+    );
+    if (creneau === null || creneau.saison !== operation.saison) {
+      throw new Error(
+        `Migration planning salariés bloquée : créneau absent ou saison ` +
+          `incohérente pour l'opération ${operation._id}.`,
+      );
+    }
+    await ctx.db.patch(operation._id, { date: creneau.date });
+  },
+});
+
 const vInspectionEmailsUtilisateurs = v.object({
   lus: v.number(),
   sans_email: v.number(),

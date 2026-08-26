@@ -168,6 +168,18 @@ export const remove = mutation({
       );
     }
 
+    // Les affectations du planning salariés sont des inscriptions réelles :
+    // elles doivent être retirées explicitement avant de supprimer la saison.
+    const affectationPlanningSalaries = await ctx.db
+      .query("planning_salaries_affectations")
+      .withIndex("by_saison", (q) => q.eq("saison", saison.nom))
+      .first();
+    if (affectationPlanningSalaries) {
+      throw new ConvexError(
+        "Cette saison contient des affectations de salariés le samedi : retirez-les d'abord.",
+      );
+    }
+
     // Données dérivées, générées automatiquement (createNext / planning des cours) :
     // on les nettoie en cascade pour ne pas laisser d'orphelins.
     await deleteBySaison(ctx, "previsionnels", saison.nom); // lignes auto restantes
@@ -178,6 +190,14 @@ export const remove = mutation({
     // IO-BOUNDED: une configuration et au plus 53 créneaux hebdomadaires par saison.
     await deleteBySaison(ctx, "samedis_configurations", saison.nom);
     await deleteBySaison(ctx, "samedis_creneaux", saison.nom);
+    // IO-BOUNDED: au plus ~53 samedis, quelques groupes et donc quelques
+    // centaines d'alertes/opérations Google par saison. Les dépendances sont
+    // supprimées avant les créneaux auxquels elles font référence.
+    await cancelPlanningSalariesAlerts(ctx, saison.nom);
+    await deleteBySaison(ctx, "planning_salaries_alertes", saison.nom);
+    await deleteBySaison(ctx, "planning_salaries_google_operations", saison.nom);
+    await deleteBySaison(ctx, "planning_salaries_sync", saison.nom);
+    await deleteBySaison(ctx, "planning_salaries_creneaux", saison.nom);
 
     await ctx.db.delete(args.id);
   },
@@ -192,7 +212,24 @@ type SaisonTable =
   | "cours"
   | "budgetEffectifs"
   | "samedis_configurations"
-  | "samedis_creneaux";
+  | "samedis_creneaux"
+  | "planning_salaries_creneaux"
+  | "planning_salaries_sync"
+  | "planning_salaries_google_operations"
+  | "planning_salaries_alertes";
+
+async function cancelPlanningSalariesAlerts(ctx: MutationCtx, saison: string) {
+  // IO-BOUNDED: une alerte par créneau, soit ~53 samedis × quelques groupes.
+  const alerts = await ctx.db
+    .query("planning_salaries_alertes")
+    .withIndex("by_saison", (q) => q.eq("saison", saison))
+    .collect();
+  for (const alert of alerts) {
+    if (alert.scheduledFunctionId) {
+      await ctx.scheduler.cancel(alert.scheduledFunctionId);
+    }
+  }
+}
 
 async function deleteBySaison(ctx: MutationCtx, table: SaisonTable, saison: string) {
   const rows = await ctx.db

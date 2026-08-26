@@ -62,6 +62,10 @@ Pour le module Samedis après-midi, utiliser la checklist détaillée dans
 des contrôles d'agenda, d'OTP, de synchronisation officielle et de restitution
 mobile.
 
+Pour le planning salarié, la checklist de
+[13-planning-salaries-samedis.md](13-planning-salaries-samedis.md) couvre les
+deux populations, la saison, Google Calendar, les reprises et l'alerte J-7.
+
 ### Scénario ciblé — Messagerie Abonnements
 
 1. avec un compte public `abo-otp`, envoyer un message depuis le suivi d'un
@@ -295,6 +299,15 @@ Les règles Samedis à couvrir en priorité sont l'unicité d'une réservation p
 date, le refus d'un participant absent ou inactif, l'absence de passe-droit du
 rôle admin, le forçage explicite d'une date bloquée et la régularisation d'une
 réservation devenue incompatible après synchronisation.
+
+Pour le planning salarié, `convex/planningSalaries.test.ts` couvre les règles
+Convex centrales, notamment l'isolation des populations, l'interdiction de
+remplacer l'affectation d'un collègue, la réconciliation d'une lecture Google et
+l'alerte unique par saison et date. Restent prioritaires : vérifier les trois
+tentatives de saga, un jeton OAuth révoqué, un compte OAuth différent de la
+boîte du club et le refus d'accès au calendrier organisateur. Google Calendar et
+SMTP doivent être simulés ; un test réel doit rester limité à un événement non
+critique et vérifier l'absence de notification Google.
 
 ### Priorité 3 : parcours navigateur
 

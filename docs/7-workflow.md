@@ -95,6 +95,12 @@ explicite. Après cette confirmation, le hook Codex attend le commentaire
 Les variables d'environnement sensibles sont configurées dans Convex. Ne jamais
 les copier dans la documentation, les logs, un commit ou une capture d'écran.
 
+Le planning salarié réutilise le compte de service Google Drive pour lire les
+calendriers de ressources et la boîte SMTP générale. Les écritures Calendar
+utilisent un OAuth hors-ligne autorisé par la boîte du club, sans délégation
+administrateur du domaine. Les variables et contrôles Google sont détaillés dans
+[13-planning-salaries-samedis.md](13-planning-salaries-samedis.md).
+
 L'archive des tests d'autonomie réutilise le compte de service Google Drive
 existant (`GOOGLE_DRIVE_SERVICE_ACCOUNT_EMAIL` et `GOOGLE_DRIVE_PRIVATE_KEY`).
 Avant son premier essai sur un déploiement, configurer aussi les identifiants
@@ -131,3 +137,5 @@ Aucun cron ne fonctionne en arrière-plan.
 
 Les scénarios manuels propres aux Abonnements sont détaillés dans
 [5-module-abonnements.md](5-module-abonnements.md).
+Ceux du planning salarié figurent dans
+[13-planning-salaries-samedis.md](13-planning-salaries-samedis.md).
