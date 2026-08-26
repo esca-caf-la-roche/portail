@@ -15,6 +15,7 @@ export default function Layout() {
   const me = useQuery(api.abo.identity.me);
   const doitVerifierSamedi = isAuthenticated && me !== undefined && !me?.isStaff;
   const samediIdentity = useQuery(api.samedis.identity.me, doitVerifierSamedi ? {} : "skip");
+  const planningSalarieIdentity = useQuery(api.planningSalaries.identity.me, doitVerifierSamedi ? {} : "skip");
   const currentUser = useQuery(api.users.current);
 
   // Les parties Paiements et Abonnements ne fonctionnent pas avec les saisons
@@ -38,10 +39,11 @@ export default function Layout() {
 
   // Authentifié mais pas staff → abonné public : on le renvoie vers son espace
   // (sans révéler l'existence du portail compta).
-  if (me === undefined || (doitVerifierSamedi && samediIdentity === undefined)) {
+  if (me === undefined || (doitVerifierSamedi && (samediIdentity === undefined || planningSalarieIdentity === undefined))) {
     return <div className="loading-screen">Chargement...</div>;
   }
   if (!me?.isStaff) {
+    if (planningSalarieIdentity?.salarie) return <Navigate to="/planning-salaries-samedis" replace />;
     return <Navigate to={samediIdentity?.autorise ? "/samedis" : "/abonnements"} replace />;
   }
 

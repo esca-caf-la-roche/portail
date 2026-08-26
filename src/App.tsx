@@ -24,6 +24,8 @@ const AboApp = lazy(() => import("./abonnements/AboApp"));
 const AboAdmin = lazy(() => import("./abonnements/admin/AboAdmin"));
 const SamedisApp = lazy(() => import("./samedis/SamedisApp"));
 const GestionSamedis = lazy(() => import("./pages/GestionSamedis"));
+const PlanningSalariesApp = lazy(() => import("./planningSalariesSamedis/PlanningSalariesApp"));
+const GestionPlanningSalaries = lazy(() => import("./planningSalariesSamedis/GestionPlanningSalaries"));
 
 function RouteLoadingFallback() {
   return (
@@ -91,6 +93,7 @@ function App() {
                 Les abonnés n'ont pas connaissance de l'outil de gestion. */}
             <Route path="/abonnements" element={<LazyRoute><AboApp /></LazyRoute>} />
             <Route path="/samedis" element={<LazyRoute><SamedisApp /></LazyRoute>} />
+            <Route path="/planning-salaries-samedis" element={<LazyRoute><PlanningSalariesApp /></LazyRoute>} />
 
             {/* Compteur public ANONYME (iframe embarquable sur le site club) —
                 hors Layout et hors auth ; ne renvoie que des nombres. */}
@@ -111,6 +114,7 @@ function App() {
               <Route path="/contacts-cours/copier" element={<RequireAccess tile="contacts_cours"><ContactsCoursCopie /></RequireAccess>} />
               <Route path="/remboursements-eleves" element={<RequireAccess tile="remboursements_eleves"><RemboursementsEleves /></RequireAccess>} />
               <Route path="/gestion-samedis" element={<RequireAccess tile="samedis"><LazyRoute><GestionSamedis /></LazyRoute></RequireAccess>} />
+              <Route path="/gestion-planning-salaries-samedis" element={<RequireAccess tile="planning_salaries_samedis"><LazyRoute><GestionPlanningSalaries /></LazyRoute></RequireAccess>} />
 
               {/* Routes Paiements */}
               <Route path="/paiements" element={<RequireAccess tile="paiements"><LazyRoute><PaiementsLayout /></LazyRoute></RequireAccess>}>

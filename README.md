@@ -2,8 +2,8 @@
 
 Portail de gestion du club d'escalade. L'application regroupe dans une interface
 unique la comptabilité, les paiements, le budget prévisionnel, le contrôle des
-licences, les remboursements des élèves et les abonnements aux créneaux
-autonomes.
+licences, les remboursements des élèves, le planning Google des salariés du
+samedi et les abonnements aux créneaux autonomes.
 
 ## Stack
 
@@ -47,8 +47,10 @@ les variables d'environnement Convex, jamais dans le dépôt.
 | `npm run preview` | Prévisualise le build de production |
 | `npx convex dev` | Synchronise le backend Convex de développement |
 
-Le projet ne possède pas encore de suite de tests automatisés. Voir
-[`docs/9-tests.md`](docs/9-tests.md) pour la stratégie de validation actuelle.
+Les tests Vitest et Convex s'exécutent avec `npm test` ; `npm run validate`
+enchaîne le typecheck Convex, les tests, le lint et le build. Voir
+[`docs/9-tests.md`](docs/9-tests.md) pour leur périmètre et les validations
+manuelles complémentaires.
 
 ## Accès et sécurité
 
@@ -79,6 +81,8 @@ de `convex/customFunctions.ts`. Les exceptions publiques ou internes doivent
 | [`docs/8-component-mapping.md`](docs/8-component-mapping.md) | Cartographie des modules |
 | [`docs/9-tests.md`](docs/9-tests.md) | Tests et validation |
 | [`docs/10-remboursements-eleves.md`](docs/10-remboursements-eleves.md) | Suivi des remboursements élèves |
+| [`docs/12-module-samedis.md`](docs/12-module-samedis.md) | Permanences des samedis après-midi |
+| [`docs/13-planning-salaries-samedis.md`](docs/13-planning-salaries-samedis.md) | Planning Google des salariés du samedi |
 
 ## Déploiement
 

@@ -115,6 +115,7 @@ const dashboardTileValidator = v.union(
   v.literal("contacts_cours"),
   v.literal("remboursements_eleves"),
   v.literal("samedis"),
+  v.literal("planning_salaries_samedis"),
 );
 
 const dashboardColorValidator = v.union(
@@ -271,6 +272,16 @@ export const addUser = authenticatedMutation({
       throw new ConvexError("Le nom est obligatoire.");
     }
     const email = canoniserEmailUnique(args.email);
+
+    const salariePlanning = await ctx.db
+      .query("planning_salaries_annuaire")
+      .withIndex("by_emailNormalise", (q) => q.eq("emailNormalise", email))
+      .unique();
+    if (salariePlanning) {
+      throw new ConvexError(
+        "Cette adresse appartient au planning salarié isolé et ne peut pas devenir un compte staff.",
+      );
+    }
 
     const existingUser = await ctx.db
       .query("users")

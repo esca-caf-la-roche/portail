@@ -161,6 +161,16 @@ export const addParticipant = authenticatedMutation({
     await requireGestionnaire(ctx, ctx.userId);
     const nom = texteCourt(args.nom, "Le nom", 120);
     const email = canoniserEmailUnique(args.email);
+    const salariePlanning = await ctx.db
+      .query("planning_salaries_annuaire")
+      .withIndex("by_emailNormalise", (q) => q.eq("emailNormalise", email))
+      .unique();
+    if (salariePlanning) {
+      throw erreur(
+        "SAMEDIS_EMAIL_AUTRE_ESPACE",
+        "Cette adresse appartient déjà au planning salarié isolé.",
+      );
+    }
     const doublon = await ctx.db
       .query("samedis_participants")
       .withIndex("by_emailNormalise", (q) => q.eq("emailNormalise", email))
@@ -202,6 +212,16 @@ export const updateParticipant = authenticatedMutation({
     if (!participant) throw erreur("SAMEDIS_PARTICIPANT_ABSENT", "Participant introuvable.");
     const nom = texteCourt(args.nom, "Le nom", 120);
     const email = canoniserEmailUnique(args.email);
+    const salariePlanning = await ctx.db
+      .query("planning_salaries_annuaire")
+      .withIndex("by_emailNormalise", (q) => q.eq("emailNormalise", email))
+      .unique();
+    if (salariePlanning) {
+      throw erreur(
+        "SAMEDIS_EMAIL_AUTRE_ESPACE",
+        "Cette adresse appartient déjà au planning salarié isolé.",
+      );
+    }
     const doublon = await ctx.db
       .query("samedis_participants")
       .withIndex("by_emailNormalise", (q) => q.eq("emailNormalise", email))

@@ -177,6 +177,7 @@ export default defineSchema({
           v.literal("contacts_cours"),
           v.literal("remboursements_eleves"),
           v.literal("samedis"),
+          v.literal("planning_salaries_samedis"),
         ),
         color: v.union(
           v.literal("bg-info"),
@@ -301,6 +302,158 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_statut", ["statut"]),
+
+  // --- PLANNING DES SALARIÉS DU SAMEDI ---
+
+  // SAISON-EXEMPT: annuaire durable des salariés. Leur identité, leur compte
+  // OTP et leur ressource Google Calendar restent valables entre les saisons.
+  planning_salaries_annuaire: defineTable({
+    prenom: v.string(),
+    email: v.string(),
+    emailNormalise: v.string(),
+    resourceCalendarId: v.string(),
+    resourceCalendarIdNormalise: v.string(),
+    userId: v.optional(v.id("users")),
+    actif: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_emailNormalise", ["emailNormalise"])
+    .index("by_resourceCalendarIdNormalise", ["resourceCalendarIdNormalise"])
+    .index("by_userId", ["userId"])
+    .index("by_actif", ["actif"]),
+
+  // Occurrences Google Calendar matérialisées pour les samedis de la saison.
+  // `googleOccurrenceStart` distingue les occurrences d'un événement récurrent.
+  planning_salaries_creneaux: defineTable({
+    saison: v.string(),
+    date: v.string(), // date civile ISO `YYYY-MM-DD`, Europe/Paris
+    debut: v.string(), // instant ISO fourni par Google Calendar
+    fin: v.string(), // instant ISO fourni par Google Calendar
+    groupe: v.string(),
+    titre: v.string(),
+    googleCalendarId: v.string(),
+    googleEventId: v.string(),
+    // WIDEN: identifiant stable d'un même événement exposé depuis plusieurs
+    // calendriers de ressources. Optionnel jusqu'au prochain resynchronisation.
+    googleICalUid: v.optional(v.string()),
+    googleOccurrenceStart: v.string(),
+    currentResourceCalendarId: v.string(),
+    etag: v.optional(v.string()),
+    syncedAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_saison", ["saison"])
+    .index("by_saison_and_date", ["saison", "date"])
+    .index("by_saison_and_googleEventId_and_googleOccurrenceStart", [
+      "saison",
+      "googleEventId",
+      "googleOccurrenceStart",
+    ])
+    .index("by_saison_and_googleICalUid_and_googleOccurrenceStart", [
+      "saison",
+      "googleICalUid",
+      "googleOccurrenceStart",
+    ]),
+
+  // WIDEN: l'affectation passe progressivement du créneau au samedi entier.
+  // Pendant la migration, les documents historiques portent `creneauId`, les
+  // nouveaux portent `date`, et certains peuvent temporairement porter les deux.
+  planning_salaries_affectations: defineTable({
+    saison: v.string(),
+    date: v.optional(v.string()), // date civile ISO `YYYY-MM-DD`, Europe/Paris
+    creneauId: v.optional(v.id("planning_salaries_creneaux")),
+    salarieId: v.id("planning_salaries_annuaire"),
+    resourceCalendarIdSnapshot: v.string(),
+    createdBy: v.id("users"),
+    createdAt: v.number(),
+    updatedBy: v.id("users"),
+    updatedAt: v.number(),
+  })
+    .index("by_saison", ["saison"])
+    .index("by_saison_and_date", ["saison", "date"])
+    .index("by_creneauId", ["creneauId"])
+    .index("by_salarieId", ["salarieId"])
+    .index("by_saison_and_salarieId", ["saison", "salarieId"]),
+
+  // État de synchronisation on-demand, isolé des créneaux stables pour éviter
+  // qu'un verrou ou un statut technique invalide toute la liste temps réel.
+  planning_salaries_sync: defineTable({
+    saison: v.string(),
+    cle: v.literal("google_calendar"),
+    statut: v.union(
+      v.literal("inactif"),
+      v.literal("en_cours"),
+      v.literal("ok"),
+      v.literal("erreur"),
+    ),
+    verrouJusqua: v.optional(v.number()),
+    derniereSynchronisationAt: v.optional(v.number()),
+    derniereErreur: v.optional(v.string()),
+    updatedAt: v.number(),
+  })
+    .index("by_saison", ["saison"])
+    .index("by_saison_and_cle", ["saison", "cle"]),
+
+  // Outbox idempotente des remplacements de ressource Google Calendar.
+  planning_salaries_google_operations: defineTable({
+    saison: v.string(),
+    // WIDEN: clé du samedi ajoutée avant le backfill des opérations existantes.
+    date: v.optional(v.string()),
+    creneauId: v.id("planning_salaries_creneaux"),
+    affectationId: v.optional(v.id("planning_salaries_affectations")),
+    type: v.literal("remplacer_ressource"),
+    idempotencyKey: v.string(),
+    sourceResourceCalendarId: v.string(),
+    targetResourceCalendarId: v.string(),
+    statut: v.union(
+      v.literal("a_traiter"),
+      v.literal("en_cours"),
+      v.literal("traitee"),
+      v.literal("echec"),
+    ),
+    tentatives: v.number(),
+    prochaineTentativeAt: v.optional(v.number()),
+    derniereErreur: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_saison", ["saison"])
+    .index("by_saison_and_date", ["saison", "date"])
+    .index("by_creneauId", ["creneauId"])
+    .index("by_saison_and_statut", ["saison", "statut"])
+    .index("by_statut_and_prochaineTentativeAt", [
+      "statut",
+      "prochaineTentativeAt",
+    ])
+    .index("by_idempotencyKey", ["idempotencyKey"]),
+
+  // Rappel unique J-7 par samedi lorsqu'au moins un groupe reste « À
+  // déterminer ». L'unicité saison/date est garantie en mutation via
+  // `by_saison_and_date(...).unique()`, afin de ne pas doubler les emails.
+  // L'identifiant planifié permet d'annuler un rappel devenu obsolète.
+  planning_salaries_alertes: defineTable({
+    saison: v.string(),
+    date: v.string(), // date civile ISO `YYYY-MM-DD`, Europe/Paris
+    scheduledFunctionId: v.optional(v.id("_scheduled_functions")),
+    echeanceAt: v.number(),
+    statut: v.union(
+      v.literal("planifiee"),
+      v.literal("en_cours"),
+      v.literal("envoyee"),
+      v.literal("annulee"),
+      v.literal("echec"),
+      v.literal("obsolete"),
+    ),
+    tentatives: v.number(),
+    envoyeeAt: v.optional(v.number()),
+    derniereErreur: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_saison", ["saison"])
+    .index("by_saison_and_date", ["saison", "date"])
+    .index("by_statut_and_echeanceAt", ["statut", "echeanceAt"]),
 
   // --- TABLES POUR SUIVI PAIEMENTS ---
   // Modèle relationnel : un "dossier" = une commande HelloAsso (regroupe les

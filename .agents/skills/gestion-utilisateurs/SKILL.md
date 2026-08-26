@@ -10,20 +10,19 @@ accès. La règle d'or est en §2 — elle a déjà été violée une fois (bug 
 le 2026-07-02) et un hook (`.codex/hooks/check-access-control.mjs`) la fait
 respecter.
 
-## 1. Deux populations, deux connexions distinctes
+## 1. Quatre parcours, quatre connexions distinctes
 
 La table `users` (Convex Auth) est partagée par deux parcours distincts. Un
 compte staff peut aussi porter un profil public lorsqu'un bénévole dépose une
 demande personnelle avec la même adresse ; ce cas doit conserver les accès staff
 lors du reset annuel.
 
-| | Staff compta | Abonnés publics (demandeurs) |
+| Population | Provider OTP | Marqueur et espace |
 |---|---|---|
-| Provider OTP | `google-otp` (convex/auth.ts) | `abo-otp` (convex/auth.ts) |
-| Inscription | interdite — l'email doit être pré-créé par un admin (page Configurations) | auto-inscription libre (find-or-create) |
-| Boîte d'envoi OTP | boîte compta (`internal.email.sendOTP`) | boîte abonnements du club (`internal.email.sendAboEmail`) |
-| Marqueur en base | possède un `userSettings` | possède un `abo_profiles` (role "utilisateur") ; peut aussi avoir un `userSettings` pour la demande personnelle d'un staff |
-| Espace | `/` (Layout compta) | `/abonnements` (AboApp, hors Layout) |
+| Staff compta | `google-otp` | `userSettings`, portail `/` |
+| Abonnés publics | `abo-otp` | `abo_profiles`, mini-app `/abonnements` |
+| Participants aux permanences | `samedi-otp` | `samedis_participants`, mini-app `/samedis` |
+| Salariés du planning samedi | `planning-salaries-otp` | `planning_salaries_annuaire`, mini-app `/planning-salaries-samedis` |
 
 - `Layout.tsx` redirige tout connecté sans `userSettings` (non-staff) vers
   `/abonnements` : un abonné public ne doit jamais voir le portail compta.
@@ -33,6 +32,12 @@ lors du reset annuel.
   sessions ou ses comptes d'authentification.
 - Ne jamais créer de `userSettings` pour un abonné public, ni d'`abo_profiles`
   "admin" (les admins abo sont dérivés côté serveur, voir §3).
+- Ne jamais créer de `userSettings` pour un participant ou un salarié isolé.
+  Une adresse du planning salarié ne peut pas devenir staff, et réciproquement :
+  les deux mutations d'annuaire et d'administration doivent refuser la collision.
+  Elle ne peut pas non plus cumuler `abo_profiles` ou `samedis_participants` :
+  les créations/modifications et `createOrUpdateUser` refusent ces collisions
+  dans les deux sens, car la session Convex est partagée par `userId`.
 
 ## 2. RÈGLE D'OR : les tuiles, rien que les tuiles
 
@@ -48,7 +53,8 @@ Le rôle `admin` ne donne AUCUN passe-droit sur les tuiles.**
 - Un admin sans tuile cochée ne voit aucune tuile — c'est voulu.
 
 Tuiles existantes : `compta`, `paiements`, `budget`, `abonnements`,
-`licences_cours`, `contacts_cours`
+`licences_cours`, `contacts_cours`, `remboursements_eleves`, `samedis`,
+`planning_salaries_samedis`
 (source de vérité : `TILES` dans `convex/access.ts`, alignée avec
 `TILE_OPTIONS` dans `src/pages/Configurations.tsx`).
 
@@ -62,6 +68,7 @@ Sécurité réelle = côté serveur. Le front ne fait que de l'affichage.
 | `requireTile(ctx, ctx.userId, tile)` | `convex/access.ts` | endpoint réservé à un module |
 | `requireAdmin(ctx, ctx.userId)` | `convex/access.ts` | endpoints d'administration (users, saisons) |
 | `getAboIdentity / requireAboAdmin / requireOwnedDossier` | `convex/abo/auth.ts` | module abonnements ; `aboRole="admin"` = tuile `abonnements` cochée, sinon "utilisateur" (abonné public ou staff sans la tuile) |
+| `getIdentite / requireGestionnaire` | `convex/planningSalaries/lib.ts` | planning salarié ; gestionnaire par tuile, salarié par fiche active liée |
 | `RequireAccess` (`tile=` ou `admin`) | `src/components/RequireAccess.tsx` | garde de route dans `App.tsx` (UX seulement, défense en profondeur) |
 | Affichage des tuiles | `src/pages/Dashboard.tsx` | `allowedTiles.includes(...)` uniquement |
 

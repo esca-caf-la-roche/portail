@@ -118,6 +118,7 @@ describe("saisons et administration globale", () => {
     ["abonnements", "bg-primary"], ["licences_cours", "bg-danger"], ["contacts_cours", "bg-orange"],
     ["remboursements_eleves", "bg-pink"],
     ["samedis", "bg-lime"],
+    ["planning_salaries_samedis", "bg-purple"],
   ] as const;
   const configuration = { tiles: tiles.map(([id, color]) => ({ id, color })) };
 
