@@ -365,6 +365,44 @@ a.btn-primary {
   gap: 1.5rem;
 }
 
+.portal-return-link {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  padding: 0.55rem 0.85rem;
+  border: var(--border-width) solid var(--border-color);
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: var(--shadow);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1;
+  text-decoration: none;
+  text-transform: uppercase;
+  white-space: nowrap;
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+
+.portal-return-link:hover {
+  background: var(--warning);
+  box-shadow: var(--shadow-hover);
+  transform: translate(4px, 4px);
+}
+
+.portal-return-link:active {
+  box-shadow: none;
+  transform: translate(6px, 6px);
+}
+
+.portal-return-link:focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 3px;
+}
+
 /* Licences élèves en cours : niveaux opérationnels jour → cours → élève. */
 .licences-cours-page {
   padding: 1.5rem;
@@ -1366,20 +1404,6 @@ a.btn-primary {
   border-color: var(--border-color);
   box-shadow: 3px 3px 0 0 var(--border-color);
 }
-.pay-nav-back {
-  margin-left: auto;
-  font-weight: 700;
-  text-transform: uppercase;
-  font-size: 0.8rem;
-  text-decoration: none;
-  color: var(--foreground);
-  border: 2px solid var(--border-color);
-  padding: 0.4rem 0.8rem;
-  background: var(--card);
-  box-shadow: 2px 2px 0 0 var(--border-color);
-}
-.pay-nav-back:hover { background: var(--warning); }
-
 /* En-tête de page */
 .pay-header h1 { font-size: 2rem; }
 .pay-tag {
@@ -1615,9 +1639,6 @@ a.btn-primary {
 /* Responsive module paiements (mobile) */
 @media (max-width: 640px) {
   .pay-header h1 { font-size: 1.5rem; }
-
-  /* Sous-navigation : le bouton retour passe à la ligne */
-  .pay-nav-back { margin-left: 0; }
 
   /* Carte dossier : empile l'info et les méta, aligné à gauche */
   .pay-dossier-top { flex-direction: column; gap: 0.4rem; }

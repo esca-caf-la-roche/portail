@@ -4,6 +4,7 @@ import { useAuthActions } from "@convex-dev/auth/react";
 import { api } from "../../convex/_generated/api";
 import { useSeason } from "../contexts/SeasonContext";
 import { LogOut, UserRound } from "lucide-react";
+import PortalReturnLink from "./PortalReturnLink";
 
 export default function Layout() {
   const { isAuthenticated, isLoading } = useConvexAuth();
@@ -55,6 +56,7 @@ export default function Layout() {
         </div>
         
         <div className="header-controls">
+          {location.pathname !== "/" && <PortalReturnLink />}
           {showSeasonSelector && (
             <div className="season-selector">
               <label htmlFor="season">Saison :</label>

@@ -1,7 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
 import { useAction, useQuery } from "convex/react";
-import { ArrowLeft } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
 import "../abo.css";
 import Dossiers from "./Dossiers";
@@ -76,9 +74,6 @@ export default function AboAdmin() {
   return (
     <div className="abo-admin abo-admin-page">
       <header className="page-header abo-admin-header">
-        <Link to="/" className="back-link">
-          <ArrowLeft size={16} /> Retour au tableau de bord
-        </Link>
         <h1>Abonnements escalade</h1>
         <p className="subtitle">Gestion des nouvelles inscriptions aux créneaux autonomes.</p>
       </header>
