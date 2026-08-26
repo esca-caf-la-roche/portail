@@ -108,6 +108,17 @@ describe("planning des salariés du samedi", () => {
     )).rejects.toThrow("portail staff");
   });
 
+  test("conserve un tableau pour les clients déjà publiés", async () => {
+    const f = await fixture();
+    const annuaire = await f.t.withIdentity({ subject: f.managerId }).query(
+      api.planningSalaries.annuaire.list,
+      {},
+    );
+
+    expect(Array.isArray(annuaire)).toBe(true);
+    expect(annuaire.map(({ prenom }) => prenom)).toEqual(["Alice"]);
+  });
+
   test("refuse une 51e fiche pour garder l'annuaire lisible", async () => {
     const f = await fixture();
     await f.t.run(async (ctx) => {

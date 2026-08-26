@@ -9,6 +9,7 @@ import "./planning-salaries.css";
 
 type SalarieId = Id<"planning_salaries_annuaire">;
 type RessourceGoogle = { libelle: string; resourceCalendarId: string };
+const LIMITE_ANNUAIRE = 50;
 
 function dateLongue(date: string) {
   return new Intl.DateTimeFormat("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${date}T12:00:00Z`));
@@ -18,8 +19,7 @@ export default function GestionPlanningSalaries() {
   const { season } = useSeason();
   const planning = useQuery(api.planningSalaries.calendrier.list, { saison: season });
   const etat = useQuery(api.planningSalaries.calendrier.etatGestionnaire, { saison: season });
-  const annuaire = useQuery(api.planningSalaries.annuaire.list);
-  const salaries = annuaire?.salaries;
+  const salaries = useQuery(api.planningSalaries.annuaire.list);
   const actifs = useQuery(api.planningSalaries.annuaire.listActifs);
   const operations = useQuery(api.planningSalaries.affectations.listEchecs, { saison: season });
   const alertes = useQuery(api.planningSalaries.alertes.listEchecs, { saison: season });
@@ -132,7 +132,7 @@ export default function GestionPlanningSalaries() {
   for (const creneau of planning!.creneaux) parDate.set(creneau.date, [...(parDate.get(creneau.date) ?? []), creneau]);
   const ressourcesDisponibles = ressourcesGoogle?.filter((ressource) => !salaries!.some((salarie) => salarie.resourceCalendarId.toLowerCase() === ressource.resourceCalendarId.toLowerCase())) ?? [];
   const nombreSelectionne = Object.values(ressourcesSelectionnees).filter(Boolean).length;
-  const placesRestantes = Math.max(0, annuaire!.limite - salaries!.length);
+  const placesRestantes = Math.max(0, LIMITE_ANNUAIRE - salaries!.length);
 
   return (
     <div className="pss-manager">
@@ -160,7 +160,7 @@ export default function GestionPlanningSalaries() {
               : ressourcesDisponibles.length === 0
                 ? <p className="pss-resource-empty" role="status">Toutes les ressources Google récupérées sont déjà dans l’annuaire.</p>
                 : placesRestantes === 0
-                  ? <p className="pss-resource-empty" role="status">Annuaire complet ({salaries!.length}/{annuaire!.limite}). Réactivez ou modifiez une fiche existante ; les fiches inactives comptent dans cette limite.</p>
+                  ? <p className="pss-resource-empty" role="status">Annuaire complet ({salaries!.length}/{LIMITE_ANNUAIRE}). Réactivez ou modifiez une fiche existante ; les fiches inactives comptent dans cette limite.</p>
                   : <form onSubmit={activerRessources}>
                     <fieldset disabled={Boolean(busy)}><legend>Ressources à activer · {nombreSelectionne} sélectionnée{nombreSelectionne !== 1 ? "s" : ""} · {placesRestantes} place{placesRestantes !== 1 ? "s" : ""} disponible{placesRestantes !== 1 ? "s" : ""}</legend><div className="pss-resource-list">{ressourcesDisponibles.map((ressource) => { const selectionnee = Boolean(ressourcesSelectionnees[ressource.resourceCalendarId]); const emailId = `pss-resource-email-${ressource.resourceCalendarId.replace(/[^a-z0-9]/gi, "-")}`; const capaciteAtteinte = !selectionnee && nombreSelectionne >= placesRestantes; return <div className={`pss-resource-row ${selectionnee ? "is-selected" : ""}`} key={ressource.resourceCalendarId}><label className="pss-resource-choice"><input type="checkbox" checked={selectionnee} disabled={capaciteAtteinte} onChange={(event) => setRessourcesSelectionnees((selection) => ({ ...selection, [ressource.resourceCalendarId]: event.target.checked }))} /><span><strong>{ressource.libelle}</strong><small>{ressource.resourceCalendarId}</small></span></label><label htmlFor={emailId}>E-mail de connexion<input id={emailId} type="email" required={selectionnee} disabled={!selectionnee} value={emailsRessources[ressource.resourceCalendarId] ?? ""} onChange={(event) => setEmailsRessources((emails) => ({ ...emails, [ressource.resourceCalendarId]: event.target.value }))} placeholder="prenom@exemple.fr" /></label></div>; })}</div></fieldset>
                     <div className="pss-form-actions"><button className="pss-button pss-button--success" disabled={nombreSelectionne === 0 || Boolean(busy)}><ListChecks aria-hidden="true" />{busy === "activation-ressources" ? "Activation…" : `Activer ${nombreSelectionne} salarié${nombreSelectionne !== 1 ? "s" : ""}`}</button></div>

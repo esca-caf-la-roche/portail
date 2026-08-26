@@ -76,19 +76,16 @@ async function refuserEmailStaff(ctx: MutationCtx, email: string) {
 
 export const list = authenticatedQuery({
   args: {},
-  returns: v.object({
-    limite: v.number(),
-    salaries: v.array(salariePublicValidator),
-  }),
+  returns: v.array(salariePublicValidator),
   handler: async (ctx) => {
     await requireGestionnaire(ctx, ctx.userId);
     const salaries = await ctx.db.query("planning_salaries_annuaire").take(MAX_SALARIES + 1);
     if (salaries.length > MAX_SALARIES) {
       throw new ConvexError("L'annuaire dépasse la limite prévue ; une pagination est nécessaire.");
     }
-    return {
-      limite: MAX_SALARIES,
-      salaries: salaries
+    // Conserver un tableau pour rester compatible avec les clients déjà
+    // publiés pendant le déploiement progressif du frontend.
+    return salaries
       .sort((a, b) => a.prenom.localeCompare(b.prenom, "fr"))
       .map((salarie) => ({
         _id: salarie._id,
@@ -99,8 +96,7 @@ export const list = authenticatedQuery({
         compteLie: salarie.userId !== undefined,
         createdAt: salarie.createdAt,
         updatedAt: salarie.updatedAt,
-      })),
-    };
+      }));
   },
 });
 
