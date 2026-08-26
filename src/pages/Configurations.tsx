@@ -1,8 +1,7 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import { Save, Star, Trash2, Users, Calendar, ArrowLeft, Plus, LayoutDashboard } from "lucide-react";
+import { Save, Star, Trash2, Users, Calendar, Plus, LayoutDashboard } from "lucide-react";
 import type { Id } from "../../convex/_generated/dataModel";
 import UsersAccessPanel from "../components/Configurations/UsersAccessPanel";
 import DashboardTilesPanel from "../components/Configurations/DashboardTilesPanel";
@@ -99,9 +98,6 @@ export default function Configurations() {
   return (
     <div className="configurations-page fade-in">
       <header className="page-header" style={{ marginBottom: "2rem" }}>
-        <Link to="/" className="back-link">
-          <ArrowLeft size={16} /> Retour au tableau de bord
-        </Link>
         <h1>Configurations</h1>
         <p className="subtitle">Gérez les paramètres globaux de l'application.</p>
       </header>

@@ -1,7 +1,5 @@
 import type { ReactNode } from "react";
-import { Link } from "react-router-dom";
 import { useQuery } from "convex/react";
-import { ArrowLeft } from "lucide-react";
 import { api } from "../../convex/_generated/api";
 import type { TileId } from "../config/tiles";
 
@@ -36,9 +34,6 @@ export default function RequireAccess({ children, tile, admin }: Props) {
             ? "Cette page est réservée aux administrateurs."
             : "Ce module ne vous est pas attribué. Contactez un administrateur."}
         </p>
-        <Link to="/" className="back-link" style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}>
-          <ArrowLeft size={16} /> Retour au tableau de bord
-        </Link>
       </div>
     );
   }

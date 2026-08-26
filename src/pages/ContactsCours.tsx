@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useAction, useQuery } from "convex/react";
 import {
-  ArrowLeft,
   Check,
   Clipboard,
   Mail,
@@ -188,9 +187,6 @@ export default function ContactsCours() {
   return (
     <div className="contacts-cours-page">
       <header className="contacts-cours-header">
-        <Link to="/" className="back-link">
-          <ArrowLeft size={16} aria-hidden="true" /> Retour au tableau de bord
-        </Link>
         <div className="contacts-cours-heading">
           <div>
             <p className="contacts-cours-kicker">Carnet de cours</p>

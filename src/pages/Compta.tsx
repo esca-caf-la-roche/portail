@@ -2,8 +2,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation, useAction, usePaginatedQuery, useConvex } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { useSeason } from "../contexts/SeasonContext";
-import { ArrowLeft, ArrowUpRight, ArrowDownRight, Wallet, Filter, Search, Plus, Edit2, Trash2, ExternalLink, Mail, Download } from "lucide-react";
-import { Link } from "react-router-dom";
+import { ArrowUpRight, ArrowDownRight, Wallet, Filter, Search, Plus, Edit2, Trash2, ExternalLink, Mail, Download } from "lucide-react";
 import TransactionFormModal from "../components/TransactionFormModal";
 import BudgetTrendsModal from "../components/BudgetTrendsModal";
 import { getPastelColor } from "../utils/colors";
@@ -256,9 +255,6 @@ export default function Compta() {
     <div className="compta-page fade-in">
       <header className="page-header flex-header" style={{ justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "1rem" }}>
         <div>
-          <Link to="/" className="back-link">
-            <ArrowLeft size={16} /> Retour au tableau de bord
-          </Link>
           <h1>Comptabilité</h1>
           <p className="subtitle">Saison : {season}</p>
         </div>

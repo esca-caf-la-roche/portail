@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
-import { Link } from "react-router-dom";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { ArrowLeft, Check, ChevronDown, ChevronRight, Copy, RotateCcw } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Copy, RotateCcw } from "lucide-react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { useMaintenantJourParis } from "../abonnements/lib/useMaintenantJourParis";
@@ -413,9 +412,6 @@ export default function LicencesEnCours() {
   return (
     <div className="licences-cours-page">
       <header className="page-header">
-        <Link to="/" className="back-link" style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}>
-          <ArrowLeft size={16} /> Retour au tableau de bord
-        </Link>
         <h1>Licences élèves en cours</h1>
         <p className="subtitle">
           Élèves en cours (hors liste d'attente) sans licence FFCAM valide dans les données actuelles.

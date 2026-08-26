@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "convex/react";
 import { Link } from "react-router-dom";
 import { api } from "../../../convex/_generated/api";
 import {
-  ArrowLeft, Plus, Edit2, Trash2, ChevronDown, ChevronRight,
+  Plus, Edit2, Trash2, ChevronDown, ChevronRight,
   Settings2, TrendingUp, ArrowUpRight, ArrowDownRight,
 } from "lucide-react";
 import { useSeason } from "../../contexts/SeasonContext";
@@ -209,9 +209,6 @@ export default function MasseSalariale() {
         style={{ display: "flex", flexWrap: "wrap", gap: "1rem", justifyContent: "space-between", alignItems: "flex-end", marginBottom: "2rem" }}
       >
         <div>
-          <Link to="/" className="back-link">
-            <ArrowLeft size={16} /> Retour au tableau de bord
-          </Link>
           <h1>Budget prévisionnel</h1>
         </div>
         {tab === "masse" && isAdmin && salaries.length > 0 && (

@@ -80,6 +80,7 @@ La documentation fonctionnelle complète est dans
 
 | Élément | Emplacement | Usage |
 |---|---|---|
+| Retour au portail | `src/components/PortalReturnLink.tsx` | Navigation commune des routes staff vers le tableau de bord |
 | Tuiles | `src/components/Tile.tsx` | Navigation du tableau de bord |
 | Formulaire de transaction | `src/components/TransactionFormModal.tsx` | Comptabilité |
 | Formulaire prévisionnel | `src/components/PrevisionnelFormModal.tsx` | Budget prévisionnel |

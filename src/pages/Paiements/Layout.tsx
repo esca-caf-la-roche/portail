@@ -1,4 +1,4 @@
-import { NavLink, Outlet, Link } from "react-router-dom";
+import { NavLink, Outlet } from "react-router-dom";
 
 const navClass = ({ isActive }: { isActive: boolean }) =>
   `pay-nav-link${isActive ? " active" : ""}`;
@@ -19,9 +19,6 @@ export default function PaiementsLayout() {
         <NavLink to="/paiements/attente" className={navClass}>
           Attente
         </NavLink>
-        <Link to="/" className="pay-nav-back">
-          ← Accueil
-        </Link>
       </nav>
       <Outlet />
     </div>

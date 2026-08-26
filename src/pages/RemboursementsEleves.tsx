@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { Link } from "react-router-dom";
 import {
   useAction,
   useMutation,
@@ -10,7 +9,6 @@ import {
 import type { FunctionReturnType } from "convex/server";
 import {
   Archive,
-  ArrowLeft,
   Check,
   ChevronDown,
   ExternalLink,
@@ -870,9 +868,6 @@ export default function RemboursementsEleves() {
   return (
     <div className="remb-page">
       <header className="remb-header">
-        <Link to="/" className="back-link">
-          <ArrowLeft size={16} aria-hidden="true" /> Retour au tableau de bord
-        </Link>
         <div className="remb-heading-row">
           <div>
             <p className="remb-kicker">Carnet de remboursement</p>
