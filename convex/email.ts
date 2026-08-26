@@ -23,6 +23,31 @@ function creerTransporteur(email: string, motDePasse: string) {
   });
 }
 
+export function construirePiecesEmail(
+  pieceJointe?: { nom: string; contenuBase64: string; type: string },
+  html?: string,
+) {
+  return [
+    ...(html
+      ? [{
+          data: html,
+          alternative: true,
+          type: "text/html",
+          charset: "utf-8",
+        }]
+      : []),
+    ...(pieceJointe
+      ? [{
+          name: pieceJointe.nom,
+          data: pieceJointe.contenuBase64,
+          // emailjs attend une chaîne déjà encodée lorsque `encoded` vaut true.
+          encoded: true,
+          type: pieceJointe.type,
+        }]
+      : []),
+  ];
+}
+
 async function envoyerEmail(
   compteSmtp: string,
   motDePasse: string,
@@ -31,25 +56,17 @@ async function envoyerEmail(
   sujet: string,
   texte: string,
   pieceJointe?: { nom: string; contenuBase64: string; type: string },
+  html?: string,
 ) {
   const client = creerTransporteur(compteSmtp, motDePasse);
   try {
+    const pieces = construirePiecesEmail(pieceJointe, html);
     await client.sendAsync({
       from: expediteur,
       to: destinataire,
       subject: sujet,
       text: texte,
-      ...(pieceJointe
-        ? {
-            attachment: [{
-              name: pieceJointe.nom,
-              data: pieceJointe.contenuBase64,
-              // emailjs attend une chaîne déjà encodée lorsque `encoded` vaut true.
-              encoded: true,
-              type: pieceJointe.type,
-            }],
-          }
-        : {}),
+      ...(pieces.length > 0 ? { attachment: pieces } : {}),
     });
   } finally {
     client.smtp.close();
@@ -146,6 +163,7 @@ export const sendSamediEmail = action({
     to: v.string(),
     subject: v.string(),
     text: v.string(),
+    html: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (_ctx, args) => {
@@ -164,6 +182,8 @@ export const sendSamediEmail = action({
         destinataire,
         args.subject,
         args.text,
+        undefined,
+        args.html,
       );
       return null;
     } catch {

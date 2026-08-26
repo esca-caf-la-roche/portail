@@ -8,8 +8,46 @@ import {
   samediBloqueParPeriodeScolaire,
   samedisBloquesParVacances,
 } from "./samedis/sync";
+import {
+  construireEmailNotificationSamedis,
+  echapperHtml,
+  formaterDateCivileFrancaise,
+  humaniserDatesDansTexte,
+} from "./samedis/notifications";
 
 const modules = import.meta.glob("./**/*.ts");
+
+describe("e-mails de notification des samedis", () => {
+  test("présente les dates civiles avec leur vrai jour en français", () => {
+    expect(formaterDateCivileFrancaise("2027-05-15")).toBe("Samedi 15 mai 2027");
+    expect(humaniserDatesDansTexte("Période : 2026-09-07 au 2027-06-25.")).toBe(
+      "Période : Lundi 7 septembre 2026 au Vendredi 25 juin 2027.",
+    );
+    expect(formaterDateCivileFrancaise("2027-02-30")).toBe("2027-02-30");
+  });
+
+  test("compose un HTML néo-brutaliste sûr avec un fallback texte", () => {
+    const email = construireEmailNotificationSamedis({
+      typeModification: "reservation_creee",
+      acteur: 'gestionnaire+<test>"@example.test',
+      saison: "2026-27",
+      resume: '2027-05-15 — <script>alert("x")</script> & confirmé.',
+      createdAt: Date.UTC(2027, 4, 1, 10, 30),
+    });
+
+    expect(email.sujet).toBe(
+      "Samedis après-midi — Réservation créée — saison 2026-27",
+    );
+    expect(email.texte).toContain("Samedi 15 mai 2027");
+    expect(email.texte).toContain("Réservation créée");
+    expect(email.html).toContain("border:4px solid #111111");
+    expect(email.html).toContain("background:#b9f56a");
+    expect(email.html).toContain("Samedi 15 mai 2027");
+    expect(email.html).toContain("&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt; &amp; confirmé.");
+    expect(email.html).not.toContain("<script>");
+    expect(echapperHtml("<&>'\"")).toBe("&lt;&amp;&gt;&#039;&quot;");
+  });
+});
 
 async function fixture(statutSynchronisation?: "ok" | "erreur") {
   const t = convexTest(schema, modules);
@@ -259,6 +297,16 @@ describe("gestion staff des participants aux samedis", () => {
         resume: "Participant supprimé : Alice <alice@example.test>.",
       }),
     ]);
+    const notificationId = resultat.notifications[0]?._id;
+    expect(notificationId).toBeDefined();
+    if (!notificationId) return;
+    const email = await f.t.query(internal.samedis.notifications.contexte, {
+      notificationId,
+    });
+    expect(email?.sujet).toBe("Samedis après-midi — Participant supprimé");
+    expect(email?.texte).toContain("Participant supprimé");
+    expect(email?.html).toContain("Modification enregistrée");
+    expect(email?.html).toContain("Participant supprimé : Alice &lt;alice@example.test&gt;.");
   });
 });
 

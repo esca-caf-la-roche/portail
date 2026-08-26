@@ -114,6 +114,12 @@ planifie son envoi SMTP immédiat vers l'adresse fixe de synthèse du club. Sont
 concernés la configuration, les participants, les créneaux, les réservations,
 les régularisations et la synchronisation du calendrier.
 
+Le message est envoyé en deux versions : un HTML néo-brutaliste compatible avec
+les principaux clients mail et un texte brut de secours. Les dates civiles ISO
+présentes dans le détail sont rendues avec leur jour réel et en français, par
+exemple `2027-05-15` devient `Samedi 15 mai 2027`. La valeur ISO reste inchangée
+dans l'outbox afin de conserver un audit technique stable.
+
 L'enregistrement métier ne dépend pas de la disponibilité SMTP. Un échec est
 conservé avec son nombre de tentatives ; le serveur effectue jusqu'à trois
 essais avec délai croissant. La page gestionnaire affiche les cinquante derniers
