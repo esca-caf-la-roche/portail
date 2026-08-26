@@ -228,6 +228,13 @@ function lendemain(dateIso: string): string {
   return date.toISOString().slice(0, 10);
 }
 
+function nombreDeJours(debut: string, fin: string): number {
+  return Math.round(
+    (Date.parse(`${fin}T00:00:00Z`) - Date.parse(`${debut}T00:00:00Z`)) /
+      86_400_000,
+  );
+}
+
 export function samediBloqueParPeriodeScolaire(
   samedi: string,
   debut: string,
@@ -235,10 +242,19 @@ export function samediBloqueParPeriodeScolaire(
 ) {
   if (fin < debut) return false;
 
-  // L'API exprime une période ordinaire du départ après les cours jusqu'au
-  // matin de la reprise : seuls les samedis strictement entre les deux bornes
-  // sont donc des samedis de vacances.
-  if (debut < fin) return debut < samedi && samedi < fin;
+  if (debut < fin) {
+    // Le départ a lieu le soir et la reprise le matin : les bornes ne sont pas
+    // bloquées. Pour des vacances d'au moins une semaine commencées un vendredi,
+    // le cours du lendemain reste également maintenu. Un pont court inclut en
+    // revanche tout samedi strictement compris dans la fermeture.
+    if (!(debut < samedi && samedi < fin)) return false;
+    const jourDebut = new Date(`${debut}T00:00:00Z`).getUTCDay();
+    const exclurePremierSamedi =
+      nombreDeJours(debut, fin) >= 7 &&
+      jourDebut === 5 &&
+      samedi === lendemain(debut);
+    return !exclurePremierSamedi;
+  }
 
   // Certaines fermetures ponctuelles, notamment le pont de l'Ascension 2027,
   // sont publiées avec deux bornes égales au vendredi. Elles ferment aussi le
