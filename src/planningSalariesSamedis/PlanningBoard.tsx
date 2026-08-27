@@ -10,6 +10,10 @@ function dateLongue(date: string) {
   return new Intl.DateTimeFormat("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${date}T12:00:00Z`));
 }
 
+function moisLong(date: string) {
+  return new Intl.DateTimeFormat("fr-FR", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${date.slice(0, 7)}-01T12:00:00Z`));
+}
+
 export default function PlanningBoard() {
   const { season, setSeason, availableSeasons } = useSeason();
   const { signOut } = useAuthActions();
@@ -25,6 +29,11 @@ export default function PlanningBoard() {
   const moi = identity.salarie;
   const parDate = new Map<string, typeof planning.creneaux>();
   for (const creneau of planning.creneaux) parDate.set(creneau.date, [...(parDate.get(creneau.date) ?? []), creneau]);
+  const parMois = new Map<string, Array<[string, typeof planning.creneaux]>>();
+  for (const entree of Array.from(parDate).sort(([a], [b]) => a.localeCompare(b))) {
+    const mois = entree[0].slice(0, 7);
+    parMois.set(mois, [...(parMois.get(mois) ?? []), entree]);
+  }
 
   async function agir(date: string, estMoi: boolean) {
     setEnCours(date);
@@ -60,13 +69,13 @@ export default function PlanningBoard() {
           <div className="pss-counter-grid">{planning.compteurs.map((compteur) => <article key={compteur.salarieId ?? "placeholder"} className={compteur.salarieId === null ? "is-open" : ""}><strong>{compteur.prenom}</strong><span>{compteur.samedis} samedi{compteur.samedis > 1 ? "s" : ""}</span></article>)}</div>
         </section>
         {parDate.size === 0 ? <div className="pss-state"><CalendarDays aria-hidden="true" />Aucun samedi n’est encore disponible pour cette saison.</div> : (
-          <ol className="pss-saturday-grid">{Array.from(parDate).sort(([a], [b]) => a.localeCompare(b)).map(([date, creneaux]) => (
+          <div className="pss-month-list">{Array.from(parMois).map(([mois, dates]) => <section className="pss-month" aria-labelledby={`pss-employee-month-${mois}`} key={mois}><h2 id={`pss-employee-month-${mois}`} className="pss-month-title">{moisLong(dates[0][0])}</h2><ol className="pss-saturday-grid">{dates.map(([date, creneaux]) => (
             <li className="pss-saturday-card" key={date}>{(() => {
               const salarie = creneaux[0]?.salarie ?? null;
               const estMoi = salarie?._id === moi._id;
               const libre = !salarie;
               return <>
-              <header><div><span>Samedi</span><h2>{dateLongue(date)}</h2></div><strong className={estMoi ? "is-mine" : libre ? "is-open" : "is-assigned"}>{estMoi ? "Mon samedi" : salarie?.prenom ?? "À déterminer"}</strong></header>
+              <header><div><span>Samedi</span><h3>{dateLongue(date)}</h3></div><strong className={estMoi ? "is-mine" : libre ? "is-open" : "is-assigned"}>{estMoi ? "Mon samedi" : salarie?.prenom ?? "À déterminer"}</strong></header>
               <ul className="pss-slot-list">{creneaux.map((creneau) => (
                 <li key={creneau._id}><strong>{creneau.groupe}</strong><span>{creneau.debut.slice(11, 16)} – {creneau.fin.slice(11, 16)}</span></li>
               ))}</ul>
@@ -74,7 +83,7 @@ export default function PlanningBoard() {
               </>;
             })()}
             </li>
-          ))}</ol>
+          ))}</ol></section>)}</div>
         )}
       </main>
     </div>

@@ -41,6 +41,11 @@ Depuis cet écran, un gestionnaire peut :
 5. consulter les compteurs et l'état des traitements Google et e-mail ;
 6. relancer manuellement une mise à jour de ressource ou une alerte en échec.
 
+L'écran affiche également le lien partageable
+`/#/planning-salaries-samedis`, prêt à être copié et transmis aux salariés.
+Lorsqu'un membre du staff déjà connecté ouvre ce lien, il est redirigé vers
+l'écran de gestion plutôt que vers le parcours de connexion salarié.
+
 Une adresse ou une ressource Google ne peut appartenir qu'à une seule fiche.
 Une adresse déjà rattachée à un compte du portail staff est refusée : un salarié
 isolé ne doit pas acquérir indirectement des tuiles staff, et réciproquement.
@@ -81,6 +86,10 @@ propre inscription. Il ne doit pas
 modifier l'inscription d'un autre salarié. Cette dernière règle doit être
 contrôlée côté serveur et pas seulement par l'absence de bouton dans
 l'interface.
+
+Dans les vues gestionnaire et salarié, les cartes des samedis sont regroupées
+par mois afin de rendre le planning saisonnier plus facile à parcourir sans
+modifier l'unité métier de l'affectation, qui reste la date entière.
 
 ## Créneaux Google et affectations
 
@@ -261,10 +270,15 @@ configuration et remplacer uniquement le jeton de renouvellement.
 - [ ] Se connecter avec `planning-salaries-otp`, contrôler l'isolement des
   autres tuiles, la redirection depuis une route staff et la révocation après
   désactivation de la fiche.
+- [ ] Depuis la gestion, copier le lien partageable, l'ouvrir comme salarié non
+  connecté, puis l'ouvrir avec une session staff active et vérifier la
+  redirection vers la gestion.
 - [ ] Changer de saison et vérifier les bornes du 1er septembre au 31 août ainsi
   que l'absence de mélange entre saisons.
 - [ ] Synchroniser un samedi avec deux groupes et contrôler qu'une seule
   affectation est proposée pour toute la date.
+- [ ] Vérifier sur les vues gestionnaire et salarié que les cartes sont
+  regroupées sous le bon mois et restent dans l'ordre chronologique.
 - [ ] Avec deux salariés, vérifier que chacun voit l'inscription de l'autre,
   peut prendre un samedi libre et retirer uniquement sa propre inscription.
 - [ ] Affecter puis retirer un salarié et vérifier dans tous les événements
@@ -282,4 +296,6 @@ configuration et remplacer uniquement le jeton de renouvellement.
 - [ ] Tenter de supprimer une saison contenant une affectation, puis retirer
   les affectations et vérifier la cascade des seules données saisonnières.
 - [ ] Vérifier au clavier et sur mobile le sélecteur de saison, les boutons de
-  prise/retrait, l'annuaire, les états de chargement et les messages d'erreur.
+  prise/retrait, l'annuaire, les états de chargement et les messages d'erreur ;
+  sur mobile, contrôler aussi que le badge de synchronisation ne déborde pas
+  de son conteneur.

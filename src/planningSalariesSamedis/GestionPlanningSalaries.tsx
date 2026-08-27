@@ -1,6 +1,6 @@
-import { useState, type FormEvent } from "react";
+import { useMemo, useRef, useState, type FormEvent } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { AlertTriangle, CalendarSync, CheckCircle2, CircleAlert, Clock3, ListChecks, Plus, RefreshCw, Save, Trash2, UserRoundCog, X } from "lucide-react";
+import { AlertTriangle, CalendarSync, CheckCircle2, CircleAlert, Clock3, Copy, ExternalLink, ListChecks, Plus, RefreshCw, Save, Trash2, UserRoundCog, X } from "lucide-react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { useSeason } from "../contexts/SeasonContext";
@@ -13,6 +13,10 @@ const LIMITE_ANNUAIRE = 50;
 
 function dateLongue(date: string) {
   return new Intl.DateTimeFormat("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${date}T12:00:00Z`));
+}
+
+function moisLong(date: string) {
+  return new Intl.DateTimeFormat("fr-FR", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${date.slice(0, 7)}-01T12:00:00Z`));
 }
 
 export default function GestionPlanningSalaries() {
@@ -41,6 +45,13 @@ export default function GestionPlanningSalaries() {
   const [ressourcesGoogle, setRessourcesGoogle] = useState<RessourceGoogle[] | null>(null);
   const [ressourcesSelectionnees, setRessourcesSelectionnees] = useState<Record<string, boolean>>({});
   const [emailsRessources, setEmailsRessources] = useState<Record<string, string>>({});
+  const [annoncePartage, setAnnoncePartage] = useState("");
+  const lienSalarieRef = useRef<HTMLInputElement>(null);
+  const lienSalarie = useMemo(() => {
+    const url = new URL(window.location.href);
+    url.hash = "/planning-salaries-samedis";
+    return url.toString();
+  }, []);
 
   const chargerEdition = (salarie: NonNullable<typeof salaries>[number]) => {
     setEdition(salarie._id);
@@ -127,9 +138,41 @@ export default function GestionPlanningSalaries() {
     }
   }
 
+  async function copierLienSalarie() {
+    setAnnoncePartage("");
+    try {
+      if (!navigator.clipboard) throw new Error("Presse-papiers indisponible");
+      await navigator.clipboard.writeText(lienSalarie);
+      setAnnoncePartage("Lien salarié copié dans le presse-papiers.");
+      return;
+    } catch {
+      if (navigator.share) {
+        try {
+          await navigator.share({
+            title: "Planning des salariés du samedi",
+            text: "Voici le lien pour accéder au planning partagé.",
+            url: lienSalarie,
+          });
+          setAnnoncePartage("Lien salarié partagé.");
+          return;
+        } catch (cause) {
+          if (cause instanceof DOMException && cause.name === "AbortError") return;
+        }
+      }
+      lienSalarieRef.current?.focus();
+      lienSalarieRef.current?.select();
+      setAnnoncePartage("Le lien est sélectionné. Utilisez l’action Copier de votre appareil.");
+    }
+  }
+
   if ([planning, etat, salaries, actifs, operations, alertes].some((valeur) => valeur === undefined)) return <div className="pss-state" role="status"><Clock3 aria-hidden="true" />Chargement de la gestion du planning…</div>;
   const parDate = new Map<string, NonNullable<typeof planning>["creneaux"]>();
   for (const creneau of planning!.creneaux) parDate.set(creneau.date, [...(parDate.get(creneau.date) ?? []), creneau]);
+  const parMois = new Map<string, Array<[string, NonNullable<typeof planning>["creneaux"]]>>();
+  for (const entree of Array.from(parDate).sort(([a], [b]) => a.localeCompare(b))) {
+    const mois = entree[0].slice(0, 7);
+    parMois.set(mois, [...(parMois.get(mois) ?? []), entree]);
+  }
   const ressourcesDisponibles = ressourcesGoogle?.filter((ressource) => !salaries!.some((salarie) => salarie.resourceCalendarId.toLowerCase() === ressource.resourceCalendarId.toLowerCase())) ?? [];
   const nombreSelectionne = Object.values(ressourcesSelectionnees).filter(Boolean).length;
   const placesRestantes = Math.max(0, LIMITE_ANNUAIRE - salaries!.length);
@@ -153,6 +196,16 @@ export default function GestionPlanningSalaries() {
       </section>}
       <div className="pss-manager-grid">
         <section className="pss-panel" aria-labelledby="pss-directory-title"><div className="pss-panel-title"><UserRoundCog aria-hidden="true" /><div><p className="pss-kicker">Accès et ressources</p><h2 id="pss-directory-title">Annuaire salarié</h2></div><span>{salaries!.length}</span></div>
+          <aside className="pss-share-link" aria-labelledby="pss-share-title">
+            <div className="pss-share-heading"><ExternalLink aria-hidden="true" /><span><strong id="pss-share-title">Lien à partager</strong><small>À transmettre aux salariés pour qu’ils accèdent à leur planning et se connectent.</small></span></div>
+            <div className="pss-share-controls">
+              <label className="pss-visually-hidden" htmlFor="pss-employee-link">Lien du parcours salarié</label>
+              <input ref={lienSalarieRef} id="pss-employee-link" readOnly value={lienSalarie} onFocus={(event) => event.currentTarget.select()} />
+              <button type="button" className="pss-button pss-button--primary pss-button--small" onClick={() => void copierLienSalarie()}><Copy aria-hidden="true" />Copier</button>
+              <a className="pss-button pss-button--small pss-share-open" href={lienSalarie} target="_blank" rel="noreferrer" aria-label="Ouvrir le parcours salarié dans un nouvel onglet"><ExternalLink aria-hidden="true" />Ouvrir</a>
+            </div>
+            <span className="pss-visually-hidden" role="status" aria-live="polite">{annoncePartage}</span>
+          </aside>
           <div className="pss-resource-import">
             <div className="pss-resource-import__heading"><div><h3>Ressources Google disponibles</h3><p>Récupérez les ressources du club, puis cochez les salariés à activer.</p></div><button type="button" className="pss-button pss-button--primary" disabled={Boolean(busy)} onClick={() => void chargerRessourcesGoogle()}><RefreshCw aria-hidden="true" />{busy === "ressources" ? "Récupération…" : ressourcesGoogle ? "Actualiser" : "Récupérer les ressources"}</button></div>
             {ressourcesGoogle !== null && (ressourcesGoogle.length === 0
@@ -179,7 +232,7 @@ export default function GestionPlanningSalaries() {
         <section className="pss-panel pss-panel--counters"><div className="pss-panel-title"><CalendarSync aria-hidden="true" /><div><p className="pss-kicker">Charge de l’équipe</p><h2>Compteurs</h2></div></div><div className="pss-counter-grid">{planning!.compteurs.map((c) => <article key={c.salarieId ?? "placeholder"} className={c.salarieId === null ? "is-open" : ""}><strong>{c.prenom}</strong><span>{c.samedis} samedi{c.samedis > 1 ? "s" : ""}</span></article>)}</div></section>
       </div>
       <section className="pss-manager-calendar" aria-labelledby="pss-calendar-title"><div className="pss-calendar-heading"><div><p className="pss-kicker">Une attribution pour toute la date</p><h2 id="pss-calendar-title">Tous les samedis</h2></div><span>{parDate.size} date{parDate.size > 1 ? "s" : ""}</span></div>
-        {parDate.size === 0 ? <div className="pss-state">Synchronisez Google Calendar pour importer les samedis de cette saison.</div> : <ol className="pss-saturday-grid pss-saturday-grid--manager">{Array.from(parDate).sort(([a], [b]) => a.localeCompare(b)).map(([date, creneaux]) => <li className="pss-saturday-card" key={date}>{(() => { const salarie = creneaux[0]?.salarie ?? null; const googleAJour = creneaux.every((creneau) => creneau.googleAJour); return <><header><div><span>Samedi</span><h3>{dateLongue(date)}</h3></div><strong className={salarie ? "is-assigned" : "is-open"}>{salarie?.prenom ?? "À déterminer"}</strong></header><ul className="pss-slot-list">{creneaux.map((creneau) => <li key={creneau._id}><strong>{creneau.groupe}</strong><span>{creneau.debut.slice(11, 16)} – {creneau.fin.slice(11, 16)}</span></li>)}</ul><div className="pss-saturday-manager"><label htmlFor={`pss-assignee-${date}`}>Salarié pour tout le samedi<select id={`pss-assignee-${date}`} value={salarie?._id ?? ""} disabled={Boolean(busy)} onChange={(event) => void executer(date, () => event.target.value ? affecter({ saison: season, date, salarieId: event.target.value as SalarieId }) : retirer({ saison: season, date }), "Affectation du samedi mise à jour ; toutes les ressources Google vont être remplacées.")}><option value="">À déterminer</option>{actifs!.map((s) => <option value={s._id} key={s._id}>{s.prenom}</option>)}</select></label><span className={`pss-google-state ${googleAJour ? "is-ok" : "is-pending"}`}>{googleAJour ? <CheckCircle2 aria-hidden="true" /> : <Clock3 aria-hidden="true" />}{googleAJour ? "Google à jour" : "Mise à jour Google en cours"}</span></div></>; })()}</li>)}</ol>}
+        {parDate.size === 0 ? <div className="pss-state">Synchronisez Google Calendar pour importer les samedis de cette saison.</div> : <div className="pss-month-list">{Array.from(parMois).map(([mois, dates]) => <section className="pss-month" aria-labelledby={`pss-manager-month-${mois}`} key={mois}><h3 id={`pss-manager-month-${mois}`} className="pss-month-title">{moisLong(dates[0][0])}</h3><ol className="pss-saturday-grid pss-saturday-grid--manager">{dates.map(([date, creneaux]) => <li className="pss-saturday-card" key={date}>{(() => { const salarie = creneaux[0]?.salarie ?? null; const googleAJour = creneaux.every((creneau) => creneau.googleAJour); return <><header><div><span>Samedi</span><h4>{dateLongue(date)}</h4></div><strong className={salarie ? "is-assigned" : "is-open"}>{salarie?.prenom ?? "À déterminer"}</strong></header><ul className="pss-slot-list">{creneaux.map((creneau) => <li key={creneau._id}><strong>{creneau.groupe}</strong><span>{creneau.debut.slice(11, 16)} – {creneau.fin.slice(11, 16)}</span></li>)}</ul><div className="pss-saturday-manager"><label htmlFor={`pss-assignee-${date}`}>Salarié pour tout le samedi<select id={`pss-assignee-${date}`} value={salarie?._id ?? ""} disabled={Boolean(busy)} onChange={(event) => void executer(date, () => event.target.value ? affecter({ saison: season, date, salarieId: event.target.value as SalarieId }) : retirer({ saison: season, date }), "Affectation du samedi mise à jour ; toutes les ressources Google vont être remplacées.")}><option value="">À déterminer</option>{actifs!.map((s) => <option value={s._id} key={s._id}>{s.prenom}</option>)}</select></label><span className={`pss-google-state ${googleAJour ? "is-ok" : "is-pending"}`}>{googleAJour ? <CheckCircle2 aria-hidden="true" /> : <Clock3 aria-hidden="true" />}{googleAJour ? "Google à jour" : "Mise à jour Google en cours"}</span></div></>; })()}</li>)}</ol></section>)}</div>}
       </section>
     </div>
   );
