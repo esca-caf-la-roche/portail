@@ -33,6 +33,8 @@ const creneauValidator = v.object({
   motifsBlocage: v.array(v.string()),
   sourcesBlocage: v.array(sourceBlocageValidator),
   blocageManuel: v.boolean(),
+  blocageOfficiel: v.boolean(),
+  ouvertureManuelle: v.boolean(),
   motifBlocageManuel: v.union(v.null(), v.string()),
   reservation: v.union(
     v.null(),
@@ -135,6 +137,8 @@ async function chargerCalendrier(
         motifsBlocage: creneau.motifsBlocage,
         sourcesBlocage: creneau.sourcesBlocage,
         blocageManuel: creneau.sourcesBlocage.includes("manuel"),
+        blocageOfficiel: creneau.sourcesBlocage.some((source) => source !== "manuel"),
+        ouvertureManuelle: creneau.ouvertureManuelle === true,
         motifBlocageManuel:
           creneau.motifsBlocage.find(
             (_motif, index) => creneau.sourcesBlocage[index] === "manuel",
