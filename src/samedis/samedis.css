@@ -186,7 +186,9 @@
 .samedis-slot--manager.is-attribution-closed > article { background: color-mix(in srgb, var(--danger) 14%, var(--card)); }
 .samedis-slot--manager.is-attributed > article { background: color-mix(in srgb, var(--info) 24%, var(--card)); }
 .samedis-slot--manager.is-available > article { background: color-mix(in srgb, var(--success) 18%, var(--card)); }
-.samedis-slot.is-blocked > article { border-style: dashed; }
+.samedis-slot.is-blocked > article { border-style: dashed; background: color-mix(in srgb, var(--warning) 32%, var(--card)); }
+.samedis-slot--manager.est-en-vacances-scolaires > article { background: color-mix(in srgb, var(--orange) 24%, var(--card)); }
+.samedis-slot--manager.est-en-vacances-scolaires.is-blocked > article { background: color-mix(in srgb, var(--orange) 34%, color-mix(in srgb, var(--warning) 32%, var(--card))); }
 .samedis-slot-date { display: flex; align-items: center; gap: 0.55rem; }
 .samedis-slot-date svg { flex: 0 0 1.3rem; }
 .samedis-slot-date h2, .samedis-slot-date h3 { font-size: clamp(1rem, 3vw, 1.35rem); text-transform: capitalize; }
@@ -194,7 +196,8 @@
 .samedis-status svg { flex: 0 0 1.3rem; }
 .samedis-status span { display: grid; }
 .samedis-status--mine { background: var(--success); }
-.samedis-status--blocked { background: var(--danger); color: var(--card); }
+.samedis-status--blocked { background: var(--danger); color: var(--foreground); }
+.samedis-status--exception { background: color-mix(in srgb, var(--orange) 42%, var(--card)); color: var(--foreground); }
 
 .samedis-state { display: flex; min-height: 10rem; align-items: center; justify-content: center; gap: 0.65rem; padding: 2rem; border: 3px dashed var(--border-color); background: var(--card); font-weight: 800; text-align: center; }
 .samedis-state--screen { min-height: 100dvh; border: 0; background: var(--background); }
@@ -269,7 +272,7 @@
 .samedis-blockage-badge svg { flex: 0 0 1.2rem; }
 .samedis-blockage-badge > span { display: grid; }
 .samedis-blockage-badge--ferie { background: var(--primary); }
-.samedis-blockage-badge--vacances { background: var(--info); }
+.samedis-blockage-badge--vacances { background: color-mix(in srgb, var(--orange) 35%, var(--card)); }
 .samedis-blockage-badge--manuel { background: var(--warning); }
 .samedis-slot-manager-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem; }
 .samedis-manager-reservation { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.6rem; }
@@ -283,7 +286,9 @@
 .samedis-slot-settings summary { display: flex; min-height: 44px; align-items: center; gap: 0.4rem; padding-top: 0.65rem; font-size: 0.72rem; font-weight: 800; text-transform: uppercase; cursor: pointer; }
 .samedis-slot-settings summary svg { width: 1rem; }
 .samedis-slot-settings .samedis-inline-form { margin-top: 0.65rem; }
-.samedis-checkbox { display: flex !important; flex-direction: row; align-items: center; align-self: center; }
+.samedis-slot-settings .samedis-availability-form--official { grid-template-columns: minmax(0, 1fr) auto; }
+.samedis-availability-note { grid-column: 1 / -1; padding: 0.55rem; border: 2px solid var(--border-color); background: color-mix(in srgb, var(--warning) 22%, var(--card)); font-size: 0.72rem; font-weight: 750; }
+.samedis-checkbox { display: flex !important; min-height: 44px; flex-direction: row; align-items: center; align-self: center; padding: 0.35rem 0.2rem; }
 .samedis-checkbox input { width: 1.25rem; min-height: 1.25rem; }
 .samedis-checkbox svg { width: 1rem; }
 .samedis-inline-error { display: flex; gap: 0.4rem; margin-top: 0.6rem; padding: 0.5rem; border: 2px solid var(--border-color); background: var(--danger); color: var(--card); font-size: 0.72rem; font-weight: 800; }
@@ -310,6 +315,7 @@
   .samedis-personal-count { width: 100%; min-height: 7rem; }
   .samedis-config-form, .samedis-inline-form, .samedis-person-item, .samedis-person-edit-form, .samedis-manager-reservation, .samedis-share-controls { grid-template-columns: 1fr; }
   .samedis-regularisation .samedis-inline-form { grid-template-columns: 1fr; }
+  .samedis-slot-settings .samedis-availability-form--official { grid-template-columns: 1fr; }
   .samedis-add-person .samedis-button, .samedis-inline-form .samedis-button { width: 100%; }
   .samedis-person-actions, .samedis-person-edit-actions { flex-direction: column; }
   .samedis-person-actions button, .samedis-person-edit-actions button, .samedis-share-controls button { width: 100%; }

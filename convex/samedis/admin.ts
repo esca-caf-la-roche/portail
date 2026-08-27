@@ -284,6 +284,7 @@ export const updateCreneau = authenticatedMutation({
     creneauId: v.id("samedis_creneaux"),
     bloqueManuellement: v.boolean(),
     motif: v.optional(v.string()),
+    ouvertureManuelle: v.optional(v.boolean()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -293,6 +294,43 @@ export const updateCreneau = authenticatedMutation({
     const motifManuel = args.bloqueManuellement
       ? texteCourt(args.motif ?? "", "Le motif de blocage", 200)
       : null;
+    const motifsOfficiels = creneau.motifsBlocage.filter(
+      (_motif, index) => creneau.sourcesBlocage[index] !== "manuel",
+    );
+    const sourcesOfficielles = creneau.sourcesBlocage.filter((source) => source !== "manuel");
+    const blocageOfficiel = sourcesOfficielles.length > 0;
+    const ouvertureManuelle =
+      args.ouvertureManuelle ?? (creneau.ouvertureManuelle === true);
+    if (ouvertureManuelle && !blocageOfficiel) {
+      throw erreur(
+        "SAMEDIS_OUVERTURE_SANS_BLOCAGE_OFFICIEL",
+        "Cette disponibilité exceptionnelle est réservée aux samedis bloqués par le calendrier officiel.",
+      );
+    }
+    if (ouvertureManuelle && args.bloqueManuellement) {
+      throw erreur(
+        "SAMEDIS_OUVERTURE_ET_BLOCAGE_INCOMPATIBLES",
+        "Un samedi ne peut pas être à la fois bloqué manuellement et rendu disponible.",
+      );
+    }
+    const nouveauxMotifs = motifManuel ? [...motifsOfficiels, motifManuel] : motifsOfficiels;
+    const nouvellesSources = args.bloqueManuellement
+      ? [...sourcesOfficielles, "manuel" as const]
+      : sourcesOfficielles;
+    const estBloque =
+      args.bloqueManuellement || (blocageOfficiel && !ouvertureManuelle);
+    const etatMetier = {
+      estBloque,
+      ouvertureManuelle: ouvertureManuelle ? true : undefined,
+      motifsBlocage: tableauxEgaux(creneau.motifsBlocage, nouveauxMotifs)
+        ? creneau.motifsBlocage
+        : nouveauxMotifs,
+      sourcesBlocage: tableauxEgaux(creneau.sourcesBlocage, nouvellesSources)
+        ? creneau.sourcesBlocage
+        : nouvellesSources,
+    };
+    if (!champsModifies(creneau, etatMetier)) return null;
+
     const reservation = await ctx.db
       .query("samedis_reservations")
       .withIndex("by_creneauId", (q) => q.eq("creneauId", creneau._id))
@@ -303,35 +341,34 @@ export const updateCreneau = authenticatedMutation({
         "Ce samedi est déjà réservé. Annulez la réservation ou régularisez-la comme inscription forcée avant d'ajouter ce blocage.",
       );
     }
-    const motifsOfficiels = creneau.motifsBlocage.filter(
-      (_motif, index) => creneau.sourcesBlocage[index] !== "manuel",
-    );
-    const sourcesOfficielles = creneau.sourcesBlocage.filter((source) => source !== "manuel");
-    const nouveauxMotifs = motifManuel ? [...motifsOfficiels, motifManuel] : motifsOfficiels;
-    const nouvellesSources = args.bloqueManuellement
-      ? [...sourcesOfficielles, "manuel" as const]
-      : sourcesOfficielles;
+    if (estBloque && !creneau.estBloque && reservation && !reservation.forcee) {
+      throw erreur(
+        "SAMEDIS_RESERVATION_A_REGULARISER",
+        "Ce samedi est déjà réservé. Annulez la réservation ou régularisez-la comme inscription forcée avant de rétablir ce blocage.",
+      );
+    }
+
     const patch = {
-      estBloque: sourcesOfficielles.length > 0 || args.bloqueManuellement,
-      motifsBlocage: tableauxEgaux(creneau.motifsBlocage, nouveauxMotifs)
-        ? creneau.motifsBlocage
-        : nouveauxMotifs,
-      sourcesBlocage: tableauxEgaux(creneau.sourcesBlocage, nouvellesSources)
-        ? creneau.sourcesBlocage
-        : nouvellesSources,
+      ...etatMetier,
       modificationManuelle: true,
       updatedAt: Date.now(),
       updatedBy: ctx.userId,
     };
-    if (champsModifies(creneau, patch, ["updatedAt", "updatedBy"])) {
-      await ctx.db.patch(creneau._id, patch);
-      await creerNotification(ctx, {
-        saison: creneau.saison,
-        typeModification: "creneau_modifie",
-        acteurUserId: ctx.userId,
-        resume: `${creneau.date}${motifManuel ? ` — bloqué : ${motifManuel}` : " — blocage retiré"}.`,
-      });
-    }
+    await ctx.db.patch(creneau._id, patch);
+    await creerNotification(ctx, {
+      saison: creneau.saison,
+      typeModification: "creneau_modifie",
+      acteurUserId: ctx.userId,
+      resume: `${creneau.date}${
+        motifManuel
+          ? ` — bloqué : ${motifManuel}`
+          : ouvertureManuelle
+            ? " — rendu disponible malgré le blocage officiel"
+            : creneau.ouvertureManuelle === true
+              ? " — disponibilité exceptionnelle retirée"
+              : " — blocage manuel retiré"
+      }.`,
+    });
     return null;
   },
 });

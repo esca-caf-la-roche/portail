@@ -122,6 +122,273 @@ async function fixture(statutSynchronisation?: "ok" | "erreur") {
   return { t, ...donnees };
 }
 
+async function appliquerBlocagesOfficiels(
+  f: Awaited<ReturnType<typeof fixture>>,
+  startedAt: number,
+  blocages: Array<{
+    date: string;
+    motifs: string[];
+    sources: Array<"ferie" | "vacances">;
+  }>,
+) {
+  await f.t.run(async (ctx) => {
+    const configuration = await ctx.db
+      .query("samedis_configurations")
+      .withIndex("by_saison", (q) => q.eq("saison", "2026-27"))
+      .unique();
+    if (!configuration) throw new Error("Configuration de test absente.");
+    await ctx.db.patch(configuration._id, { derniereSynchronisation: startedAt });
+  });
+  return await f.t.mutation(internal.samedis.sync.appliquerSync, {
+    saison: "2026-27",
+    acteurUserId: f.managerId,
+    startedAt,
+    blocages,
+  });
+}
+
+describe("ouvertures exceptionnelles des samedis officiellement bloqués", () => {
+  test("ouvre une date de vacances et permet ensuite sa réservation normale", async () => {
+    const f = await fixture("ok");
+    await appliquerBlocagesOfficiels(f, 10, [{
+      date: "2026-09-05",
+      motifs: ["Vacances scolaires : vacances d'été"],
+      sources: ["vacances"],
+    }]);
+
+    const manager = f.t.withIdentity({ subject: f.managerId });
+    await manager.mutation(api.samedis.admin.updateCreneau, {
+      creneauId: f.creneau1,
+      bloqueManuellement: false,
+      ouvertureManuelle: true,
+    });
+
+    const calendrierManager = await manager.query(
+      api.samedis.calendrier.forManager,
+      { saison: "2026-27" },
+    );
+    expect(calendrierManager.creneaux[0]).toMatchObject({
+      estBloque: false,
+      blocageOfficiel: true,
+      blocageManuel: false,
+      ouvertureManuelle: true,
+    });
+    const participant = f.t.withIdentity({ subject: f.participantUserId });
+    const calendrierParticipant = await participant.query(
+      api.samedis.calendrier.forParticipant,
+      { saison: "2026-27" },
+    );
+    expect(calendrierParticipant.creneaux[0]).toMatchObject({
+      estBloque: false,
+      sourcesBlocage: ["vacances"],
+    });
+    const reservationId = await participant.mutation(
+      api.samedis.reservations.reserver,
+      { saison: "2026-27", creneauId: f.creneau1 },
+    );
+    expect(await f.t.run((ctx) => ctx.db.get(reservationId))).toMatchObject({
+      forcee: false,
+      mode: "participant",
+    });
+  });
+
+  test("conserve l'exception au resync puis la nettoie avec le blocage officiel", async () => {
+    const f = await fixture("ok");
+    const blocageVacances = [{
+      date: "2026-09-05",
+      motifs: ["Vacances scolaires : vacances d'été"],
+      sources: ["vacances" as const],
+    }];
+    await appliquerBlocagesOfficiels(f, 20, blocageVacances);
+    await f.t.withIdentity({ subject: f.managerId }).mutation(
+      api.samedis.admin.updateCreneau,
+      {
+        creneauId: f.creneau1,
+        bloqueManuellement: false,
+        ouvertureManuelle: true,
+      },
+    );
+
+    expect(await appliquerBlocagesOfficiels(f, 21, blocageVacances)).toBe(0);
+    expect(await f.t.run((ctx) => ctx.db.get(f.creneau1))).toMatchObject({
+      estBloque: false,
+      ouvertureManuelle: true,
+      sourcesBlocage: ["vacances"],
+    });
+
+    expect(await appliquerBlocagesOfficiels(f, 22, [])).toBe(1);
+    const nettoye = await f.t.run((ctx) => ctx.db.get(f.creneau1));
+    expect(nettoye).toMatchObject({
+      estBloque: false,
+      motifsBlocage: [],
+      sourcesBlocage: [],
+    });
+    expect(nettoye?.ouvertureManuelle).toBeUndefined();
+
+    expect(await appliquerBlocagesOfficiels(f, 23, blocageVacances)).toBe(1);
+    const rebloque = await f.t.run((ctx) => ctx.db.get(f.creneau1));
+    expect(rebloque).toMatchObject({
+      estBloque: true,
+      sourcesBlocage: ["vacances"],
+    });
+    expect(rebloque?.ouvertureManuelle).toBeUndefined();
+  });
+
+  test("ne réécrit ni ne notifie un samedi officiel soumis sans changement", async () => {
+    const f = await fixture("ok");
+    await appliquerBlocagesOfficiels(f, 25, [{
+      date: "2026-09-05",
+      motifs: ["Vacances scolaires : vacances d'été"],
+      sources: ["vacances"],
+    }]);
+    const avant = await f.t.run(async (ctx) => ({
+      creneau: await ctx.db.get(f.creneau1),
+      notifications: await ctx.db.query("samedis_notifications").take(100),
+    }));
+
+    await f.t.withIdentity({ subject: f.managerId }).mutation(
+      api.samedis.admin.updateCreneau,
+      {
+        creneauId: f.creneau1,
+        bloqueManuellement: false,
+        ouvertureManuelle: false,
+      },
+    );
+
+    const apres = await f.t.run(async (ctx) => ({
+      creneau: await ctx.db.get(f.creneau1),
+      notifications: await ctx.db.query("samedis_notifications").take(100),
+    }));
+    expect(apres.creneau).toEqual(avant.creneau);
+    expect(apres.creneau?.updatedAt).toBe(avant.creneau?.updatedAt);
+    expect(apres.creneau?.modificationManuelle).toBeUndefined();
+    expect(apres.notifications).toEqual(avant.notifications);
+  });
+
+  test("refuse une exception sans source officielle ou avec un blocage manuel", async () => {
+    const f = await fixture("ok");
+    const manager = f.t.withIdentity({ subject: f.managerId });
+    await expect(manager.mutation(api.samedis.admin.updateCreneau, {
+      creneauId: f.creneau1,
+      bloqueManuellement: false,
+      ouvertureManuelle: true,
+    })).rejects.toThrow("réservée aux samedis bloqués par le calendrier officiel");
+
+    await appliquerBlocagesOfficiels(f, 30, [{
+      date: "2026-09-05",
+      motifs: ["Jour férié : fête nationale"],
+      sources: ["ferie"],
+    }]);
+    await expect(manager.mutation(api.samedis.admin.updateCreneau, {
+      creneauId: f.creneau1,
+      bloqueManuellement: true,
+      motif: "Fermeture du club",
+      ouvertureManuelle: true,
+    })).rejects.toThrow("à la fois bloqué manuellement et rendu disponible");
+  });
+
+  test("réserve l'ouverture exceptionnelle aux gestionnaires authentifiés", async () => {
+    const f = await fixture("ok");
+    const args = {
+      creneauId: f.creneau1,
+      bloqueManuellement: false,
+      ouvertureManuelle: true,
+    };
+
+    await expect(f.t.mutation(
+      api.samedis.admin.updateCreneau,
+      args,
+    )).rejects.toThrow("Non autorisé");
+    await expect(f.t.withIdentity({ subject: f.participantUserId }).mutation(
+      api.samedis.admin.updateCreneau,
+      args,
+    )).rejects.toThrow("Accès refusé");
+  });
+
+  test("conserve un blocage manuel combiné aux sources officielles pendant les resyncs", async () => {
+    const f = await fixture("ok");
+    const blocageFerie = [{
+      date: "2026-09-05",
+      motifs: ["Jour férié : fête nationale"],
+      sources: ["ferie" as const],
+    }];
+    await appliquerBlocagesOfficiels(f, 35, blocageFerie);
+    await f.t.withIdentity({ subject: f.managerId }).mutation(
+      api.samedis.admin.updateCreneau,
+      {
+        creneauId: f.creneau1,
+        bloqueManuellement: true,
+        motif: "Fermeture du club",
+        ouvertureManuelle: false,
+      },
+    );
+
+    expect(await appliquerBlocagesOfficiels(f, 36, blocageFerie)).toBe(0);
+    expect(await f.t.run((ctx) => ctx.db.get(f.creneau1))).toMatchObject({
+      estBloque: true,
+      motifsBlocage: ["Jour férié : fête nationale", "Fermeture du club"],
+      sourcesBlocage: ["ferie", "manuel"],
+    });
+
+    expect(await appliquerBlocagesOfficiels(f, 37, [])).toBe(1);
+    expect(await f.t.run((ctx) => ctx.db.get(f.creneau1))).toMatchObject({
+      estBloque: true,
+      motifsBlocage: ["Fermeture du club"],
+      sourcesBlocage: ["manuel"],
+    });
+  });
+
+  test("refuse de retirer l'exception tant qu'une réservation normale existe", async () => {
+    const f = await fixture("ok");
+    await appliquerBlocagesOfficiels(f, 40, [{
+      date: "2026-09-05",
+      motifs: ["Vacances scolaires : vacances d'été"],
+      sources: ["vacances"],
+    }]);
+    const manager = f.t.withIdentity({ subject: f.managerId });
+    await manager.mutation(api.samedis.admin.updateCreneau, {
+      creneauId: f.creneau1,
+      bloqueManuellement: false,
+      ouvertureManuelle: true,
+    });
+    await f.t.withIdentity({ subject: f.participantUserId }).mutation(
+      api.samedis.reservations.reserver,
+      { saison: "2026-27", creneauId: f.creneau1 },
+    );
+
+    await expect(manager.mutation(api.samedis.admin.updateCreneau, {
+      creneauId: f.creneau1,
+      bloqueManuellement: false,
+      ouvertureManuelle: false,
+    })).rejects.toThrow("avant de rétablir ce blocage");
+    expect(await f.t.run((ctx) => ctx.db.get(f.creneau1))).toMatchObject({
+      estBloque: false,
+      ouvertureManuelle: true,
+    });
+  });
+
+  test("traite les anciennes lignes sans champ comme non ouvertes et sans réécriture", async () => {
+    const f = await fixture("ok");
+    const avant = await f.t.run((ctx) => ctx.db.get(f.creneau1));
+    expect(avant?.ouvertureManuelle).toBeUndefined();
+
+    expect(await appliquerBlocagesOfficiels(f, 50, [])).toBe(0);
+    const apres = await f.t.run((ctx) => ctx.db.get(f.creneau1));
+    expect(apres?.ouvertureManuelle).toBeUndefined();
+    expect(apres?.updatedAt).toBe(avant?.updatedAt);
+
+    const calendrier = await f.t.withIdentity({ subject: f.managerId }).query(
+      api.samedis.calendrier.forManager,
+      { saison: "2026-27" },
+    );
+    expect(calendrier.creneaux[0]).toMatchObject({
+      estBloque: false,
+      blocageOfficiel: false,
+      ouvertureManuelle: false,
+    });
+  });
+});
+
 describe("réservations des samedis", () => {
   test("refuse toute attribution avant synchronisation, y compris gestionnaire", async () => {
     const f = await fixture();

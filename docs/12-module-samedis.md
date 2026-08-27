@@ -15,6 +15,13 @@ afin que ces derniers n'entrent jamais dans les autres tuiles du portail.
   autre date ;
 - une date fériée, comprise dans les vacances scolaires ou bloquée manuellement
   est indisponible pour les participants ;
+- un gestionnaire peut rendre exceptionnellement disponible un samedi bloqué
+  par le calendrier officiel. Cette exception est portée par le créneau de la
+  saison et reste active après une resynchronisation tant que le blocage
+  officiel demeure ; elle est supprimée si ce blocage disparaît et ne peut pas
+  coexister avec un blocage manuel ;
+- retirer cette exception est refusé si cela rendrait de nouveau indisponible
+  une date portant une réservation ordinaire ;
 - un gestionnaire peut attribuer ou annuler une permanence pour une personne.
   Attribuer une date bloquée exige une confirmation explicite ;
 - si une synchronisation officielle révèle qu'une réservation ordinaire est
@@ -34,7 +41,10 @@ l'Ascension, qui peut commencer le mercredi après les cours.
 Les interfaces gestionnaire et participant présentent les samedis sous forme
 d'agenda groupé par mois. Les badges « Jour férié », « Vacances scolaires » et
 « Blocage du club » sont textuels et visuellement distincts ; la couleur n'est
-pas la seule source d'information.
+pas la seule source d'information. Côté gestionnaire, des fonds différents
+distinguent notamment les vacances scolaires des autres dates bloquées. Côté
+participant, un fond dédié signale également un samedi bloqué. Ces fonds restent
+des indices complémentaires aux badges et libellés explicites.
 
 ## Accès et routes
 
@@ -162,15 +172,28 @@ Convex et ne doivent pas être placées dans le frontend ou la documentation.
 9. depuis l'agenda staff, attribuer une date libre. Sur une date fériée, de
    vacances ou bloquée manuellement, vérifier que le forçage est confirmé sans
    demander de motif ;
-10. créer une réservation ordinaire, puis synchroniser un blocage officiel sur
+10. vérifier que les fonds des vacances et des autres blocages sont distincts
+    dans l'agenda gestionnaire, puis qu'un samedi bloqué possède aussi un fond
+    dédié dans l'agenda participant, sans faire disparaître les badges et
+    libellés textuels ;
+11. rendre disponible un samedi bloqué par le calendrier officiel et vérifier
+    qu'un participant peut le réserver normalement. Resynchroniser sans changer
+    le blocage : l'exception doit subsister. Tenter ensuite un blocage manuel :
+    l'opération doit être refusée ;
+12. sur ce samedi réservé normalement, tenter de retirer l'exception :
+    l'opération doit être refusée afin de ne pas rebloquer la réservation. Après
+    annulation, retirer l'exception et vérifier que la date redevient
+    indisponible ; recréer l'exception puis faire disparaître le blocage officiel
+    lors d'une synchronisation et vérifier que l'exception est supprimée ;
+13. créer une réservation ordinaire, puis synchroniser un blocage officiel sur
    cette date. Elle doit rester présente avec l'alerte de régularisation ; tester
    les deux sorties : annulation ou maintien explicite ;
-11. provoquer un échec SMTP : la modification métier doit rester enregistrée,
+14. provoquer un échec SMTP : la modification métier doit rester enregistrée,
     l'échec doit apparaître dans la page de gestion et **Réessayer** doit relancer
     l'outbox sans rejouer la modification ;
-12. changer de saison et vérifier l'isolation des configurations, créneaux,
+15. changer de saison et vérifier l'isolation des configurations, créneaux,
     réservations et compteurs, tout en conservant la liste des participants ;
-13. contrôler l'agenda au clavier, sur mobile et sur desktop : libellés de
+16. contrôler l'agenda au clavier, sur mobile et sur desktop : libellés de
     blocage lisibles, actions tactiles, formulaires et messages d'erreur.
 
 Les appels aux API officielles et au SMTP doivent être simulés dans les tests

@@ -114,7 +114,11 @@ export const appliquerSync = internalMutation({
       const sourcesManuelles = creneau.sourcesBlocage.filter((source) => source === "manuel");
       const nouveauxMotifs = [...blocage.motifs, ...motifsManuels];
       const nouvellesSources = [...blocage.sources, ...sourcesManuelles];
-      const estBloque = blocage.sources.length > 0 || sourcesManuelles.length > 0;
+      const blocageOfficiel = blocage.sources.length > 0;
+      const blocageManuel = sourcesManuelles.length > 0;
+      const ouvertureManuelle =
+        blocageOfficiel && !blocageManuel && creneau.ouvertureManuelle === true;
+      const estBloque = blocageManuel || (blocageOfficiel && !ouvertureManuelle);
       const patch = {
         motifsBlocage: tableauxEgaux(creneau.motifsBlocage, nouveauxMotifs)
           ? creneau.motifsBlocage
@@ -123,6 +127,7 @@ export const appliquerSync = internalMutation({
           ? creneau.sourcesBlocage
           : nouvellesSources,
         estBloque,
+        ouvertureManuelle: ouvertureManuelle ? true : undefined,
         updatedAt: Date.now(),
         updatedBy: args.acteurUserId,
       };
