@@ -25,12 +25,11 @@
 .pss-directory-list, .pss-failures ul, .pss-saturday-grid, .pss-slot-list { margin: 0; padding: 0; list-style: none; }
 .pss-saturday-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 1rem; }
 .pss-saturday-card { display: flex; min-width: 0; flex-direction: column; border: 3px solid var(--border-color); background: var(--card); box-shadow: 4px 4px 0 var(--border-color); }
-.pss-saturday-card--assigned, .pss-saturday-card--mine { background: var(--success); }
-.pss-saturday-card--colleague { background: color-mix(in srgb, var(--foreground) 18%, var(--card)); }
-.pss-saturday-card--unassigned { background: var(--danger); }
+.pss-saturday-card--assigned, .pss-saturday-card--mine { background: color-mix(in srgb, var(--success) 24%, var(--card)); }
+.pss-saturday-card--colleague { background: color-mix(in srgb, var(--foreground) 12%, var(--card)); }
+.pss-saturday-card--unassigned { background: color-mix(in srgb, var(--danger) 20%, var(--card)); }
 .pss-saturday-card .pss-button { background: var(--card); }
 .pss-saturday-card > header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: .7rem; padding: .7rem .8rem; border-bottom: 3px solid var(--border-color); background: var(--warning); }
-.pss-saturday-card--assigned > header, .pss-saturday-card--mine > header, .pss-saturday-card--colleague > header, .pss-saturday-card--unassigned > header { background: inherit; }
 .pss-saturday-card > header span { font-size: .62rem; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; }
 .pss-saturday-card > header h2, .pss-saturday-card > header h3, .pss-saturday-card > header h4 { font-size: clamp(1rem, 3vw, 1.2rem); line-height: 1.05; text-transform: capitalize; }
 .pss-saturday-card > header > strong { padding: .3rem .45rem; border: 2px solid var(--border-color); background: var(--card); font-size: .67rem; text-transform: uppercase; }
