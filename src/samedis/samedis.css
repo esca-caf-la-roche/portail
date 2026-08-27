@@ -183,6 +183,9 @@
 .samedis-carabiner { position: absolute; z-index: 1; top: 1.35rem; left: 0.45rem; width: 2.15rem; height: 2.8rem; border: 5px solid var(--border-color); border-right-color: var(--warning); border-radius: 50%; background: var(--warning); transform: rotate(20deg); }
 .samedis-slot > article { padding: 0.8rem; border: 3px solid var(--border-color); background: var(--card); box-shadow: 4px 4px 0 var(--border-color); }
 .samedis-slot.is-mine > article, .samedis-slot.is-reserved > article { background: color-mix(in srgb, var(--success) 18%, var(--card)); }
+.samedis-slot--manager.is-attribution-closed > article { background: color-mix(in srgb, var(--danger) 14%, var(--card)); }
+.samedis-slot--manager.is-attributed > article { background: color-mix(in srgb, var(--info) 24%, var(--card)); }
+.samedis-slot--manager.is-available > article { background: color-mix(in srgb, var(--success) 18%, var(--card)); }
 .samedis-slot.is-blocked > article { border-style: dashed; }
 .samedis-slot-date { display: flex; align-items: center; gap: 0.55rem; }
 .samedis-slot-date svg { flex: 0 0 1.3rem; }

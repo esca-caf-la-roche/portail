@@ -34,6 +34,11 @@ export default function ManagerSlot({ creneau, participants, saison, calendrierV
   const [busy, setBusy] = useState(false);
   const [erreur, setErreur] = useState("");
   const participantsActifs = participants.filter((participant) => participant.actif);
+  const attributionClass = creneau.reservation
+    ? "is-attributed"
+    : calendrierVerifie && participantsActifs.length > 0
+      ? "is-available"
+      : "is-attribution-closed";
 
   async function executer(action: () => Promise<unknown>, fallback: string) {
     setBusy(true); setErreur("");
@@ -63,7 +68,7 @@ export default function ManagerSlot({ creneau, participants, saison, calendrierV
   }
 
   return (
-    <li className={`samedis-slot samedis-slot--manager ${creneau.estBloque ? "is-blocked" : ""} ${creneau.reservation ? "is-reserved" : ""}`}>
+    <li className={`samedis-slot samedis-slot--manager ${attributionClass} ${creneau.estBloque ? "is-blocked" : ""} ${creneau.reservation ? "is-reserved" : ""}`}>
       <span className="samedis-carabiner" aria-hidden="true" />
       <article>
         <header className="samedis-slot-manager-head"><div className="samedis-slot-date"><CalendarCheck aria-hidden="true" /><h3>{formatSamediDate(creneau.date)}</h3></div></header>
