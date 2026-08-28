@@ -99,7 +99,7 @@ un code. La première connexion lie le compte technique à cette fiche, sans
 créer de `userSettings` ni de profil Abonnements.
 
 Une adresse staff est refusée dans l'annuaire puis à l'authentification.
-Les collisions avec les profils Abonnements et les participants aux permanences
+Les collisions avec les profils Abonnements et les personnes autorisées à réserver la salle
 sont également refusées dans les deux sens afin qu'une session salariée ne
 cumule aucun autre espace applicatif.
 `Layout` redirige cette population isolée vers

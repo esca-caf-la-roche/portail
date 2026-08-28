@@ -42,7 +42,7 @@ export default function ParticipantCalendar() {
   return (
     <div className="samedis-participant-shell">
       <header className="samedis-public-header">
-        <div><p className="samedis-kicker">Club d’escalade · permanences</p><strong>Mes samedis</strong></div>
+        <div><p className="samedis-kicker">Club d’escalade · réservation de salle</p><strong>Mes réservations</strong></div>
         <div className="samedis-public-actions">
           <label htmlFor="samedis-season">Saison <select id="samedis-season" value={season} onChange={(event) => setSeason(event.target.value)}>{availableSeasons.map((value) => <option key={value}>{value}</option>)}</select></label>
           <button className="samedis-icon-button" onClick={() => void signOut()} aria-label="Se déconnecter"><LogOut aria-hidden="true" /></button>
@@ -50,7 +50,7 @@ export default function ParticipantCalendar() {
       </header>
       <main className="samedis-page">
         <section className="samedis-hero">
-          <div><p className="samedis-kicker">Saison {season}</p><h1>Qui prend le prochain samedi ?</h1><p>Une seule personne par date. Choisissez un créneau libre, ou annulez l’une de vos permanences.</p></div>
+          <div><p className="samedis-kicker">Saison {season}</p><h1>Carnet de réservation de la salle</h1><p>Une seule réservation par samedi. Choisissez une date libre ou annulez l’une de vos réservations.</p></div>
           <div className="samedis-personal-count"><UserRound aria-hidden="true" /><strong>{calendrier.nombreReservations}</strong><span>samedi{calendrier.nombreReservations > 1 ? "s" : ""} réservé{calendrier.nombreReservations > 1 ? "s" : ""}</span></div>
         </section>
 
@@ -75,9 +75,9 @@ export default function ParticipantCalendar() {
                   <article>
                     <div className="samedis-slot-date"><CalendarCheck aria-hidden="true" /><h3>{formatSamediDate(creneau.date)}</h3></div>
                     {creneau.estBloque && <div className="samedis-status samedis-status--blocked"><ShieldX aria-hidden="true" /><span><strong>Date bloquée</strong>{creneau.motifsBlocage.join(" · ")}</span></div>}
-                    {creneau.reservation && <div className={`samedis-status ${mien ? "samedis-status--mine" : ""}`}><UserRound aria-hidden="true" /><span><strong>{mien ? "Votre permanence" : "Déjà réservé"}</strong>{mien ? "Vous êtes inscrit sur cette date." : "Ce samedi n’est plus disponible."}</span></div>}
+                    {creneau.reservation && <div className={`samedis-status ${mien ? "samedis-status--mine" : ""}`}><UserRound aria-hidden="true" /><span><strong>{mien ? "Votre réservation" : "Déjà réservé"}</strong>{mien ? "La salle vous est réservée à cette date." : "Ce samedi n’est plus disponible."}</span></div>}
                     {libre && <button className="samedis-button samedis-button--success" disabled={enCours === creneau._id} onClick={() => void agir(creneau._id, () => reserver({ saison: season, creneauId: creneau._id }))}>{enCours === creneau._id ? "Réservation…" : "Je prends ce samedi"}</button>}
-                    {mien && reservationId && <button className="samedis-button samedis-button--danger" disabled={enCours === creneau._id} onClick={() => void agir(creneau._id, () => annuler({ reservationId }), `Annuler votre permanence du ${formatSamediDate(creneau.date)} ?`)}>{enCours === creneau._id ? "Annulation…" : "Annuler ma permanence"}</button>}
+                    {mien && reservationId && <button className="samedis-button samedis-button--danger" disabled={enCours === creneau._id} onClick={() => void agir(creneau._id, () => annuler({ reservationId }), `Annuler votre réservation de la salle du ${formatSamediDate(creneau.date)} ?`)}>{enCours === creneau._id ? "Annulation…" : "Annuler ma réservation"}</button>}
                   </article>
                 </li>
               );

@@ -47,7 +47,7 @@ export default function GestionSamedis() {
 
   return (
     <div className="samedis-page samedis-manager-page">
-      <header className="samedis-hero samedis-manager-hero"><div><p className="samedis-kicker">Saison {season} · espace gestionnaire</p><h1>Les samedis, sans nœuds</h1><p>Configurez la période, attribuez chaque permanence et repérez immédiatement les dates encore libres.</p></div><div className="samedis-mail-note"><MailCheck aria-hidden="true" /><span><strong>Synthèse automatique</strong>Chaque modification est envoyée à l’adresse du club.</span></div></header>
+      <header className="samedis-hero samedis-manager-hero"><div><p className="samedis-kicker">Saison {season} · espace gestionnaire</p><h1>Carnet de réservation de la salle</h1><p>Suivez les prêts et locations, attribuez chaque samedi et repérez immédiatement les dates encore libres.</p></div><div className="samedis-mail-note"><MailCheck aria-hidden="true" /><span><strong>Synthèse automatique</strong>Chaque modification est envoyée à l’adresse du club.</span></div></header>
       {message && <div className={`samedis-alert samedis-alert--${message.type === "erreur" ? "error" : message.type}`} role={message.type === "erreur" ? "alert" : "status"}>{message.type === "erreur" ? <CircleAlert aria-hidden="true" /> : <ShieldCheck aria-hidden="true" />}{message.texte}</div>}
 
       <section className="samedis-manager-grid">

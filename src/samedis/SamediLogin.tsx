@@ -54,9 +54,9 @@ export default function SamediLogin() {
     <main className="samedis-login">
       <section className="samedis-login-card" aria-labelledby="samedis-login-title">
         <div className="samedis-login-mark" aria-hidden="true"><Mountain /></div>
-        <p className="samedis-kicker">Club d’escalade · permanences</p>
-        <h1 id="samedis-login-title">Mes samedis après-midi</h1>
-        <p className="samedis-lead">Choisissez vos dates libres et retrouvez vos permanences en un coup d’œil.</p>
+        <p className="samedis-kicker">Club d’escalade · réservation de salle</p>
+        <h1 id="samedis-login-title">Carnet de réservation</h1>
+        <p className="samedis-lead">Choisissez un samedi libre et retrouvez vos réservations de la salle en un coup d’œil.</p>
 
         {erreur && <div className="samedis-alert samedis-alert--error" role="alert"><KeyRound aria-hidden="true" /> {erreur}</div>}
 
