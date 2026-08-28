@@ -6,7 +6,7 @@ export const TILE_OPTIONS = [
   { id: "licences_cours", label: "Licences élèves en cours", description: "Vérifie les élèves en cours sans licence valide pour la saison.", defaultColor: "bg-danger" },
   { id: "contacts_cours", label: "Contacts élèves en cours", description: "Retrouvez les coordonnées des élèves et contactez un groupe de cours.", defaultColor: "bg-info" },
   { id: "remboursements_eleves", label: "Remboursements élèves", description: "Suivez les avances compétition et stage jusqu’au rapprochement HelloAsso.", defaultColor: "bg-warning" },
-  { id: "samedis", label: "Samedis après-midi", description: "Planifiez les permanences du samedi et voyez immédiatement qui prend chaque date.", defaultColor: "bg-orange" },
+  { id: "samedis", label: "Carnet de réservation · samedis", description: "Suivez les prêts et locations de la salle et voyez immédiatement qui réserve chaque samedi.", defaultColor: "bg-orange" },
   { id: "planning_salaries_samedis", label: "Planning salariés du samedi", description: "Attribuez les groupes du samedi et synchronisez leurs ressources Google Calendar.", defaultColor: "bg-lime" },
 ] as const;
 

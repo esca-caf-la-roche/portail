@@ -1,7 +1,8 @@
 # Module Samedis après-midi
 
-Le module organise les permanences du samedi du club sur la saison globale. Il
-sépare l'administration staff du calendrier simplifié destiné aux participants,
+Le module tient le carnet de réservation de la salle du club le samedi
+après-midi sur la saison globale. La salle peut être prêtée ou louée. Il sépare
+l'administration staff du calendrier simplifié destiné aux participants,
 afin que ces derniers n'entrent jamais dans les autres tuiles du portail.
 
 ## Règles métier
@@ -22,7 +23,7 @@ afin que ces derniers n'entrent jamais dans les autres tuiles du portail.
   coexister avec un blocage manuel ;
 - retirer cette exception est refusé si cela rendrait de nouveau indisponible
   une date portant une réservation ordinaire ;
-- un gestionnaire peut attribuer ou annuler une permanence pour une personne.
+- un gestionnaire peut attribuer ou annuler une réservation pour une personne.
   Attribuer une date bloquée exige une confirmation explicite ;
 - si une synchronisation officielle révèle qu'une réservation ordinaire est
   désormais sur une date bloquée, elle n'est pas supprimée silencieusement.
@@ -115,7 +116,7 @@ Le lien affiché dans le panneau Participants ouvre la mini-app `/#/samedis`.
 Il ne contient aucun jeton : la liste d'adresses actives et le code OTP restent
 les seules conditions d'accès. La suppression d'une fiche est refusée tant que
 la personne possède au moins une réservation, quelle que soit la saison. Le
-gestionnaire doit d'abord annuler explicitement ces permanences. Seule la fiche
+gestionnaire doit d'abord annuler explicitement ces réservations. Seule la fiche
 Samedis est alors supprimée ; le compte utilisateur partagé est conservé.
 
 ## Notifications de modification
@@ -164,7 +165,7 @@ Convex et ne doivent pas être placées dans le frontend ou la documentation.
    documentée dans [3-authentification.md](3-authentification.md) ;
 7. modifier le nom et l'e-mail d'un participant, puis vérifier que l'ancienne
    identité perd l'accès. Tenter de supprimer une personne encore réservée : la
-   suppression doit être refusée. Après annulation de toutes ses permanences,
+   suppression doit être refusée. Après annulation de toutes ses réservations,
    supprimer sa fiche et vérifier que son compte utilisateur existe toujours ;
 8. faire réserver simultanément la même date par deux personnes : une seule
    réservation doit réussir ; vérifier qu'une personne ne peut annuler que sa

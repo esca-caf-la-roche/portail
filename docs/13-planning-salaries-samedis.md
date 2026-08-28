@@ -6,7 +6,7 @@ distincts : le staff pilote l'annuaire et les attributions ; les salariés
 consultent le même planning et prennent eux-mêmes un samedi encore libre.
 
 Le module est indépendant de la tuile **Samedis après-midi**, qui organise les
-permanences bénévoles. Les deux parcours peuvent concerner les mêmes dates,
+réservations de la salle, prêtée ou louée. Les deux parcours peuvent concerner les mêmes dates,
 mais n'utilisent ni les mêmes personnes, ni les mêmes règles métier.
 
 ## Périmètre saisonnier

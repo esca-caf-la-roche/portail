@@ -81,7 +81,7 @@ de `convex/customFunctions.ts`. Les exceptions publiques ou internes doivent
 | [`docs/8-component-mapping.md`](docs/8-component-mapping.md) | Cartographie des modules |
 | [`docs/9-tests.md`](docs/9-tests.md) | Tests et validation |
 | [`docs/10-remboursements-eleves.md`](docs/10-remboursements-eleves.md) | Suivi des remboursements élèves |
-| [`docs/12-module-samedis.md`](docs/12-module-samedis.md) | Permanences des samedis après-midi |
+| [`docs/12-module-samedis.md`](docs/12-module-samedis.md) | Carnet de réservation de la salle le samedi après-midi |
 | [`docs/13-planning-salaries-samedis.md`](docs/13-planning-salaries-samedis.md) | Planning Google des salariés du samedi |
 
 ## Déploiement

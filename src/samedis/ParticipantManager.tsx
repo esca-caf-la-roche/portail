@@ -78,7 +78,7 @@ function ParticipantRow({
 
   function supprimer() {
     if (nombreReservations > 0) {
-      setErreur(`Annulez d’abord ${nombreReservations > 1 ? "les permanences" : "la permanence"} de ${participant.nom} avant de supprimer son accès.`);
+      setErreur(`Annulez d’abord ${nombreReservations > 1 ? "les réservations" : "la réservation"} de ${participant.nom} avant de supprimer son accès.`);
       return;
     }
     if (!window.confirm(`Supprimer ${participant.nom} des participants ? Son accès Samedis sera retiré ; son compte utilisateur sera conservé.`)) return;
@@ -173,7 +173,7 @@ export default function ParticipantManager({ participants, compteurs, onMessage 
     } catch {
       if (navigator.share) {
         try {
-          await navigator.share({ title: "Permanences du samedi", url: lienParticipant });
+          await navigator.share({ title: "Réservation de la salle le samedi", url: lienParticipant });
           onMessage({ type: "ok", texte: "Le lien de connexion a été partagé." });
           return;
         } catch (error) {

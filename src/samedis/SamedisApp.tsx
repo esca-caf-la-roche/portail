@@ -17,7 +17,7 @@ export default function SamedisApp() {
   if (identity === undefined) return <div className="samedis-state samedis-state--screen" role="status"><Clock3 aria-hidden="true" /> Vérification de votre accès…</div>;
   if (identity.gestionnaire) return <Navigate to="/gestion-samedis" replace />;
   if (!identity.autorise || !identity.participant) {
-    return <main className="samedis-root samedis-denied"><section className="samedis-login-card"><CircleAlert aria-hidden="true" /><h1>Accès indisponible</h1><p>Cette adresse n’est pas inscrite aux permanences du samedi. Contactez le club si vous pensez qu’il s’agit d’une erreur.</p><button className="samedis-button samedis-button--primary" onClick={() => void signOut()}><LogOut aria-hidden="true" /> Essayer une autre adresse</button></section></main>;
+    return <main className="samedis-root samedis-denied"><section className="samedis-login-card"><CircleAlert aria-hidden="true" /><h1>Accès indisponible</h1><p>Cette adresse n’est pas autorisée à réserver la salle le samedi. Contactez le club si vous pensez qu’il s’agit d’une erreur.</p><button className="samedis-button samedis-button--primary" onClick={() => void signOut()}><LogOut aria-hidden="true" /> Essayer une autre adresse</button></section></main>;
   }
   return <div className="samedis-root"><ParticipantCalendar /></div>;
 }
