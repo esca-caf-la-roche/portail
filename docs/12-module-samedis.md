@@ -23,6 +23,11 @@ afin que ces derniers n'entrent jamais dans les autres tuiles du portail.
   coexister avec un blocage manuel ;
 - retirer cette exception est refusé si cela rendrait de nouveau indisponible
   une date portant une réservation ordinaire ;
+- un gestionnaire peut ajouter une note interne sur un samedi bloqué par le
+  calendrier officiel, par exemple pour signaler une compétition occupant le
+  gymnase. Cette note n'a aucun effet sur la disponibilité et reste conservée
+  si une synchronisation retire ensuite le blocage officiel, jusqu'à son
+  effacement manuel ;
 - un gestionnaire peut attribuer ou annuler une réservation pour une personne.
   Attribuer une date bloquée exige une confirmation explicite ;
 - si une synchronisation officielle révèle qu'une réservation ordinaire est
@@ -64,7 +69,10 @@ dans [3-authentification.md](3-authentification.md).
 
 Les tables `samedis_configurations`, `samedis_creneaux` et
 `samedis_reservations` sont saisonnières et indexées par `saison`. Les créneaux
-sont aussi indexés par saison et date pour conserver l'ordre chronologique.
+sont aussi indexés par saison et date pour conserver l'ordre chronologique. La
+note interne de blocage est portée directement par le créneau : elle suit donc
+la saison et disparaît avec le créneau. Elle est réservée aux gestionnaires et
+n'est jamais exposée dans le calendrier participant.
 
 Les fiches `samedis_participants` sont hors saison : une personne autorisée ne
 doit pas être recréée chaque année. `samedis_notifications` est également hors
@@ -104,7 +112,8 @@ Depuis `/#/gestion-samedis`, un gestionnaire :
    e-mail, puis modifie, désactive ou supprime leur accès ;
 4. suit le compteur individuel et l'état libre, attribué ou indisponible de
    chaque date dans l'agenda ;
-5. ouvre les actions avancées d'un samedi pour poser un blocage manuel ;
+5. ouvre les actions avancées d'un samedi pour poser un blocage manuel ou
+   mémoriser une note interne sur une date bloquée officiellement ;
 6. traite les réservations signalées à régulariser ;
 7. relance, si nécessaire, une synthèse e-mail en échec.
 

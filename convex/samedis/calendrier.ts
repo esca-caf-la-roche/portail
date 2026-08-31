@@ -36,6 +36,7 @@ const creneauValidator = v.object({
   blocageOfficiel: v.boolean(),
   ouvertureManuelle: v.boolean(),
   motifBlocageManuel: v.union(v.null(), v.string()),
+  commentaireBlocage: v.union(v.null(), v.string()),
   reservation: v.union(
     v.null(),
     v.object({
@@ -143,6 +144,7 @@ async function chargerCalendrier(
           creneau.motifsBlocage.find(
             (_motif, index) => creneau.sourcesBlocage[index] === "manuel",
           ) ?? null,
+        commentaireBlocage: creneau.commentaireBlocage ?? null,
         reservation: reservation
           ? {
               _id: reservation._id,
