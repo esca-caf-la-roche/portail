@@ -285,6 +285,7 @@ export const updateCreneau = authenticatedMutation({
     bloqueManuellement: v.boolean(),
     motif: v.optional(v.string()),
     ouvertureManuelle: v.optional(v.boolean()),
+    commentaireBlocage: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -299,6 +300,27 @@ export const updateCreneau = authenticatedMutation({
     );
     const sourcesOfficielles = creneau.sourcesBlocage.filter((source) => source !== "manuel");
     const blocageOfficiel = sourcesOfficielles.length > 0;
+    const commentaireBlocage = args.commentaireBlocage === undefined
+      ? undefined
+      : args.commentaireBlocage.trim();
+    if (commentaireBlocage !== undefined && commentaireBlocage.length > 500) {
+      throw erreur(
+        "SAMEDIS_COMMENTAIRE_BLOCAGE_INVALIDE",
+        "Le commentaire de blocage est limité à 500 caractères.",
+      );
+    }
+    const commentaireBlocageNormalise = commentaireBlocage || undefined;
+    const commentaireBlocageExistant = creneau.commentaireBlocage?.trim() || undefined;
+    if (
+      commentaireBlocageNormalise !== undefined &&
+      commentaireBlocageExistant === undefined &&
+      !blocageOfficiel
+    ) {
+      throw erreur(
+        "SAMEDIS_COMMENTAIRE_SANS_BLOCAGE_OFFICIEL",
+        "Un commentaire de blocage peut seulement être créé sur un samedi bloqué par le calendrier officiel.",
+      );
+    }
     const ouvertureManuelle =
       args.ouvertureManuelle ?? (creneau.ouvertureManuelle === true);
     if (ouvertureManuelle && !blocageOfficiel) {
@@ -322,6 +344,9 @@ export const updateCreneau = authenticatedMutation({
     const etatMetier = {
       estBloque,
       ouvertureManuelle: ouvertureManuelle ? true : undefined,
+      ...(args.commentaireBlocage === undefined
+        ? {}
+        : { commentaireBlocage: commentaireBlocageNormalise }),
       motifsBlocage: tableauxEgaux(creneau.motifsBlocage, nouveauxMotifs)
         ? creneau.motifsBlocage
         : nouveauxMotifs,
@@ -355,19 +380,35 @@ export const updateCreneau = authenticatedMutation({
       updatedBy: ctx.userId,
     };
     await ctx.db.patch(creneau._id, patch);
+    const changements: string[] = [];
+    if (motifManuel) {
+      const motifManuelExistant = creneau.motifsBlocage.find(
+        (_motif, index) => creneau.sourcesBlocage[index] === "manuel",
+      );
+      if (motifManuel !== motifManuelExistant) changements.push(`bloqué : ${motifManuel}`);
+    } else if (creneau.sourcesBlocage.includes("manuel")) {
+      changements.push("blocage manuel retiré");
+    }
+    if (ouvertureManuelle && creneau.ouvertureManuelle !== true) {
+      changements.push("rendu disponible malgré le blocage officiel");
+    } else if (!ouvertureManuelle && creneau.ouvertureManuelle === true) {
+      changements.push("disponibilité exceptionnelle retirée");
+    }
+    if (
+      args.commentaireBlocage !== undefined &&
+      commentaireBlocageNormalise !== commentaireBlocageExistant
+    ) {
+      changements.push(
+        commentaireBlocageNormalise
+          ? "commentaire interne de blocage mis à jour"
+          : "commentaire interne de blocage supprimé",
+      );
+    }
     await creerNotification(ctx, {
       saison: creneau.saison,
       typeModification: "creneau_modifie",
       acteurUserId: ctx.userId,
-      resume: `${creneau.date}${
-        motifManuel
-          ? ` — bloqué : ${motifManuel}`
-          : ouvertureManuelle
-            ? " — rendu disponible malgré le blocage officiel"
-            : creneau.ouvertureManuelle === true
-              ? " — disponibilité exceptionnelle retirée"
-              : " — blocage manuel retiré"
-      }.`,
+      resume: `${creneau.date} — ${changements.join(" ; ")}.`,
     });
     return null;
   },

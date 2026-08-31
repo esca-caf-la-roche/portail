@@ -229,6 +229,8 @@ export default defineSchema({
     // optionnels jusqu'à la migration contrôlée sur les deux déploiements.
     lieu: v.optional(v.string()),
     estBloque: v.boolean(),
+    // Note interne gestionnaire ; sa présence ne modifie jamais `estBloque`.
+    commentaireBlocage: v.optional(v.string()),
     // Exception explicite au blocage officiel (férié/vacances) ; absent = false.
     ouvertureManuelle: v.optional(v.boolean()),
     motifsBlocage: v.array(v.string()),

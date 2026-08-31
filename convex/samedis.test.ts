@@ -389,6 +389,178 @@ describe("ouvertures exceptionnelles des samedis officiellement bloqués", () =>
   });
 });
 
+describe("commentaires internes des blocages officiels", () => {
+  test("conserve la note de compétition sans modifier le blocage et la masque aux participants", async () => {
+    const f = await fixture("ok");
+    await appliquerBlocagesOfficiels(f, 60, [{
+      date: "2026-09-05",
+      motifs: ["Vacances scolaires : vacances d'été"],
+      sources: ["vacances"],
+    }]);
+    const manager = f.t.withIdentity({ subject: f.managerId });
+    await manager.mutation(api.samedis.admin.updateCreneau, {
+      creneauId: f.creneau1,
+      bloqueManuellement: false,
+      commentaireBlocage: "compétition de badminton",
+    });
+
+    expect(await f.t.run((ctx) => ctx.db.get(f.creneau1))).toMatchObject({
+      estBloque: true,
+      motifsBlocage: ["Vacances scolaires : vacances d'été"],
+      sourcesBlocage: ["vacances"],
+      commentaireBlocage: "compétition de badminton",
+    });
+    const calendrierManager = await manager.query(
+      api.samedis.calendrier.forManager,
+      { saison: "2026-27" },
+    );
+    expect(calendrierManager.creneaux[0]?.commentaireBlocage).toBe(
+      "compétition de badminton",
+    );
+    const calendrierParticipant = await f.t
+      .withIdentity({ subject: f.participantUserId })
+      .query(api.samedis.calendrier.forParticipant, { saison: "2026-27" });
+    expect(calendrierParticipant.creneaux[0]).not.toHaveProperty("commentaireBlocage");
+
+    expect(await appliquerBlocagesOfficiels(f, 61, [])).toBe(1);
+    expect(await f.t.run((ctx) => ctx.db.get(f.creneau1))).toMatchObject({
+      estBloque: false,
+      motifsBlocage: [],
+      sourcesBlocage: [],
+      commentaireBlocage: "compétition de badminton",
+    });
+    await manager.mutation(api.samedis.admin.updateCreneau, {
+      creneauId: f.creneau1,
+      bloqueManuellement: false,
+      commentaireBlocage: "Gymnase réservé au badminton",
+    });
+    expect((await f.t.run((ctx) => ctx.db.get(f.creneau1)))?.commentaireBlocage).toBe(
+      "Gymnase réservé au badminton",
+    );
+    await manager.mutation(api.samedis.admin.updateCreneau, {
+      creneauId: f.creneau1,
+      bloqueManuellement: false,
+      commentaireBlocage: "   ",
+    });
+    expect((await f.t.run((ctx) => ctx.db.get(f.creneau1)))?.commentaireBlocage).toBeUndefined();
+  });
+
+  test("normalise, limite et efface le commentaire", async () => {
+    const f = await fixture("ok");
+    await appliquerBlocagesOfficiels(f, 70, [{
+      date: "2026-09-05",
+      motifs: ["Jour férié : fermeture"],
+      sources: ["ferie"],
+    }]);
+    const manager = f.t.withIdentity({ subject: f.managerId });
+    await manager.mutation(api.samedis.admin.updateCreneau, {
+      creneauId: f.creneau1,
+      bloqueManuellement: false,
+      commentaireBlocage: `  ${"a".repeat(500)}  `,
+    });
+    expect((await f.t.run((ctx) => ctx.db.get(f.creneau1)))?.commentaireBlocage).toBe(
+      "a".repeat(500),
+    );
+    await expect(manager.mutation(api.samedis.admin.updateCreneau, {
+      creneauId: f.creneau1,
+      bloqueManuellement: false,
+      commentaireBlocage: "a".repeat(501),
+    })).rejects.toThrow("limité à 500 caractères");
+    expect((await f.t.run((ctx) => ctx.db.get(f.creneau1)))?.commentaireBlocage).toBe(
+      "a".repeat(500),
+    );
+    await manager.mutation(api.samedis.admin.updateCreneau, {
+      creneauId: f.creneau1,
+      bloqueManuellement: false,
+      commentaireBlocage: "",
+    });
+    expect((await f.t.run((ctx) => ctx.db.get(f.creneau1)))?.commentaireBlocage).toBeUndefined();
+  });
+
+  test("refuse une nouvelle note sur un samedi ordinaire et aux non-gestionnaires", async () => {
+    const f = await fixture("ok");
+    const args = {
+      creneauId: f.creneau1,
+      bloqueManuellement: false,
+      commentaireBlocage: "Compétition de badminton",
+    };
+    await expect(f.t.withIdentity({ subject: f.managerId }).mutation(
+      api.samedis.admin.updateCreneau,
+      args,
+    )).rejects.toThrow("seulement être créé sur un samedi bloqué");
+
+    await appliquerBlocagesOfficiels(f, 80, [{
+      date: "2026-09-05",
+      motifs: ["Vacances scolaires"],
+      sources: ["vacances"],
+    }]);
+    await expect(f.t.mutation(api.samedis.admin.updateCreneau, args)).rejects.toThrow(
+      "Non autorisé",
+    );
+    await expect(f.t.withIdentity({ subject: f.participantUserId }).mutation(
+      api.samedis.admin.updateCreneau,
+      args,
+    )).rejects.toThrow("Accès refusé");
+  });
+
+  test("ne réécrit ni ne notifie lorsque le commentaire normalisé est inchangé", async () => {
+    const f = await fixture("ok");
+    await appliquerBlocagesOfficiels(f, 90, [{
+      date: "2026-09-05",
+      motifs: ["Vacances scolaires"],
+      sources: ["vacances"],
+    }]);
+    const manager = f.t.withIdentity({ subject: f.managerId });
+    await manager.mutation(api.samedis.admin.updateCreneau, {
+      creneauId: f.creneau1,
+      bloqueManuellement: false,
+      commentaireBlocage: "Compétition de badminton",
+    });
+    const avant = await f.t.run(async (ctx) => ({
+      creneau: await ctx.db.get(f.creneau1),
+      notifications: await ctx.db.query("samedis_notifications").take(100),
+    }));
+    await manager.mutation(api.samedis.admin.updateCreneau, {
+      creneauId: f.creneau1,
+      bloqueManuellement: false,
+      commentaireBlocage: "  Compétition de badminton  ",
+    });
+    const apres = await f.t.run(async (ctx) => ({
+      creneau: await ctx.db.get(f.creneau1),
+      notifications: await ctx.db.query("samedis_notifications").take(100),
+    }));
+    expect(apres).toEqual(avant);
+  });
+
+  test("mentionne la note et l'ouverture exceptionnelle dans la même notification", async () => {
+    const f = await fixture("ok");
+    await appliquerBlocagesOfficiels(f, 95, [{
+      date: "2026-09-05",
+      motifs: ["Vacances scolaires"],
+      sources: ["vacances"],
+    }]);
+    await f.t.withIdentity({ subject: f.managerId }).mutation(
+      api.samedis.admin.updateCreneau,
+      {
+        creneauId: f.creneau1,
+        bloqueManuellement: false,
+        ouvertureManuelle: true,
+        commentaireBlocage: "Compétition de badminton",
+      },
+    );
+
+    const notifications = await f.t.run((ctx) =>
+      ctx.db.query("samedis_notifications").take(100),
+    );
+    expect(notifications.find(
+      (notification) => notification.typeModification === "creneau_modifie",
+    )?.resume).toBe(
+      "2026-09-05 — rendu disponible malgré le blocage officiel ; " +
+      "commentaire interne de blocage mis à jour.",
+    );
+  });
+});
+
 describe("réservations des samedis", () => {
   test("refuse toute attribution avant synchronisation, y compris gestionnaire", async () => {
     const f = await fixture();

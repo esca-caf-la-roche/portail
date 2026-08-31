@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { useMutation } from "convex/react";
-import { Ban, CalendarCheck, GraduationCap, Hand, Landmark, Settings2, ShieldAlert, Trash2, UserPlus, UserRound } from "lucide-react";
+import { Ban, CalendarCheck, GraduationCap, Hand, Landmark, MessageSquareText, Settings2, ShieldAlert, Trash2, UserPlus, UserRound } from "lucide-react";
 import type { Id } from "../../convex/_generated/dataModel";
 import { api } from "../../convex/_generated/api";
 import { formatSamediDate, samediError } from "./errors";
@@ -15,6 +15,7 @@ type Creneau = {
   blocageOfficiel: boolean;
   ouvertureManuelle: boolean;
   motifBlocageManuel: string | null;
+  commentaireBlocage: string | null;
   reservation: null | {
     _id: Id<"samedis_reservations">;
     participantNom: string;
@@ -33,6 +34,7 @@ export default function ManagerSlot({ creneau, participants, saison, calendrierV
   const [blocage, setBlocage] = useState(creneau.blocageManuel);
   const [ouvertureManuelle, setOuvertureManuelle] = useState(creneau.ouvertureManuelle);
   const [motifBlocage, setMotifBlocage] = useState(creneau.motifBlocageManuel ?? "");
+  const [commentaireBlocage, setCommentaireBlocage] = useState(creneau.commentaireBlocage ?? "");
   const [participantId, setParticipantId] = useState("");
   const [busy, setBusy] = useState(false);
   const [erreur, setErreur] = useState("");
@@ -63,12 +65,14 @@ export default function ManagerSlot({ creneau, participants, saison, calendrierV
             creneauId: creneau._id,
             bloqueManuellement: false,
             ouvertureManuelle,
+            commentaireBlocage,
           }
         : {
             creneauId: creneau._id,
             bloqueManuellement: blocage,
             ouvertureManuelle: false,
             motif: blocage ? motifBlocage : undefined,
+            commentaireBlocage,
           }),
       "Impossible de modifier la disponibilité de ce samedi.",
     );
@@ -96,6 +100,7 @@ export default function ManagerSlot({ creneau, participants, saison, calendrierV
         <header className="samedis-slot-manager-head"><div className="samedis-slot-date"><CalendarCheck aria-hidden="true" /><h3>{formatSamediDate(creneau.date)}</h3></div></header>
         {creneau.sourcesBlocage.length > 0 && <div className="samedis-blockage-list" aria-label="Contexte du calendrier et motifs du club">{creneau.motifsBlocage.map((motif, index) => { const source = creneau.sourcesBlocage[index] ?? "manuel"; const Icon = source === "ferie" ? Landmark : source === "vacances" ? GraduationCap : Hand; const libelle = source === "ferie" ? "Jour férié" : source === "vacances" ? "Vacances scolaires" : "Blocage du club"; return <span key={`${source}-${motif}`} className={`samedis-blockage-badge samedis-blockage-badge--${source}`}><Icon aria-hidden="true" /><span><strong>{libelle}</strong>{motif.replace(/^(Jour férié|Vacances scolaires)\s*:\s*/i, "")}</span></span>; })}</div>}
         {creneau.ouvertureManuelle && !creneau.estBloque && <div className="samedis-status samedis-status--exception"><CalendarCheck aria-hidden="true" /><span><strong>Exception du club — disponible malgré le calendrier officiel</strong>{motifsOfficiels.join(" · ")}</span></div>}
+        {creneau.commentaireBlocage && <div className="samedis-blockage-comment"><MessageSquareText aria-hidden="true" /><span><strong>Note interne du club</strong><span>{creneau.commentaireBlocage}</span>{!creneau.estBloque && <small>Note conservée : ce samedi n’est actuellement plus bloqué.</small>}</span></div>}
         {creneau.reservation ? (
           <div className="samedis-reservation-stack"><div className="samedis-manager-reservation"><div className="samedis-status samedis-status--mine"><UserRound aria-hidden="true" /><span><strong>{creneau.reservation.participantNom}</strong>{creneau.reservation.forcee ? "Réservation maintenue sur une date bloquée" : "Réservation confirmée"}</span></div><button className="samedis-button samedis-button--danger samedis-button--small" disabled={busy} onClick={() => { if (window.confirm("Annuler cette réservation ?")) void executer(() => annuler({ reservationId: creneau.reservation!._id }), "Impossible d’annuler la réservation."); }}><Trash2 aria-hidden="true" /> Annuler</button></div>{creneau.reservation.aRegulariser && <div className="samedis-regularisation"><p><ShieldAlert aria-hidden="true" /><span><strong>Régularisation requise</strong>Cette réservation existait avant le blocage de la date. Maintenez-la explicitement, ou annulez-la.</span></p><form onSubmit={regulariserReservation}><button className="samedis-button samedis-button--small samedis-button--warning" disabled={busy}>Maintenir la réservation</button></form></div>}</div>
         ) : (
@@ -104,7 +109,7 @@ export default function ManagerSlot({ creneau, participants, saison, calendrierV
             <button className={`samedis-button samedis-button--small ${creneau.estBloque ? "samedis-button--warning" : "samedis-button--success"}`} disabled={busy}><UserPlus aria-hidden="true" />{creneau.estBloque ? "Forcer l’inscription" : "Attribuer"}</button>
           </form> : <div className="samedis-status"><ShieldAlert aria-hidden="true" /><span><strong>Attribution fermée</strong>{calendrierVerifie ? "Ajoutez ou réactivez d’abord un participant." : "Actualisez d’abord le calendrier officiel de la saison."}</span></div>
         )}
-        <details className="samedis-slot-settings"><summary><Settings2 aria-hidden="true" /> Disponibilité du samedi</summary><form onSubmit={modifier} className={`samedis-inline-form ${controleOuvertureOfficielle ? "samedis-availability-form--official" : ""}`}>{controleOuvertureOfficielle ? <label className="samedis-checkbox"><input type="checkbox" checked={ouvertureManuelle} onChange={(event) => setOuvertureManuelle(event.target.checked)} /><CalendarCheck aria-hidden="true" /> Rendre ce samedi disponible malgré le calendrier officiel</label> : <><label className="samedis-checkbox"><input type="checkbox" checked={blocage} onChange={(event) => setBlocage(event.target.checked)} /><Ban aria-hidden="true" /> Rendre ce samedi indisponible</label>{creneau.blocageOfficiel && creneau.blocageManuel && <p className="samedis-availability-note">Retirez d’abord le blocage du club. Le samedi restera indisponible tant que l’exception au calendrier officiel n’est pas activée.</p>}{blocage && <label>Motif du blocage<input required value={motifBlocage} onChange={(event) => setMotifBlocage(event.target.value)} /></label>}</>}<button className="samedis-button samedis-button--small" disabled={busy}>{busy ? "Enregistrement…" : "Enregistrer la disponibilité"}</button></form></details>
+        <details className="samedis-slot-settings"><summary><Settings2 aria-hidden="true" /> Disponibilité du samedi</summary><form onSubmit={modifier} className={`samedis-inline-form ${controleOuvertureOfficielle ? "samedis-availability-form--official" : ""}`}>{controleOuvertureOfficielle ? <label className="samedis-checkbox"><input type="checkbox" checked={ouvertureManuelle} onChange={(event) => setOuvertureManuelle(event.target.checked)} /><CalendarCheck aria-hidden="true" /> Rendre ce samedi disponible malgré le calendrier officiel</label> : <><label className="samedis-checkbox"><input type="checkbox" checked={blocage} onChange={(event) => setBlocage(event.target.checked)} /><Ban aria-hidden="true" /> Rendre ce samedi indisponible</label>{creneau.blocageOfficiel && creneau.blocageManuel && <p className="samedis-availability-note">Retirez d’abord le blocage du club. Le samedi restera indisponible tant que l’exception au calendrier officiel n’est pas activée.</p>}{blocage && <label>Motif du blocage<input required value={motifBlocage} onChange={(event) => setMotifBlocage(event.target.value)} /></label>}</>}{(creneau.blocageOfficiel || creneau.commentaireBlocage) && <label className="samedis-blockage-comment-field">Note interne de blocage<textarea value={commentaireBlocage} onChange={(event) => setCommentaireBlocage(event.target.value)} placeholder="Ex. : compétition de badminton — ne pas débloquer" maxLength={500} rows={3} /><small>Visible uniquement par les gestionnaires.</small></label>}<button className="samedis-button samedis-button--small" disabled={busy}>{busy ? "Enregistrement…" : "Enregistrer la disponibilité"}</button></form></details>
         {erreur && <p className="samedis-inline-error" role="alert"><ShieldAlert aria-hidden="true" />{erreur}</p>}
       </article>
     </li>
