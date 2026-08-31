@@ -19,7 +19,7 @@ export interface ContactCoursFiltrable {
 export interface FiltresContactsCours {
   recherche: string;
   cours: string;
-  horaire: string;
+  horaires: string[];
   encadrant: string;
 }
 
@@ -184,8 +184,8 @@ export function filtrerContactsCours<T extends ContactCoursFiltrable>(
         !filtres.cours ||
         contact.cours?.trim() === filtres.cours) &&
       (facetteIgnoree === "horaire" ||
-        !filtres.horaire ||
-        contact.horaire?.trim() === filtres.horaire) &&
+        filtres.horaires.length === 0 ||
+        filtres.horaires.includes(contact.horaire?.trim() ?? "")) &&
       (facetteIgnoree === "encadrant" ||
         !filtres.encadrant ||
         encadrants.includes(filtres.encadrant))
@@ -233,10 +233,11 @@ export function reconcilierFiltresContactsCours(
       !filtres.cours || options.cours.includes(filtres.cours)
         ? filtres.cours
         : "",
-    horaire:
-      !filtres.horaire || options.horaires.includes(filtres.horaire)
-        ? filtres.horaire
-        : "",
+    horaires: filtres.horaires.filter(
+      (horaire, index) =>
+        options.horaires.includes(horaire) &&
+        filtres.horaires.indexOf(horaire) === index,
+    ),
     encadrant:
       !filtres.encadrant || options.encadrants.includes(filtres.encadrant)
         ? filtres.encadrant
@@ -251,9 +252,22 @@ export function filtresContactsCoursEgaux(
   return (
     a.recherche === b.recherche &&
     a.cours === b.cours &&
-    a.horaire === b.horaire &&
+    a.horaires.length === b.horaires.length &&
+    a.horaires.every((horaire, index) => horaire === b.horaires[index]) &&
     a.encadrant === b.encadrant
   );
+}
+
+export function normaliserHorairesFiltres(value: unknown): string[] | null {
+  if (!Array.isArray(value) || value.some((horaire) => typeof horaire !== "string")) {
+    return null;
+  }
+
+  return [...new Set(
+    value
+      .map((horaire) => horaire.trim())
+      .filter(Boolean),
+  )];
 }
 
 export function estAppareilMobileWhatsApp(

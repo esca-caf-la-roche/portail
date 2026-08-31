@@ -8,6 +8,7 @@ import {
   decouperEmailsEnLots,
   emailsUniques,
   filtrerContactsCours,
+  normaliserHorairesFiltres,
   normaliserAdresseEmailUnique,
   type FiltresContactsCours,
 } from "../utils/contactsCours";
@@ -24,11 +25,12 @@ function lireFiltresNavigation(state: unknown): FiltresContactsCours | null {
   const filtres = (state as { filtres?: unknown }).filtres;
   if (!filtres || typeof filtres !== "object") return null;
   const candidat = filtres as Partial<Record<keyof FiltresContactsCours, unknown>>;
+  const horaires = normaliserHorairesFiltres(candidat.horaires);
 
   if (
     typeof candidat.recherche !== "string" ||
     typeof candidat.cours !== "string" ||
-    typeof candidat.horaire !== "string" ||
+    horaires === null ||
     typeof candidat.encadrant !== "string"
   ) {
     return null;
@@ -37,7 +39,7 @@ function lireFiltresNavigation(state: unknown): FiltresContactsCours | null {
   return {
     recherche: candidat.recherche,
     cours: candidat.cours,
-    horaire: candidat.horaire,
+    horaires,
     encadrant: candidat.encadrant,
   };
 }

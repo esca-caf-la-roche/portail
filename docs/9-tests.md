@@ -168,8 +168,11 @@ Ces scénarios sont manuels tant qu'aucune suite navigateur n'est installée :
 4. simuler l'échec de la source externe et vérifier que le dernier snapshot
    reste consultable avec un avertissement de fraîcheur ;
 5. vérifier que les élèves en liste d'attente ne sont pas affichés, puis
-   combiner la recherche nom/prénom avec les filtres cours, horaire et
-   encadrant ; la recherche doit rester insensible à la casse et aux accents.
+   combiner la recherche nom/prénom avec les filtres cours, horaires et
+   encadrant ; cocher plusieurs horaires doit retenir les élèves correspondant
+   à au moins l'un d'eux, tandis qu'aucun horaire coché doit tous les inclure.
+   Les autres facettes restent combinées avec ce choix par un ET. La recherche
+   doit rester insensible à la casse et aux accents.
    Pour chaque facette, vérifier que les options tiennent compte de la recherche
    et des deux autres filtres, mais pas de sa propre sélection ; une sélection
    devenue impossible doit être automatiquement effacée ;
@@ -201,7 +204,10 @@ Ces scénarios sont manuels tant qu'aucune suite navigateur n'est installée :
     n'apparaît dans l'URL, l'historique ou `sessionStorage`, et que cette page ne
     relance pas la synchronisation externe.
 
-Le test Vitest `src/utils/contactsCours.test.ts` couvre le découpage pur aux
+Le test Vitest `src/utils/contactsCours.test.ts` couvre aussi le OU entre les
+horaires sélectionnés, son cumul en ET avec les autres facettes, l'absence de
+filtre horaire quand aucune case n'est cochée, ainsi que la réconciliation et
+la déduplication des horaires. Il couvre le découpage pur aux
 limites 0, 99, 100, 101, 198 et 199 emails, le branchement exact entre copie
 directe (100) et page de lots (101), ainsi que l'invalidation de la progression
 si l'ordre des destinataires change.

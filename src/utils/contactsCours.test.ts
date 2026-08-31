@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  calculerOptionsContactsCours,
   creerEmpreinteEmails,
   decouperEmailsEnLots,
   doitCopierEmailsParLots,
+  filtrerContactsCours,
+  normaliserHorairesFiltres,
+  reconcilierFiltresContactsCours,
+  type ContactCoursFiltrable,
+  type FiltresContactsCours,
 } from "./contactsCours";
 
 function creerEmails(nombre: number): string[] {
@@ -46,5 +52,106 @@ describe("creerEmpreinteEmails", () => {
     expect(creerEmpreinteEmails(emails)).not.toBe(
       creerEmpreinteEmails([...emails].reverse()),
     );
+  });
+});
+
+const contacts: ContactCoursFiltrable[] = [
+  {
+    prenom: "Léa",
+    nom: "Martin",
+    cours: "Débutant",
+    horaire: "Lundi 18h",
+    encadrants: "Alice",
+  },
+  {
+    prenom: "Noé",
+    nom: "Durand",
+    cours: "Débutant",
+    horaire: "Mardi 19h",
+    encadrants: "Alice",
+  },
+  {
+    prenom: "Inès",
+    nom: "Petit",
+    cours: "Perfectionnement",
+    horaire: "Lundi 18h",
+    encadrants: "Alice",
+  },
+  {
+    prenom: "Tom",
+    nom: "Robert",
+    cours: "Débutant",
+    horaire: "Mercredi 17h",
+    encadrants: "Bob",
+  },
+];
+
+const filtresVides: FiltresContactsCours = {
+  recherche: "",
+  cours: "",
+  horaires: [],
+  encadrant: "",
+};
+
+describe("filtrerContactsCours avec plusieurs horaires", () => {
+  it("ne filtre pas les horaires quand aucune case n'est cochée", () => {
+    expect(filtrerContactsCours(contacts, filtresVides)).toEqual(contacts);
+  });
+
+  it("applique un OU entre horaires et un ET avec les autres facettes", () => {
+    const resultat = filtrerContactsCours(contacts, {
+      ...filtresVides,
+      cours: "Débutant",
+      horaires: ["Lundi 18h", "Mardi 19h"],
+      encadrant: "Alice",
+    });
+
+    expect(resultat.map((contact) => contact.prenom)).toEqual(["Léa", "Noé"]);
+  });
+
+  it("propose tous les horaires compatibles sans s'auto-filtrer", () => {
+    const options = calculerOptionsContactsCours(contacts, {
+      ...filtresVides,
+      cours: "Débutant",
+      horaires: ["Lundi 18h"],
+    });
+
+    expect(options.horaires).toEqual([
+      "Lundi 18h",
+      "Mardi 19h",
+      "Mercredi 17h",
+    ]);
+  });
+});
+
+describe("validation des horaires filtrés", () => {
+  it("conserve les choix encore disponibles et retire doublons et choix invalides", () => {
+    const resultat = reconcilierFiltresContactsCours(
+      {
+        ...filtresVides,
+        horaires: ["Lundi 18h", "Horaire supprimé", "Lundi 18h"],
+      },
+      {
+        cours: ["Débutant"],
+        horaires: ["Lundi 18h", "Mardi 19h"],
+        encadrants: ["Alice"],
+      },
+    );
+
+    expect(resultat.horaires).toEqual(["Lundi 18h"]);
+  });
+
+  it("nettoie et déduplique l'état reçu par la page de copie", () => {
+    expect(normaliserHorairesFiltres([
+      " Lundi 18h ",
+      "Mardi 19h",
+      "Lundi 18h",
+      " ",
+    ])).toEqual(["Lundi 18h", "Mardi 19h"]);
+  });
+
+  it("refuse un état de navigation qui ne contient pas que des horaires texte", () => {
+    expect(normaliserHorairesFiltres(["Lundi 18h", 42])).toBeNull();
+    expect(normaliserHorairesFiltres("Lundi 18h")).toBeNull();
   });
 });

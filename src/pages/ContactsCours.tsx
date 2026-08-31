@@ -61,7 +61,7 @@ export default function ContactsCours() {
   const [filtres, setFiltres] = useState<FiltresContactsCours>({
     recherche: "",
     cours: "",
-    horaire: "",
+    horaires: [],
     encadrant: "",
   });
   const [copie, setCopie] = useState<{ id: string; statut: "ok" | "erreur" } | null>(null);
@@ -117,9 +117,16 @@ export default function ContactsCours() {
     [contacts, filtres],
   );
 
-  const appliquerFiltres = (modifications: Partial<FiltresContactsCours>) => {
+  const appliquerFiltres = (
+    modifications:
+      | Partial<FiltresContactsCours>
+      | ((precedents: FiltresContactsCours) => Partial<FiltresContactsCours>),
+  ) => {
     setFiltres((precedents) => {
-      const suivants = { ...precedents, ...modifications };
+      const changements = typeof modifications === "function"
+        ? modifications(precedents)
+        : modifications;
+      const suivants = { ...precedents, ...changements };
       const valides = reconcilierFiltresContactsCours(
         suivants,
         calculerOptionsContactsCours(contacts, suivants),
@@ -128,6 +135,14 @@ export default function ContactsCours() {
         ? precedents
         : valides;
     });
+  };
+
+  const basculerHoraire = (horaire: string, coche: boolean) => {
+    appliquerFiltres((precedents) => ({
+      horaires: coche
+        ? [...new Set([...precedents.horaires, horaire])]
+        : precedents.horaires.filter((selectionne) => selectionne !== horaire),
+    }));
   };
 
   const groupe = useMemo(() => {
@@ -246,16 +261,28 @@ export default function ContactsCours() {
               {options.cours.map((option) => <option key={option}>{option}</option>)}
             </select>
           </label>
-          <label className="contacts-cours-field">
-            <span>Horaire</span>
-            <select
-              value={filtres.horaire}
-              onChange={(event) => appliquerFiltres({ horaire: event.target.value })}
-            >
-              <option value="">Tous les horaires</option>
-              {options.horaires.map((option) => <option key={option}>{option}</option>)}
-            </select>
-          </label>
+          <fieldset className="contacts-cours-field contacts-cours-horaire-field">
+            <legend>Horaire</legend>
+            <div className="contacts-cours-checkbox-list">
+              {options.horaires.length === 0 ? (
+                <span className="contacts-cours-checkbox-empty">Aucun horaire disponible</span>
+              ) : options.horaires.map((option) => (
+                <label key={option} className="contacts-cours-checkbox-option">
+                  <input
+                    type="checkbox"
+                    checked={filtres.horaires.includes(option)}
+                    onChange={(event) => basculerHoraire(option, event.target.checked)}
+                  />
+                  <span>{option}</span>
+                </label>
+              ))}
+            </div>
+            <small>
+              {filtres.horaires.length === 0
+                ? "Tous les horaires"
+                : `${filtres.horaires.length} horaire${filtres.horaires.length > 1 ? "s" : ""} sélectionné${filtres.horaires.length > 1 ? "s" : ""}`}
+            </small>
+          </fieldset>
           <label className="contacts-cours-field">
             <span>Encadrant</span>
             <select
