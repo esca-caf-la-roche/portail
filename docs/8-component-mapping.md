@@ -75,6 +75,7 @@ La documentation fonctionnelle complète est dans
 | Règlements signés | `src/abonnements/admin/Reglements.tsx`, `src/abonnements/pages/Suivi.tsx` | `convex/abo/reglements.ts`, `convex/abo/reglementsDrive.ts`, `convex/abo/reglementsConstants.ts` |
 | Historique Google Drive | `src/abonnements/admin/HistoriqueDrive.tsx` | `convex/abo/testDocumentsDrive.ts`, `convex/abo/reglementsDrive.ts`, `convex/abo/driveArchives.ts` |
 | Compteur public | `src/abonnements/Compteur.tsx` | `convex/abo/compteur.ts` |
+| Anomalies à traiter et masquées manuellement | `src/abonnements/admin/Anomalies.tsx`, `src/abonnements/admin/CompteurJauge.tsx`, `src/abonnements/abo.css` | `convex/abo/compteur.ts` (`vAnomalies`, `vCompteur`, `acquitterAnomalie`, `reactiverAnomalie`), `convex/schema.ts` (`abo_anomalies_acquittements`, `abo_anomalies_acquittements_journal`), `convex/abo/config.ts` (purge de l'état et du journal au reset) |
 | Synchronisations | chargement des pages concernées | `convex/abo/sync.ts`, `convex/abo/scrap.ts` |
 
 ## Composants et utilitaires partagés

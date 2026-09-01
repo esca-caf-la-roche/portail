@@ -66,6 +66,36 @@ interface CompteurData {
   }>;
 }
 
+const codeAnomalieValidator = v.union(
+  v.literal("statut_inconnu"),
+  v.literal("n1_ambigu"),
+  v.literal("absence_demande"),
+  v.literal("demande_non_validee"),
+);
+
+type CodeAnomalie =
+  | "statut_inconnu"
+  | "n1_ambigu"
+  | "absence_demande"
+  | "demande_non_validee";
+
+type Classification = CompteurData["classifications"][number];
+
+function codeAnomalieDe(ligne: Classification): CodeAnomalie {
+  if (ligne.categorie === "inconnue") return "statut_inconnu";
+  if (ligne.n1 === "ambigu") return "n1_ambigu";
+  if (ligne.demande === "absente") return "absence_demande";
+  return "demande_non_validee";
+}
+
+function estAnomalie(ligne: Classification): boolean {
+  return ligne.categorie === "non_validee" || ligne.categorie === "inconnue";
+}
+
+function cleAcquittement(licence: string, code: CodeAnomalie): string {
+  return `${licence}:${code}`;
+}
+
 // Les mutations de validation peuvent fournir une décision projetée pour une ou
 // plusieurs personnes. La projection conserve ainsi exactement la même
 // algèbre (scrap légitime + dédoublonnage) que le compteur affiché.
@@ -261,6 +291,8 @@ const compteurDetailValidator = v.object({
   validees_hors_legit: v.number(),
   bloquees: v.number(),
   anomalies: v.number(),
+  anomalies_brutes: v.number(),
+  acquittees: v.number(),
   total_affiche: v.number(),
   occupe: v.number(),
   places_max: v.number(),
@@ -279,7 +311,24 @@ export const vCompteur = authenticatedQuery({
   returns: compteurDetailValidator,
   handler: async (ctx) => {
     await requireAboAdmin(ctx);
-    const c = await calculerCompteur(ctx, undefined);
+    const [c, acquittements] = await Promise.all([
+      calculerCompteur(ctx, undefined),
+      ctx.db.query("abo_anomalies_acquittements").take(MAX_LIGNES_COMPTEUR + 1),
+    ]);
+    if (acquittements.length > MAX_LIGNES_COMPTEUR) {
+      throw new ConvexError({
+        code: "ABO_ACQUITTEMENTS_VOLUME",
+        message: `Les acquittements dépassent la limite de sécurité de ${MAX_LIGNES_COMPTEUR} lignes.`,
+      });
+    }
+    const clesAcquittees = new Set(
+      acquittements.map((a) => cleAcquittement(a.licence, a.code_anomalie)),
+    );
+    const anomaliesAcquittees = c.classifications.filter((ligne) => {
+      if (!estAnomalie(ligne)) return false;
+      const licence = canoniserLicence(ligne.scrap.licence);
+      return licence !== null && clesAcquittees.has(cleAcquittement(licence, codeAnomalieDe(ligne)));
+    }).length;
     const places_max = await lirePlacesMax(ctx);
     return {
       abonnes_scrap: c.abonnes_scrap,
@@ -292,7 +341,9 @@ export const vCompteur = authenticatedQuery({
       demandes_a_traiter: c.demandes_a_traiter,
       validees_hors_legit: c.validees_hors_legit,
       bloquees: c.bloquees,
-      anomalies: c.anomalies,
+      anomalies: c.anomalies - anomaliesAcquittees,
+      anomalies_brutes: c.anomalies,
+      acquittees: anomaliesAcquittees,
       total_affiche: c.total_affiche,
       occupe: c.occupe,
       places_max,
@@ -310,6 +361,14 @@ export const vAnomalies = authenticatedQuery({
     prenom: v.union(v.string(), v.null()),
     nom_prenom_normalise: v.string(),
     abonnement_valide: statutAbonnementNormaliseValidator,
+    code_anomalie: codeAnomalieValidator,
+    peutEtreAcquittee: v.boolean(),
+    statut: v.union(v.literal("a_traiter"), v.literal("acquittee")),
+    acquittement: v.union(v.null(), v.object({
+      id: v.id("abo_anomalies_acquittements"),
+      justification: v.string(),
+      acquittee_le: v.string(),
+    })),
     type: v.union(v.literal("non_validee"), v.literal("inconnue")),
     controles: v.object({
       abonneN1: v.boolean(),
@@ -335,36 +394,153 @@ export const vAnomalies = authenticatedQuery({
   })),
   handler: async (ctx) => {
     await requireAboAdmin(ctx);
-    const c = await calculerCompteur(ctx, undefined, true);
+    const [c, acquittements] = await Promise.all([
+      calculerCompteur(ctx, undefined, true),
+      ctx.db.query("abo_anomalies_acquittements").take(MAX_LIGNES_COMPTEUR + 1),
+    ]);
+    if (acquittements.length > MAX_LIGNES_COMPTEUR) {
+      throw new ConvexError({
+        code: "ABO_ACQUITTEMENTS_VOLUME",
+        message: `Les acquittements dépassent la limite de sécurité de ${MAX_LIGNES_COMPTEUR} lignes.`,
+      });
+    }
+    const acquittementParCle = new Map(
+      acquittements.map((a) => [cleAcquittement(a.licence, a.code_anomalie), a] as const),
+    );
     return c.classifications
-      .filter(({ categorie }) => categorie === "non_validee" || categorie === "inconnue")
-      .map(({ scrap, categorie, statutSite, n1, demande, statutDossier, rapprochement }) => ({
-        id: scrap._id,
-        licence: scrap.licence ?? null,
-        nom: scrap.nom ?? null,
-        prenom: scrap.prenom ?? null,
-        nom_prenom_normalise: scrap.nom_prenom_normalise,
+      .filter(estAnomalie)
+      .map((ligne) => {
+        const { scrap, categorie, statutSite, n1, demande, statutDossier, rapprochement } = ligne;
+        const code_anomalie = codeAnomalieDe(ligne);
+        const licence = canoniserLicence(scrap.licence);
+        const acquittement = licence
+          ? acquittementParCle.get(cleAcquittement(licence, code_anomalie)) ?? null
+          : null;
+        return {
+          id: scrap._id,
+          licence: scrap.licence ?? null,
+          nom: scrap.nom ?? null,
+          prenom: scrap.prenom ?? null,
+          nom_prenom_normalise: scrap.nom_prenom_normalise,
         // Valeur brute du champ du site : l'interface doit pouvoir afficher
         // distinctement Oui, Non et Bloqué, sans en déduire un booléen.
-        abonnement_valide: statutSite,
-        type: categorie === "inconnue" ? "inconnue" as const : "non_validee" as const,
-        controles: {
-          abonneN1: n1 === "oui",
-          abonneN1Ambigu: n1 === "ambigu",
-          eleveEnCours: scrap.licence ? c.elevesLic.has(scrap.licence) : false,
-          demandeValidee: demande === "validee",
-          statutDossier,
-          rapprochement,
-        },
-        raison: categorie === "inconnue"
-          ? "Statut du site inconnu : cette ancienne valeur ne permet pas de distinguer Non de Bloqué. Synchronisez à nouveau le site."
-          : n1 === "ambigu"
-            ? "Correspondance N-1 ambiguë : plusieurs archives validées portent ce nom et prénom. Vérifiez manuellement avant décision."
-          : demande === "absente"
-            ? "Règle 1 non respectée : la personne n'était pas abonnée l'année dernière et aucune demande n'a été déposée sur le portail."
-            : "Règle 2 non respectée : la personne n'était pas abonnée l'année dernière et la demande portail n'est pas validée.",
-      }))
+          abonnement_valide: statutSite,
+          code_anomalie,
+          peutEtreAcquittee: licence !== null,
+          statut: acquittement ? "acquittee" as const : "a_traiter" as const,
+          acquittement: acquittement ? {
+            id: acquittement._id,
+            justification: acquittement.justification,
+            acquittee_le: acquittement.acquittee_le,
+          } : null,
+          type: categorie === "inconnue" ? "inconnue" as const : "non_validee" as const,
+          controles: {
+            abonneN1: n1 === "oui",
+            abonneN1Ambigu: n1 === "ambigu",
+            eleveEnCours: licence ? c.elevesLic.has(licence) : false,
+            demandeValidee: demande === "validee",
+            statutDossier,
+            rapprochement,
+          },
+          raison: categorie === "inconnue"
+            ? "Statut du site inconnu : cette ancienne valeur ne permet pas de distinguer Non de Bloqué. Synchronisez à nouveau le site."
+            : n1 === "ambigu"
+              ? "Correspondance N-1 ambiguë : plusieurs archives validées portent ce nom et prénom. Vérifiez manuellement avant décision."
+              : demande === "absente"
+                ? "Règle 1 non respectée : la personne n'était pas abonnée l'année dernière et aucune demande n'a été déposée sur le portail."
+                : "Règle 2 non respectée : la personne n'était pas abonnée l'année dernière et la demande portail n'est pas validée.",
+        };
+      })
       .sort((a, b) => a.nom_prenom_normalise.localeCompare(b.nom_prenom_normalise, "fr"));
+  },
+});
+
+export const acquitterAnomalie = authenticatedMutation({
+  args: {
+    scrapId: v.id("abo_abonnes_scrap"),
+    code_anomalie: codeAnomalieValidator,
+    justification: v.string(),
+  },
+  returns: v.id("abo_anomalies_acquittements"),
+  handler: async (ctx, args) => {
+    const admin = await requireAboAdmin(ctx);
+    const justification = args.justification.trim();
+    if (justification.length === 0 || justification.length > 500) {
+      throw new ConvexError({
+        code: "ABO_JUSTIFICATION_INVALIDE",
+        message: "La justification est obligatoire et limitée à 500 caractères.",
+      });
+    }
+
+    const c = await calculerCompteur(ctx, undefined, true);
+    const ligne = c.classifications.find(({ scrap }) => scrap._id === args.scrapId);
+    if (!ligne || !estAnomalie(ligne) || codeAnomalieDe(ligne) !== args.code_anomalie) {
+      throw new ConvexError({
+        code: "ABO_ANOMALIE_OBSOLETE",
+        message: "Cette anomalie a changé ou n'existe plus. Actualisez la liste avant de recommencer.",
+      });
+    }
+    const licence = canoniserLicence(ligne.scrap.licence);
+    if (!licence) {
+      throw new ConvexError({
+        code: "ABO_ANOMALIE_SANS_LICENCE",
+        message: "Cette anomalie ne peut pas être acquittée tant qu'elle ne possède pas une licence valide.",
+      });
+    }
+    const existant = await ctx.db
+      .query("abo_anomalies_acquittements")
+      .withIndex("by_licence_and_code_anomalie", (q) =>
+        q.eq("licence", licence).eq("code_anomalie", args.code_anomalie))
+      .unique();
+    if (existant) {
+      throw new ConvexError({
+        code: "ABO_ANOMALIE_DEJA_ACQUITTEE",
+        message: "Cette anomalie est déjà acquittée.",
+      });
+    }
+    const maintenant = new Date().toISOString();
+    const id = await ctx.db.insert("abo_anomalies_acquittements", {
+      licence,
+      code_anomalie: args.code_anomalie,
+      justification,
+      acquittee_le: maintenant,
+      acquittee_par: admin.userId,
+    });
+    await ctx.db.insert("abo_anomalies_acquittements_journal", {
+      licence,
+      code_anomalie: args.code_anomalie,
+      action: "acquittee",
+      justification,
+      date_action: maintenant,
+      auteur_id: admin.userId,
+    });
+    return id;
+  },
+});
+
+export const reactiverAnomalie = authenticatedMutation({
+  args: { acquittementId: v.id("abo_anomalies_acquittements") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const admin = await requireAboAdmin(ctx);
+    const acquittement = await ctx.db.get(args.acquittementId);
+    if (!acquittement) {
+      throw new ConvexError({
+        code: "ABO_ACQUITTEMENT_INTROUVABLE",
+        message: "Cet acquittement n'existe plus.",
+      });
+    }
+    const maintenant = new Date().toISOString();
+    await ctx.db.delete(acquittement._id);
+    await ctx.db.insert("abo_anomalies_acquittements_journal", {
+      licence: acquittement.licence,
+      code_anomalie: acquittement.code_anomalie,
+      action: "reactivee",
+      justification: acquittement.justification,
+      date_action: maintenant,
+      auteur_id: admin.userId,
+    });
+    return null;
   },
 });
 

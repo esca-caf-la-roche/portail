@@ -1020,6 +1020,37 @@ export default defineSchema({
     .index("by_licence", ["licence"])
     .index("by_nom_prenom_normalise", ["nom_prenom_normalise"]),
 
+  // SAISON-EXEMPT: acquittements manuels du snapshot Abonnements courant,
+  // indépendants des saisons comptables et purgés au reset de campagne.
+  abo_anomalies_acquittements: defineTable({
+    licence: v.string(), // canonique (12 chiffres)
+    code_anomalie: v.union(
+      v.literal("statut_inconnu"),
+      v.literal("n1_ambigu"),
+      v.literal("absence_demande"),
+      v.literal("demande_non_validee"),
+    ),
+    justification: v.string(),
+    acquittee_le: v.string(),
+    acquittee_par: v.id("users"),
+  }).index("by_licence_and_code_anomalie", ["licence", "code_anomalie"]),
+
+  // SAISON-EXEMPT: journal d'audit append-only des acquittements de la campagne
+  // Abonnements courante, sans lien avec le sélecteur de saison comptable.
+  abo_anomalies_acquittements_journal: defineTable({
+    licence: v.string(), // canonique (12 chiffres)
+    code_anomalie: v.union(
+      v.literal("statut_inconnu"),
+      v.literal("n1_ambigu"),
+      v.literal("absence_demande"),
+      v.literal("demande_non_validee"),
+    ),
+    action: v.union(v.literal("acquittee"), v.literal("reactivee")),
+    justification: v.string(),
+    date_action: v.string(),
+    auteur_id: v.id("users"),
+  }),
+
   // Archive N-1 (écrasée à chaque reset de saison).
   abo_abonnes_archive: defineTable({
     licence: v.optional(v.string()),

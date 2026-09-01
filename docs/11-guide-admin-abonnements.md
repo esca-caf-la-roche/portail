@@ -202,12 +202,13 @@ interpréter « traité » comme une validation automatique de l'abonnement.
 
 ### À quoi sert cet onglet ?
 
-**Anomalies** est une liste de contrôle, en lecture seule. Elle affiche
-uniquement les inscriptions du dernier snapshot du site club qui ne respectent
-pas les règles d'inscription. Une inscription conforme n'apparaît donc pas
-dans cet onglet. Le portail ne modifie jamais ce site : si une inscription doit
-disparaître, le staff la retire manuellement sur le site du club puis relance
-la synchronisation.
+**Anomalies** est une liste de contrôle des inscriptions du dernier snapshot du
+site club qui ne respectent pas les règles d'inscription. Une inscription
+conforme n'apparaît donc pas dans cet onglet. Les gestionnaires qui possèdent la
+tuile **Abonnements** peuvent masquer manuellement un écart dans le portail,
+mais celui-ci reste en lecture seule vis-à-vis du site du club : si une
+inscription doit être corrigée ou retirée sur le site, le staff le fait
+manuellement puis relance la synchronisation.
 
 Chaque ligne indique le statut de la demande portail et l'action attendue. La
 présence parmi les élèves en cours est utile au dépôt en vague 2, mais ne rend
@@ -236,10 +237,32 @@ priorité avant l'ouverture de la campagne.
    club**. Cet onglet ne modifie aucune inscription externe.
 4. Si elle correspond à une personne qui devrait être admise, corriger le canal
    manquant : dossier à valider, licence à rapprocher ou vague à ouvrir.
+5. Si l'écart est connu et assumé malgré la règle, cliquer **Masquer après
+   contrôle**, saisir le motif obligatoire, puis confirmer. Cette action est
+   disponible uniquement lorsque la ligne possède une licence valide. Sinon,
+   corriger d'abord la licence dans la source puis resynchroniser.
 
-Les anomalies restent visibles tant que l'inscription existe sur le site. Un
-statut `Non` figure dans le total affiché, mais n'occupe pas automatiquement le
-plafond qui bloque la validation d'une demande. Les statuts `Inconnu` et
+**Masquer après contrôle** retire seulement l'écart de la vue **À traiter** : la
+personne, son dossier et son inscription sur le site ne sont pas validés. Le
+compteur public et l'occupation utilisée par le plafond ne changent pas. Le
+détail du compteur admin distingue **Anomalies à traiter** et **Masquées
+manuellement**.
+
+Tant que l'écart existe dans le snapshot courant, la vue **Masquées
+manuellement** montre le motif du masquage et sa date. Si la décision doit être
+annulée, cliquer **Réafficher dans À traiter**. Le serveur journalise aussi le
+masquage ou le réaffichage avec son auteur, sa date et le motif d'origine ;
+l'identité de l'auteur n'est pas affichée dans cette vue.
+
+Le marquage est rattaché à la licence et au type précis d'écart. Il reste donc
+appliqué après une resynchronisation si la même anomalie est toujours présente.
+Un nouveau type d'écart pour cette licence réapparaît dans **À traiter** et doit
+faire l'objet d'un contrôle distinct. L'état des anomalies masquées et le
+journal d'audit sont tous deux purgés lors du reset de campagne ; la fenêtre de
+confirmation du reset l'annonce explicitement.
+
+Un statut `Non` figure dans le total affiché, mais n'occupe pas automatiquement
+le plafond qui bloque la validation d'une demande. Les statuts `Inconnu` et
 `Bloqué` sont exclus de ce total.
 
 ## 5. Licences
@@ -555,8 +578,9 @@ la campagne.
 
 Le portail est strictement **en lecture seule** vis-à-vis du site du club : il
 lit le snapshot synchronisé, ne modifie jamais une inscription externe et ne
-la retire jamais. Lorsqu'une ligne est à vérifier, le staff agit manuellement
-sur le site du club puis synchronise le portail.
+la retire jamais. Lorsqu'une ligne est à vérifier, le staff corrige
+manuellement le site puis synchronise le portail, ou marque l'écart comme
+**Masqué manuellement** avec un motif s'il accepte explicitement l'exception.
 
 Une personne reconnue N-1 est redirigée vers le site du club ; une
 correspondance ambiguë ne donne jamais un droit automatique. En vague 2, seule
