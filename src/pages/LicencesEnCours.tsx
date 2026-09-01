@@ -4,6 +4,7 @@ import { Check, ChevronDown, ChevronRight, Copy, RotateCcw } from "lucide-react"
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { useMaintenantJourParis } from "../abonnements/lib/useMaintenantJourParis";
+import { useMaintenantMinute } from "../abonnements/lib/useMaintenantMinute";
 import {
   emailsUniques,
   normaliserAdresseEmailUnique,
@@ -255,6 +256,7 @@ function CoursRepliable({
 
 export default function LicencesEnCours() {
   const maintenantJour = useMaintenantJourParis();
+  const maintenantMs = useMaintenantMinute();
   const data = useQuery(api.abo.licencesEnCours.getElevesLicenceInvalide, { maintenantJour });
   const candidats = useQuery(
     api.abo.licencesEnCours.getCandidatsLicences,
@@ -262,7 +264,9 @@ export default function LicencesEnCours() {
       ? { maintenantJour }
       : "skip",
   );
-  const statutSynchronisation = useQuery(api.abo.sync.getStatutSyncLicencesCours, {});
+  const statutSynchronisation = useQuery(api.abo.sync.getStatutSyncLicencesCours, {
+    maintenantMs,
+  });
   const synchroniser = useAction(api.abo.sync.syncPourLicencesCours);
   const definirTraite = useMutation(api.abo.licencesEnCours.definirTraite);
   const [syncStatut, setSyncStatut] = useState<"en_cours" | "ok" | "erreur">("en_cours");

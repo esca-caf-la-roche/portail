@@ -17,6 +17,8 @@ import { internal } from "../_generated/api";
 import { peutGererConfigurationAbo, requireAboConfigurationManager } from "./auth";
 import { parseHa, poserLienAbo, trouverLienAbo } from "./paiements";
 import { REGLEMENT_DOCUSEAL_URL } from "./reglementsConstants";
+import { champsModifies } from "../dbUtils";
+import { RESET_CAMPAIGN_SYNC_KEYS } from "./syncConstants";
 
 const LOT_PURGE_SUIVI_CAMPAGNE = 25;
 // SAISON-EXEMPT: état opérationnel de la campagne Abonnements, distinct de la
@@ -237,9 +239,24 @@ async function setConfigValeur(
     .first();
   const patch = { valeur: valeur ?? undefined, updated_at: new Date().toISOString() };
   if (row) {
-    await ctx.db.patch(row._id, patch);
+    if (champsModifies(row, patch, ["updated_at"])) {
+      await ctx.db.patch(row._id, patch);
+    }
   } else {
     await ctx.db.insert("abo_app_config", { cle, ...patch });
+  }
+}
+
+async function supprimerConfigValeurs(
+  ctx: MutationCtx,
+  cles: readonly string[],
+): Promise<void> {
+  for (const cle of cles) {
+    const row = await ctx.db
+      .query("abo_app_config")
+      .withIndex("by_cle", (q) => q.eq("cle", cle))
+      .unique();
+    if (row) await ctx.db.delete(row._id);
   }
 }
 
@@ -514,6 +531,10 @@ export const resetSaison = authenticatedMutation({
     await setConfigValeur(ctx, "vague1_debut", null);
     await setConfigValeur(ctx, "vague2_debut", null);
     await setConfigValeur(ctx, "vague3_debut", null);
+    // Les snapshots de campagne viennent d'être vidés : leurs réussites et
+    // verrous manuels ne doivent pas retarder la première synchro de la saison.
+    // L'annuaire des licences, transversal, est volontairement conservé.
+    await supprimerConfigValeurs(ctx, RESET_CAMPAIGN_SYNC_KEYS);
     // Le site club et l'annuaire peuvent encore porter la campagne N-1 : leur
     // synchronisation reste explicitement en pause jusqu'au feu vert staff.
     await setConfigValeur(ctx, CLE_SYNCHRONISATION_EXTERNE_ACTIVE, "false");
