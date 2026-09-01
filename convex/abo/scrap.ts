@@ -21,11 +21,12 @@ import { internalAction } from "../_generated/server";
 import { authenticatedAction } from "../customFunctions";
 import { internal, api } from "../_generated/api";
 import { canoniserLicence } from "./lib";
+import { MANUAL_SYNC_INTERVAL_MS, MANUAL_SYNC_LOCK_KEYS } from "./syncConstants";
 
-const MANUAL_SYNC_TTL_MS = 5 * 60_000;
+const MANUAL_SYNC_TTL_MS = MANUAL_SYNC_INTERVAL_MS;
 // Partagé avec syncPourAbo : un snapshot destructif ne doit jamais s'exécuter
 // en parallèle via le bouton manuel et la synchronisation au chargement.
-const MANUAL_SYNC_KEY = "last_sync_scrap";
+const MANUAL_SYNC_KEY = MANUAL_SYNC_LOCK_KEYS.scrap;
 const MAX_ABONNES_SCRAP = 500;
 
 const UA =
@@ -572,6 +573,10 @@ export const synchroniserClub = authenticatedAction({
       const abonnes = await ctx.runAction(internal.abo.scrap.scraperAbonnes, { generation: etat.generation });
       const eleves = await ctx.runAction(internal.abo.scrap.importerElevesEnCours, {
         contexteAbo: true,
+      });
+      await ctx.runMutation(internal.abo.sync.marquerSyncReussie, {
+        source: "eleves",
+        reussieAt: new Date().toISOString(),
       });
       return { statut: "done", retryAt: null, abonnes, eleves };
     } catch (error) {

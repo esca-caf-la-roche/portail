@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { useAction, useQuery } from "convex/react";
+import { useState } from "react";
+import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import "../abo.css";
 import Dossiers from "./Dossiers";
@@ -11,6 +11,7 @@ import Configuration from "./Configuration";
 import Messages from "./Messages";
 import Reglements from "./Reglements";
 import HistoriqueDrive from "./HistoriqueDrive";
+import SyncStatusPanel from "./SyncStatusPanel";
 
 type Vue = "dossiers" | "messages" | "anomalies" | "licences" | "tests" | "reglements" | "historique-drive" | "paiements" | "config";
 
@@ -46,21 +47,6 @@ export default function AboAdmin() {
     reglements: reglementsATraiter,
   };
 
-  // Synchro on-demand au chargement (throttle serveur ~1 h) : remplace les crons
-  // horaires. Non-bloquante — les vues lisent le cache et se rafraîchissent
-  // toutes seules quand les données changent. Ordre géré côté serveur
-  // (HelloAsso → scrap → annuaire → élèves).
-  const syncAbo = useAction(api.abo.sync.syncPourAbo);
-  const syncLance = useRef(false);
-  useEffect(() => {
-    if (syncLance.current || me?.aboRole !== "admin") return;
-    syncLance.current = true;
-    void syncAbo({}).catch(() => {
-      /* échec silencieux : les crons n'existent plus, une source externe peut
-         être temporairement indisponible sans casser l'espace admin. */
-    });
-  }, [syncAbo, me]);
-
   if (me === undefined) {
     return <div className="abo-admin-page abo-admin-state">Chargement…</div>;
   }
@@ -79,6 +65,8 @@ export default function AboAdmin() {
         <h1>Abonnements escalade</h1>
         <p className="subtitle">Gestion des nouvelles inscriptions aux créneaux autonomes.</p>
       </header>
+
+      <SyncStatusPanel />
 
       <nav className="abo-admin-nav">
         {TABS.filter((t) => t.id !== "config" || peutGererConfiguration === true).map((t) => {

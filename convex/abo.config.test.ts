@@ -295,6 +295,18 @@ describe("autorisation du reset annuel Abonnements", () => {
         traite_at: "2026-08-08T00:00:00.000Z",
         traite_par: adminAutorise,
       });
+      for (const cle of [
+        "last_sync_helloasso",
+        "last_sync_scrap",
+        "last_sync_eleves",
+        "last_manual_sync_paiements_abo",
+        "last_sync_annuaire",
+      ]) {
+        await ctx.db.insert("abo_app_config", {
+          cle,
+          valeur: "2026-08-08T00:00:00.000Z",
+        });
+      }
       return await ctx.db.insert("abo_fusion_redirections_email", {
         email_supprime: "ancienne-reset@example.test", email_destination: "canonique-reset@example.test",
         dossier_destination_id: dossierId, fusion_id: fusionId, created_at: "2026-08-08T00:00:00.000Z",
@@ -337,6 +349,26 @@ describe("autorisation du reset annuel Abonnements", () => {
         .unique(),
     );
     expect(marqueurPurge?.valeur).toBeUndefined();
+    const marqueursSync = await t.run(async (ctx) => {
+      const lire = async (cle: string) => await ctx.db
+        .query("abo_app_config")
+        .withIndex("by_cle", (q) => q.eq("cle", cle))
+        .unique();
+      return {
+        helloasso: await lire("last_sync_helloasso"),
+        scrap: await lire("last_sync_scrap"),
+        eleves: await lire("last_sync_eleves"),
+        verrouPaiements: await lire("last_manual_sync_paiements_abo"),
+        annuaire: await lire("last_sync_annuaire"),
+      };
+    });
+    expect(marqueursSync).toMatchObject({
+      helloasso: null,
+      scrap: null,
+      eleves: null,
+      verrouPaiements: null,
+      annuaire: { valeur: "2026-08-08T00:00:00.000Z" },
+    });
   });
 
   test("refuse l'import des élèves tant que le site club n'a pas basculé", async () => {

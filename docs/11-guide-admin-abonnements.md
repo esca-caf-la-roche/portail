@@ -11,6 +11,31 @@ ayant le rôle général « admin ».
 
 ## Vue d'ensemble
 
+### État des synchronisations
+
+Un encart placé au-dessus des onglets donne une vue commune des quatre sources
+de campagne : **HelloAsso**, **site du club**, **annuaire des licences** et
+**élèves des cours**. Pour chacune, il affiche la dernière réussite enregistrée
+par le serveur — et non une simple tentative — ainsi que la prochaine
+disponibilité des fenêtres automatique et manuelle.
+
+La vérification automatique démarre à l'ouverture de l'administration. Le
+bouton **Actualiser les sources disponibles** ne relance que les sources dont
+le délai automatique est écoulé. Les relances manuelles gardent leur propre
+fenêtre et restent placées dans l'onglet métier concerné : HelloAsso dans
+**Paiements**, le site du club dans **Dossiers**, l'annuaire dans **Licences** ;
+les élèves sont inclus dans le bouton du site du club. L'encart indique les
+délais et l'heure exacte de la prochaine disponibilité de chaque action.
+
+Après un changement de campagne, les sources concernées sont indiquées comme
+**suspendues** jusqu'à leur réactivation dans **Configuration**. Le reset efface
+les marqueurs de synchronisation propres à la campagne afin de permettre un
+premier import immédiat après cette réactivation ; l'annuaire des licences et
+son marqueur sont conservés, car ce cache est transversal aux campagnes.
+
+Les règlements et scans stockés dans **Drive** sont hors du périmètre de cet
+encart : leur synchronisation et leur suivi restent dans les onglets dédiés.
+
 ```mermaid
 flowchart LR
   D[Dossiers\nDécider les demandes] --> L[Licences\nRapprocher l'identité]

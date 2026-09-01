@@ -22,14 +22,16 @@ import type { ActionCtx } from "../_generated/server";
 import { authenticatedAction, authenticatedQuery } from "../customFunctions";
 import { api, internal } from "../_generated/api";
 import { requireTile } from "../access";
+import { champsModifies } from "../dbUtils";
+import {
+  AUTOMATIC_SYNC_INTERVALS_MS,
+  MANUAL_SYNC_INTERVALS_MS,
+  MANUAL_SYNC_LOCK_KEYS,
+  SYNC_SUCCESS_KEYS,
+  type SyncSource,
+} from "./syncConstants";
 
-// Fenêtre anti-rejeu par défaut (60 min). L'annuaire des licences est plus
-// coûteux et change peu : 12 h entre deux imports garantit au plus deux
-// exécutions sur une fenêtre glissante de 24 h.
-const TTL_MS = (Number(process.env.SYNC_TTL_MINUTES) || 60) * 60_000;
-const TTL_ANNUAIRE_MS = 12 * 60 * 60_000;
-
-type Source = "helloasso" | "scrap" | "annuaire" | "eleves";
+type Source = SyncSource;
 type Resultat = "done" | "skipped" | "desactive" | "erreur";
 type ResultatEleves = Exclude<Resultat, "desactive">;
 
@@ -44,20 +46,15 @@ const resultatElevesValidator = v.union(
   v.literal("skipped"),
   v.literal("erreur"),
 );
+const sourceValidator = v.union(
+  v.literal("helloasso"),
+  v.literal("scrap"),
+  v.literal("annuaire"),
+  v.literal("eleves"),
+);
 
-const CLE_MARQUEUR: Record<Source, string> = {
-  helloasso: "last_sync_helloasso",
-  scrap: "last_sync_scrap",
-  annuaire: "last_sync_annuaire",
-  eleves: "last_sync_eleves",
-};
-
-const TTL_PAR_SOURCE: Record<Source, number> = {
-  helloasso: TTL_MS,
-  scrap: TTL_MS,
-  annuaire: TTL_ANNUAIRE_MS,
-  eleves: TTL_MS,
-};
+const CLE_MARQUEUR = SYNC_SUCCESS_KEYS;
+const TTL_PAR_SOURCE = AUTOMATIC_SYNC_INTERVALS_MS;
 
 // ── reserverSync : check-and-set ATOMIQUE du verrou (une seule mutation) ──
 // Si une synchro récente (< ttlMs) existe → proceed=false. Sinon pose le
@@ -123,7 +120,12 @@ export const restaurerMarqueur = internalMutation({
 function synchroniserSource(
   ctx: ActionCtx,
   source: "eleves",
-  contexteAbo?: boolean,
+  contexteAbo: true,
+): Promise<Resultat>;
+function synchroniserSource(
+  ctx: ActionCtx,
+  source: "eleves",
+  contexteAbo?: false,
 ): Promise<ResultatEleves>;
 function synchroniserSource(
   ctx: ActionCtx,
@@ -135,7 +137,7 @@ async function synchroniserSource(
   source: Source,
   contexteAbo = false,
 ): Promise<Resultat> {
-  const etat = (source === "scrap" || source === "annuaire")
+  const etat = (source === "scrap" || source === "annuaire" || (source === "eleves" && contexteAbo))
     ? await ctx.runQuery(internal.abo.config.etatSynchronisationExterneInterne, {})
     : null;
   if (etat && !etat.active) return "desactive";
@@ -237,14 +239,141 @@ const statutSourceValidator = v.object({
   nextSyncAt: v.union(v.string(), v.null()),
 });
 
+const statutSourceAboValidator = statutSourceValidator.extend({
+  active: v.boolean(),
+  minimumIntervalMs: v.number(),
+  manualNextSyncAt: v.union(v.string(), v.null()),
+  manualIntervalMs: v.union(v.number(), v.null()),
+});
+
+function calculerStatutSource(
+  valeur: string | undefined,
+  ttlMs: number,
+  maintenantMs?: number,
+) {
+  const lastMs = valeur ? Date.parse(valeur) : NaN;
+  const prochaineMs = lastMs + ttlMs;
+  return {
+    lastSyncAt: Number.isFinite(lastMs) ? new Date(lastMs).toISOString() : null,
+    nextSyncAt: Number.isFinite(prochaineMs)
+      && (maintenantMs === undefined || prochaineMs > maintenantMs)
+      ? new Date(prochaineMs).toISOString()
+      : null,
+  };
+}
+
+// ── getStatutSyncAbo : synthèse des sources de l'espace admin Abonnements ──
+// `maintenantMs` est stabilisé côté client (arrondi à la minute) : une query
+// Convex ne doit pas lire l'horloge, car le passage du temps seul ne la réexécute pas.
+export const getStatutSyncAbo = authenticatedQuery({
+  args: { maintenantMs: v.number() },
+  returns: v.object({
+    helloasso: statutSourceAboValidator,
+    scrap: statutSourceAboValidator,
+    annuaire: statutSourceAboValidator,
+    eleves: statutSourceAboValidator,
+  }),
+  handler: async (ctx, args) => {
+    await requireTile(ctx, ctx.userId, "abonnements");
+    if (!Number.isFinite(args.maintenantMs)) {
+      throw new ConvexError({ code: "22023", message: "Date de consultation invalide." });
+    }
+
+    const [helloasso, scrap, annuaire, eleves, verrouManuelHelloasso, synchronisationExterne] = await Promise.all([
+      ctx.db
+        .query("abo_app_config")
+        .withIndex("by_cle", (q) => q.eq("cle", CLE_MARQUEUR.helloasso))
+        .unique(),
+      ctx.db
+        .query("abo_app_config")
+        .withIndex("by_cle", (q) => q.eq("cle", CLE_MARQUEUR.scrap))
+        .unique(),
+      ctx.db
+        .query("abo_app_config")
+        .withIndex("by_cle", (q) => q.eq("cle", CLE_MARQUEUR.annuaire))
+        .unique(),
+      ctx.db
+        .query("abo_app_config")
+        .withIndex("by_cle", (q) => q.eq("cle", CLE_MARQUEUR.eleves))
+        .unique(),
+      ctx.db
+        .query("abo_app_config")
+        .withIndex("by_cle", (q) => q.eq("cle", MANUAL_SYNC_LOCK_KEYS.helloasso))
+        .unique(),
+      ctx.db
+        .query("abo_app_config")
+        .withIndex("by_cle", (q) => q.eq("cle", "synchronisation_externe_active"))
+        .unique(),
+    ]);
+    const synchronisationExterneActive = synchronisationExterne?.valeur !== "false";
+    const statut = (
+      source: Source,
+      valeur: string | undefined,
+      valeurVerrouManuel: string | undefined,
+      active: boolean,
+    ) => ({
+      active,
+      minimumIntervalMs: TTL_PAR_SOURCE[source],
+      ...calculerStatutSource(valeur, TTL_PAR_SOURCE[source], args.maintenantMs),
+      manualNextSyncAt: calculerStatutSource(
+        valeurVerrouManuel,
+        MANUAL_SYNC_INTERVALS_MS[source],
+        args.maintenantMs,
+      ).nextSyncAt,
+      manualIntervalMs: MANUAL_SYNC_INTERVALS_MS[source],
+    });
+
+    return {
+      helloasso: statut("helloasso", helloasso?.valeur, verrouManuelHelloasso?.valeur, true),
+      scrap: statut("scrap", scrap?.valeur, scrap?.valeur, synchronisationExterneActive),
+      annuaire: statut("annuaire", annuaire?.valeur, annuaire?.valeur, synchronisationExterneActive),
+      eleves: statut("eleves", eleves?.valeur, scrap?.valeur, synchronisationExterneActive),
+    };
+  },
+});
+
+// Enregistre l'instant canonique de réussite après le retour de la source.
+// L'instant est fourni par l'action afin qu'un rejeu avec la même valeur soit
+// strictement idempotent et n'invalide pas les abonnements temps réel.
+export const marquerSyncReussie = internalMutation({
+  args: { source: sourceValidator, reussieAt: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const reussieMs = Date.parse(args.reussieAt);
+    if (!Number.isFinite(reussieMs)) {
+      throw new ConvexError({ code: "22023", message: "Date de synchronisation invalide." });
+    }
+    const valeur = new Date(reussieMs).toISOString();
+    const cle = SYNC_SUCCESS_KEYS[args.source];
+    const row = await ctx.db
+      .query("abo_app_config")
+      .withIndex("by_cle", (q) => q.eq("cle", cle))
+      .unique();
+    const patch = { valeur, updated_at: valeur };
+    if (row) {
+      if (champsModifies(row, patch)) {
+        await ctx.db.patch(row._id, patch);
+      }
+    } else {
+      await ctx.db.insert("abo_app_config", { cle, ...patch });
+    }
+    return null;
+  },
+});
+
 export const getStatutSyncLicencesCours = authenticatedQuery({
-  args: {},
+  // Optionnel pour conserver la compatibilité avec les clients déjà déployés.
+  // Les nouveaux clients le fournissent afin de masquer une échéance déjà passée.
+  args: { maintenantMs: v.optional(v.number()) },
   returns: v.object({
     eleves: statutSourceValidator,
     annuaire: statutSourceValidator,
   }),
-  handler: async (ctx) => {
+  handler: async (ctx, args) => {
     await requireTile(ctx, ctx.userId, "licences_cours");
+    if (args.maintenantMs !== undefined && !Number.isFinite(args.maintenantMs)) {
+      throw new ConvexError({ code: "22023", message: "Date de consultation invalide." });
+    }
     const [eleves, annuaire] = await Promise.all([
       ctx.db
         .query("abo_app_config")
@@ -256,20 +385,17 @@ export const getStatutSyncLicencesCours = authenticatedQuery({
         .unique(),
     ]);
 
-    const maintenant = Date.now();
-    const statut = (valeur: string | undefined, ttlMs: number) => {
-      const lastMs = valeur ? Date.parse(valeur) : NaN;
-      const prochaineMs = lastMs + ttlMs;
-      return {
-        lastSyncAt: Number.isFinite(lastMs) ? new Date(lastMs).toISOString() : null,
-        nextSyncAt: Number.isFinite(prochaineMs) && prochaineMs > maintenant
-          ? new Date(prochaineMs).toISOString()
-          : null,
-      };
-    };
     return {
-      eleves: statut(eleves?.valeur, TTL_PAR_SOURCE.eleves),
-      annuaire: statut(annuaire?.valeur, TTL_PAR_SOURCE.annuaire),
+      eleves: calculerStatutSource(
+        eleves?.valeur,
+        TTL_PAR_SOURCE.eleves,
+        args.maintenantMs,
+      ),
+      annuaire: calculerStatutSource(
+        annuaire?.valeur,
+        TTL_PAR_SOURCE.annuaire,
+        args.maintenantMs,
+      ),
     };
   },
 });

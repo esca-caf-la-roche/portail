@@ -18,9 +18,10 @@ import { api, internal } from "../_generated/api";
 import { internalQuery } from "../_generated/server";
 import { requireAboAdmin } from "./auth";
 import { getConfigValeur } from "./config";
+import { MANUAL_SYNC_INTERVAL_MS, MANUAL_SYNC_LOCK_KEYS } from "./syncConstants";
 
-const MANUAL_SYNC_TTL_MS = 5 * 60_000;
-const MANUAL_SYNC_KEY = "last_manual_sync_paiements_abo";
+const MANUAL_SYNC_TTL_MS = MANUAL_SYNC_INTERVAL_MS;
+const MANUAL_SYNC_KEY = MANUAL_SYNC_LOCK_KEYS.helloasso;
 
 // Vocabulaire du suivi interne Abonnements, stocké dans abo_paiements_suivi.
 const STATUTS = ["a_traiter", "traite", "rembourse", "en_attente"] as const;
@@ -339,6 +340,12 @@ export const synchroniserPaiementsAbo = authenticatedAction({
         internal.helloasso.syncHelloAssoLinksInternal,
         { linkIds: [linkId] },
       );
+      if (resultat.errors.length === 0) {
+        await ctx.runMutation(internal.abo.sync.marquerSyncReussie, {
+          source: "helloasso",
+          reussieAt: new Date().toISOString(),
+        });
+      }
       return { statut: "done", retryAt: null, ...resultat };
     } catch (error) {
       await ctx.runMutation(internal.abo.sync.restaurerMarqueur, {
