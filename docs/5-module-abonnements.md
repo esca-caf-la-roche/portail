@@ -105,6 +105,35 @@ et `Bloqué`. Après une évolution de ce champ, une synchronisation complète e
 nécessaire ; les anciennes lignes dont le statut était seulement connu comme
 « non Oui » sont temporairement exclues du compteur plutôt que mal classées.
 
+### Masquage manuel d'un écart
+
+Un gestionnaire qui possède la tuile `abonnements` peut utiliser **Masquer après
+contrôle** lorsqu'une inscription du site ne respecte pas les règles mais que
+l'écart est assumé. Cette action retire seulement la ligne de la vue **À
+traiter**. Dans le détail du compteur admin, elle déplace la ligne de
+**Anomalies à traiter** vers **Masquées manuellement**. Elle ne valide ni la
+personne ou le dossier dans le portail, ni l'inscription sur le site du club ;
+elle ne modifie pas non plus le compteur public, l'occupation utilisée par le
+plafond ou les données synchronisées.
+
+Un motif non vide, limité à 500 caractères, est obligatoire. Tant que l'écart
+existe dans le snapshot courant, la vue **Masquées manuellement** montre ce
+motif et la date du masquage, et permet de choisir **Réafficher dans À traiter**.
+Chaque masquage et chaque réaffichage sont en outre inscrits côté serveur dans
+un journal d'audit avec leur auteur, leur date et le motif d'origine ; l'auteur
+n'est pas affiché dans la vue courante.
+
+L'état de masquage est identifié par la licence canonique et le code précis de
+l'anomalie, et non par l'identifiant temporaire de la ligne synchronisée. Il
+survit donc aux resynchronisations tant que la même licence présente le même
+type d'écart. Si la règle en échec change, le nouveau code d'anomalie apparaît
+à nouveau dans **À traiter** et demande un contrôle distinct. Une anomalie sans
+licence valide ne peut pas être masquée : la source doit d'abord être corrigée,
+puis resynchronisée. L'état de masquage et son journal appartiennent à la
+campagne Abonnements courante, hors saison comptable ; ils sont tous deux
+purgés par la réinitialisation annuelle, comme l'annonce la confirmation du
+reset.
+
 La transition de données suit un déploiement *widen–migrate–narrow* : déployer
 d'abord le schéma compatible avec les booléens historiques, exécuter ensuite
 les migrations internes `migrations:migrateAboAbonnesScrapStatut` et
@@ -405,7 +434,12 @@ déploiement `npx.cmd convex dev` actif.
   PDF reste trouvable dans Drive.
 - [ ] **Compteur/anomalies** : peupler scrap/archive/élèves/validées → total
   affiché sans double comptage, bloqués exclus ; le plafond de validation reste
-  distinct. L'iframe `/#/compteur` affiche les nombres **sans connexion**.
+  distinct. Masquer une anomalie avec son motif, vérifier sa présence dans
+  **Masquées manuellement** après resynchronisation, puis choisir **Réafficher
+  dans À traiter** ;
+  vérifier aussi qu'un nouveau code d'écart réapparaît et que ni l'occupation ni
+  l'iframe `/#/compteur` ne changent. L'iframe affiche les nombres **sans
+  connexion**.
 - [ ] **HelloAsso abo** : configurer le lien → sync remonte les paiements du
   formulaire abo ; statut manuel persistant ; désaccord local↔HA signalé.
 - [ ] **Scraping club** : poser `CLUB_*` → « Synchroniser le site club » remonte

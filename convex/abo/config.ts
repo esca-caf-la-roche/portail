@@ -546,7 +546,7 @@ export const resetSaison = authenticatedMutation({
     // supprimées avant leurs parents (uploads → archives, notifications →
     // fusions) afin de ne laisser aucun état de suivi à la campagne suivante.
     await ctx.scheduler.runAfter(0, internal.abo.config.purgerSuiviCampagne, {
-      etape: "uploads_tests",
+      etape: "acquittements_anomalies",
     });
     await ctx.scheduler.runAfter(0, internal.abo.config.purgerComptesPublics, {});
     await ctx.scheduler.runAfter(0, internal.abo.compteur.rafraichirCompteurPublic, {});
@@ -556,6 +556,8 @@ export const resetSaison = authenticatedMutation({
 });
 
 const etapePurgeSuiviValidator = v.union(
+  v.literal("acquittements_anomalies"),
+  v.literal("journal_anomalies"),
   v.literal("uploads_tests"),
   v.literal("archives_tests"),
   v.literal("imports_reglements"),
@@ -567,6 +569,8 @@ const etapePurgeSuiviValidator = v.union(
 );
 
 type EtapePurgeSuivi =
+  | "acquittements_anomalies"
+  | "journal_anomalies"
   | "uploads_tests"
   | "archives_tests"
   | "imports_reglements"
@@ -577,6 +581,8 @@ type EtapePurgeSuivi =
   | "fusions_licences";
 
 const ETAPES_PURGE_SUIVI: readonly EtapePurgeSuivi[] = [
+  "acquittements_anomalies",
+  "journal_anomalies",
   "uploads_tests",
   "archives_tests",
   "imports_reglements",
@@ -602,6 +608,22 @@ export const purgerSuiviCampagne = internalMutation({
   handler: async (ctx, args) => {
     let traites = 0;
     switch (args.etape) {
+      case "acquittements_anomalies": {
+        const acquittements = await ctx.db
+          .query("abo_anomalies_acquittements")
+          .take(LOT_PURGE_SUIVI_CAMPAGNE);
+        for (const acquittement of acquittements) await ctx.db.delete(acquittement._id);
+        traites = acquittements.length;
+        break;
+      }
+      case "journal_anomalies": {
+        const journal = await ctx.db
+          .query("abo_anomalies_acquittements_journal")
+          .take(LOT_PURGE_SUIVI_CAMPAGNE);
+        for (const entree of journal) await ctx.db.delete(entree._id);
+        traites = journal.length;
+        break;
+      }
       case "uploads_tests": {
         const uploads = await ctx.db.query("abo_test_document_uploads").take(LOT_PURGE_SUIVI_CAMPAGNE);
         for (const upload of uploads) {

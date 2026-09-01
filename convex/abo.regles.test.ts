@@ -2,7 +2,7 @@
 import { convexTest } from "convex-test";
 import rateLimiterTest from "@convex-dev/rate-limiter/test";
 import { describe, expect, test } from "vitest";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
@@ -266,6 +266,131 @@ describe("règles Abonnements : N-1, vague 2, suppression et anomalies", () => {
       controles: { statutDossier: "nouvelle_demande" },
       raison: expect.stringContaining("Règle 2 non respectée"),
     });
+  });
+
+  test("acquitte puis réactive une anomalie sans modifier les compteurs métier", async () => {
+    const t = createTest();
+    const admin = await creerAdmin(t);
+    const utilisateur = await creerUtilisateur(t, "sans-tuile@example.test");
+    const scrapId = await t.run(async (ctx) => ctx.db.insert("abo_abonnes_scrap", {
+      licence: "7480 0000 0021",
+      nom: "Acquittement",
+      prenom: "Manuel",
+      nom_prenom_normalise: "ACQUITTEMENT MANUEL",
+      abonnement_valide: "non",
+    }));
+
+    const avant = await admin.query(api.abo.compteur.vCompteur, {});
+    const ligneAvant = (await admin.query(api.abo.compteur.vAnomalies, {}))[0];
+    expect(ligneAvant).toMatchObject({
+      code_anomalie: "absence_demande",
+      statut: "a_traiter",
+      acquittement: null,
+    });
+    await expect(utilisateur.mutation(api.abo.compteur.acquitterAnomalie, {
+      scrapId,
+      code_anomalie: "absence_demande",
+      justification: "Cas contrôlé manuellement",
+    })).rejects.toThrow("Réservé aux administrateurs");
+
+    const acquittementId = await admin.mutation(api.abo.compteur.acquitterAnomalie, {
+      scrapId,
+      code_anomalie: "absence_demande",
+      justification: "  Cas contrôlé manuellement  ",
+    });
+    await expect(admin.mutation(api.abo.compteur.acquitterAnomalie, {
+      scrapId,
+      code_anomalie: "absence_demande",
+      justification: "Doublon",
+    })).rejects.toThrow("déjà acquittée");
+
+    const [apres, ligneAcquittee] = await Promise.all([
+      admin.query(api.abo.compteur.vCompteur, {}),
+      admin.query(api.abo.compteur.vAnomalies, {}).then((lignes) => lignes[0]),
+    ]);
+    expect(apres).toMatchObject({
+      anomalies: 0,
+      anomalies_brutes: 1,
+      acquittees: 1,
+      total_affiche: avant.total_affiche,
+      occupe: avant.occupe,
+    });
+    expect(ligneAcquittee).toMatchObject({
+      statut: "acquittee",
+      acquittement: {
+        id: acquittementId,
+        justification: "Cas contrôlé manuellement",
+      },
+    });
+
+    await admin.mutation(api.abo.compteur.reactiverAnomalie, { acquittementId });
+    expect(await admin.query(api.abo.compteur.vCompteur, {})).toMatchObject({
+      anomalies: 1,
+      anomalies_brutes: 1,
+      acquittees: 0,
+      total_affiche: avant.total_affiche,
+      occupe: avant.occupe,
+    });
+    const journal = await t.run(async (ctx) =>
+      ctx.db.query("abo_anomalies_acquittements_journal").collect());
+    expect(journal.map((entree) => entree.action)).toEqual(["acquittee", "reactivee"]);
+  });
+
+  test("un nouveau code d'anomalie n'est pas masqué par l'ancien acquittement", async () => {
+    const t = createTest();
+    const admin = await creerAdmin(t);
+    const scrapId = await t.run(async (ctx) => ctx.db.insert("abo_abonnes_scrap", {
+      licence: "748000000022",
+      nom: "Cause",
+      prenom: "Changeante",
+      nom_prenom_normalise: "CAUSE CHANGEANTE",
+      abonnement_valide: "non",
+    }));
+    await admin.mutation(api.abo.compteur.acquitterAnomalie, {
+      scrapId,
+      code_anomalie: "absence_demande",
+      justification: "Cause initiale vérifiée",
+    });
+    await t.run(async (ctx) => ctx.db.patch(scrapId, { abonnement_valide: false }));
+
+    const ligne = (await admin.query(api.abo.compteur.vAnomalies, {}))[0];
+    expect(ligne).toMatchObject({
+      code_anomalie: "statut_inconnu",
+      statut: "a_traiter",
+      acquittement: null,
+    });
+    await expect(admin.mutation(api.abo.compteur.acquitterAnomalie, {
+      scrapId,
+      code_anomalie: "absence_demande",
+      justification: "État devenu obsolète",
+    })).rejects.toThrow("a changé");
+  });
+
+  test("purge l'état et le journal des anomalies par la machine de reset", async () => {
+    const t = createTest();
+    const userId = await t.run(async (ctx) => ctx.db.insert("users", { email: "audit@example.test" }));
+    await t.run(async (ctx) => {
+      await ctx.db.insert("abo_anomalies_acquittements", {
+        licence: "748000000023", code_anomalie: "absence_demande",
+        justification: "À purger", acquittee_le: "2026-08-01T00:00:00.000Z", acquittee_par: userId,
+      });
+      await ctx.db.insert("abo_anomalies_acquittements_journal", {
+        licence: "748000000023", code_anomalie: "absence_demande", action: "acquittee",
+        justification: "À purger", date_action: "2026-08-01T00:00:00.000Z", auteur_id: userId,
+      });
+    });
+
+    await t.mutation(internal.abo.config.purgerSuiviCampagne, {
+      etape: "acquittements_anomalies",
+    });
+    await t.mutation(internal.abo.config.purgerSuiviCampagne, {
+      etape: "journal_anomalies",
+    });
+    const restants = await t.run(async (ctx) => Promise.all([
+      ctx.db.query("abo_anomalies_acquittements").collect(),
+      ctx.db.query("abo_anomalies_acquittements_journal").collect(),
+    ]));
+    expect(restants).toEqual([[], []]);
   });
 
   test("exclut une ancienne valeur false du total et la signale comme inconnue", async () => {

@@ -130,7 +130,7 @@ export default function Configuration() {
         `• Archive les abonnés actuels en N-1 sous « ${s} »\n` +
         "• Conserve l'annuaire des licences\n" +
         "• Vide les suivis de campagne : scrap, élèves, paiements, tests d'autonomie,\n" +
-        "  règlements et fusions\n" +
+        "  règlements, fusions, anomalies masquées et leur journal d'audit de campagne\n" +
         "• Supprime les demandes et les comptes abonnés publics\n" +
         "  (les comptes staff/admin sont conservés)\n" +
         "• Conserve les fichiers Drive des tests et règlements, recherchables dans Drive\n" +
@@ -315,7 +315,8 @@ export default function Configuration() {
         Le lien HelloAsso ne change qu'ici. Cette action <strong>conserve seulement</strong>
         l'archive des abonnés N-1 et l'annuaire des licences. Elle <strong>vide tous les
         suivis de campagne</strong> : scrap, élèves en cours, paiements, archives et
-        réservations de tests d'autonomie, règlements et historique des fusions. Elle
+        réservations de tests d'autonomie, règlements, historique des fusions,
+        anomalies masquées et leur journal d'audit de campagne. Elle
         <strong> supprime</strong> les demandes et comptes abonnés publics (les comptes
         <strong> staff/admin</strong> sont conservés), puis enregistre le <strong>nouveau lien</strong>.
         Les fichiers de tests et règlements restent dans Drive et pourront y être

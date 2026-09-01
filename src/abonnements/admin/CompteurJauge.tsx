@@ -97,7 +97,8 @@ export default function CompteurJauge() {
               <CompteurDetail label="Oui" valeur={details.abonnements_site_valides} />
               <CompteurDetail label="Non" valeur={details.abonnements_site_non_valides_a_suivre} />
               <CompteurDetail label="Bloquées" valeur={details.bloquees} attention />
-              <CompteurDetail label="Anomalies" valeur={details.anomalies} attention />
+              <CompteurDetail label="Anomalies à traiter" valeur={details.anomalies} attention />
+              <CompteurDetail label="Masquées manuellement" valeur={details.acquittees} />
             </dl>
           </div>
           <div className="abo-admin-counter-group">
