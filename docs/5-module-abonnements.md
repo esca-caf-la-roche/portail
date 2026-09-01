@@ -161,17 +161,20 @@ courant de l'annuaire, sans historique annuel accumulé.
 | `IMPORT_SAISON` | Force la saison sportive (sinon déduite ~septembre). | Non |
 | `LICENCES_USER` | Basic Auth de l'export annuaire FFCAM (`export_licence.php`). | Oui pour l'import annuaire |
 | `LICENCES_PASSWORD` | Mot de passe de l'export annuaire. | Oui pour l'import annuaire |
-| `ABO_REGLEMENTS_DRIVE_ID` | Identifiant du Drive partagé contenant les règlements signés. | Oui pour la recherche staff |
+| `ABO_TESTS_DRIVE_ROOT_FOLDER_ID` | Identifiant du dossier racine des tests dans ce Drive. | Oui pour la recherche et le dépôt staff |
+| `ABO_REGLEMENTS_DRIVE_ID` | Identifiant du Drive partagé commun aux tests d'autonomie et aux règlements signés. | Oui pour les recherches et dépôts Drive staff |
 | `ABO_REGLEMENTS_DRIVE_ROOT_FOLDER_ID` | Identifiant du dossier racine des règlements dans ce Drive. | Oui pour la recherche staff |
 | `ABO_REGLEMENTS_WEBHOOK_URL` | URL serveur du webhook n8n qui renvoie les règlements déjà déposés dans Drive. | Oui pour la synchronisation des signatures |
 | `ABO_REGLEMENTS_WEBHOOK_USER` | Utilisateur Basic Auth du webhook n8n. | Oui pour la synchronisation des signatures |
 | `ABO_REGLEMENTS_WEBHOOK_PASSWORD` | Mot de passe Basic Auth du webhook n8n. | Oui pour la synchronisation des signatures |
 
 Le webhook n8n prend en charge Gmail, le PDF signé et son dépôt Drive. Convex
-ne reçoit que le nom, le prénom et l'identifiant Drive. La recherche historique
-dans Drive réutilise `GOOGLE_DRIVE_SERVICE_ACCOUNT_EMAIL` et
-`GOOGLE_DRIVE_PRIVATE_KEY` ; le compte de service doit avoir accès au Drive et
-au dossier racine configurés.
+ne reçoit que le nom, le prénom et l'identifiant Drive. L'onglet **Historique
+GDrive** interroge en parallèle les racines des tests et des règlements avec un
+seul formulaire ; une source indisponible n'empêche pas d'afficher les résultats
+de l'autre. Les deux recherches réutilisent
+`GOOGLE_DRIVE_SERVICE_ACCOUNT_EMAIL` et `GOOGLE_DRIVE_PRIVATE_KEY`. Le compte de
+service doit pouvoir lire les deux racines et écrire dans celle des tests.
 
 Le **lien HelloAsso du formulaire abonnements** n'est PAS une variable
 d'environnement : il se configure dans l'UI admin (*Configuration*) et est stocké
@@ -296,8 +299,9 @@ stockage PDF dans Convex, ni cron, ni verrou temporel.
 Le nouveau fichier Drive apparaît dans **Nouveaux règlements à rapprocher**. Le portail
 propose des licences exactes ou proches, mais seul le choix confirmé par un
 membre du staff crée la liaison définitive. À cette confirmation, le nom
-officiel de la licence confirme l'archive métier. La recherche manuelle dans Drive
-reste disponible comme repli pour un document historique déjà classé.
+officiel de la licence confirme l'archive métier. La recherche manuelle reste
+disponible dans l'onglet **Historique GDrive** pour un document déjà classé ; le
+règlement trouvé peut ensuite être lié à une licence depuis ce même écran.
 La recherche approchée ne lit l'annuaire qu'après un clic sur le règlement. Si
 les propositions ne suffisent pas, le staff peut rechercher avec un nom, un
 prénom ou un fragment. Une erreur HTTP ou JSON du webhook est affichée comme
@@ -392,8 +396,9 @@ déploiement `npx.cmd convex dev` actif.
   rendu après réouverture et le cas d'une licence absente.
 - [ ] **Règlement signé** : ouvrir DocuSeal depuis le suivi public et vérifier
   que l'étape reste en attente avant intervention du staff. Dans l'onglet
-  Règlements, rechercher manuellement le PDF Drive, choisir la licence après
-  recherche nom/prénom, confirmer la liaison, ouvrir le fichier depuis la file
+  Historique GDrive, rechercher simultanément tests et règlements, choisir le
+  PDF signé puis la licence après recherche nom/prénom, confirmer la liaison,
+  ouvrir le fichier depuis la file
   À enregistrer puis le marquer enregistré sur le site. Vérifier les doublons
   de fichier et de licence/version, le refus sans tuile `abonnements`, ainsi que
   la purge des suivis Convex après reset de campagne, tout en vérifiant que le

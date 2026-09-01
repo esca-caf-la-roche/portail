@@ -104,18 +104,24 @@ administrateur du domaine. Les variables et contrôles Google sont détaillés d
 L'archive des tests d'autonomie réutilise le compte de service Google Drive
 existant (`GOOGLE_DRIVE_SERVICE_ACCOUNT_EMAIL` et `GOOGLE_DRIVE_PRIVATE_KEY`).
 Avant son premier essai sur un déploiement, configurer aussi les identifiants
-non secrets du Drive partagé : `ABO_TESTS_DRIVE_ID` et
-`ABO_TESTS_DRIVE_ROOT_FOLDER_ID`. Le compte de service doit avoir accès en
+non secrets : le Drive partagé commun `ABO_REGLEMENTS_DRIVE_ID` et le dossier
+des tests `ABO_TESTS_DRIVE_ROOT_FOLDER_ID`. Le compte de service doit avoir accès en
 lecture et écriture au répertoire historique des tests ; ne pas remplacer ce
 répertoire ni changer son classement alphabétique.
 
 Le suivi des règlements signés réutilise les mêmes credentials Google Drive
 pour la recherche historique.
-Configurer aussi `ABO_REGLEMENTS_DRIVE_ID` et
-`ABO_REGLEMENTS_DRIVE_ROOT_FOLDER_ID`, puis vérifier que le compte de service
+Configurer le dossier `ABO_REGLEMENTS_DRIVE_ROOT_FOLDER_ID` sous le Drive
+partagé commun `ABO_REGLEMENTS_DRIVE_ID`, puis vérifier que le compte de service
 peut lire dans le dossier racine. Configurer aussi
 `ABO_REGLEMENTS_WEBHOOK_URL`, `ABO_REGLEMENTS_WEBHOOK_USER` et
 `ABO_REGLEMENTS_WEBHOOK_PASSWORD`. Ces secrets restent côté serveur Convex.
+
+Dans l'administration Abonnements, l'onglet **Historique GDrive** déclenche
+manuellement les recherches Tests et Règlements en parallèle. Les identifiants
+des deux dossiers racines restent configurés séparément sous le même Drive
+partagé ; une erreur sur l'une des racines n'annule pas les
+résultats de l'autre.
 
 La synchronisation est déclenchée à l'ouverture effective de l'onglet
 **Règlements** et à chaque clic sur **Synchroniser les règlements**. Convex

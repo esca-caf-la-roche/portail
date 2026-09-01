@@ -10,8 +10,9 @@ import Paiements from "./Paiements";
 import Configuration from "./Configuration";
 import Messages from "./Messages";
 import Reglements from "./Reglements";
+import HistoriqueDrive from "./HistoriqueDrive";
 
-type Vue = "dossiers" | "messages" | "anomalies" | "licences" | "tests" | "reglements" | "paiements" | "config";
+type Vue = "dossiers" | "messages" | "anomalies" | "licences" | "tests" | "reglements" | "historique-drive" | "paiements" | "config";
 
 const TABS: { id: Vue; label: string }[] = [
   { id: "dossiers", label: "Dossiers" },
@@ -21,6 +22,7 @@ const TABS: { id: Vue; label: string }[] = [
   { id: "licences", label: "Licences" },
   { id: "tests", label: "Test Autonomie" },
   { id: "reglements", label: "Règlements" },
+  { id: "historique-drive", label: "Historique GDrive" },
   { id: "config", label: "Configuration" },
 ];
 
@@ -117,6 +119,8 @@ export default function AboAdmin() {
           <Tests licenceInitiale={licenceTest} />
         ) : vue === "reglements" ? (
           <Reglements />
+        ) : vue === "historique-drive" ? (
+          <HistoriqueDrive />
         ) : vue === "anomalies" ? (
           <Anomalies />
         ) : vue === "paiements" ? (
