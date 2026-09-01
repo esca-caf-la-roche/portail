@@ -7,7 +7,7 @@ if (!nom) {
 
 const email = process.env.GOOGLE_DRIVE_SERVICE_ACCOUNT_EMAIL;
 const privateKey = process.env.GOOGLE_DRIVE_PRIVATE_KEY?.replace(/\\n/g, "\n");
-const driveId = process.env.ABO_TESTS_DRIVE_ID;
+const driveId = process.env.ABO_REGLEMENTS_DRIVE_ID;
 const rootFolderId = process.env.ABO_TESTS_DRIVE_ROOT_FOLDER_ID;
 if (!email || !privateKey || !driveId || !rootFolderId) {
   throw new Error("Les variables Drive de test ne sont pas toutes définies.");

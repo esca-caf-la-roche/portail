@@ -199,14 +199,6 @@ function ArchiveTests({ licenceInitiale }: { licenceInitiale: string | null }) {
       )}
       </section>
 
-      <section className="abo-admin-subsection abo-admin-tests-step">
-        <h4 className="abo-admin-subheading">Retrouver un ancien test dans Drive</h4>
-        <p className="abo-admin-meta">
-          Recherche par nom, prénom ou fragment, selon le nom des fichiers Drive.
-        </p>
-        <RechercheDrive />
-      </section>
-
       <section className="abo-admin-tests-step">
       <h4 className="abo-admin-subheading">Tests déposés sur Drive</h4>
       <p className="abo-admin-meta">

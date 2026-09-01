@@ -16,6 +16,8 @@ import {
   verifierAccesRacine,
 } from "./driveArchives";
 
+const MAX_LONGUEUR_NOM = 100;
+
 export const envoyerVersDrive = authenticatedAction({
   args: { archiveId: v.id("abo_tests_autonomie_archive"), uploadToken: v.string(), storageId: v.id("_storage") },
   returns: v.object({
@@ -78,7 +80,7 @@ export const envoyerVersDrive = authenticatedAction({
     }
 
     const { drive, driveId, rootFolderId } = configurationDrive({
-      driveId: process.env.ABO_TESTS_DRIVE_ID,
+      driveId: process.env.ABO_REGLEMENTS_DRIVE_ID,
       rootFolderId: process.env.ABO_TESTS_DRIVE_ROOT_FOLDER_ID,
       scope: "ecriture",
       messageConfiguration:
@@ -154,8 +156,14 @@ export const rechercherDansDrive = authenticatedAction({
     const nom = args.nom.trim();
     const prenom = args.prenom.trim();
     if (!nom && !prenom) return [];
+    if (nom.length > MAX_LONGUEUR_NOM || prenom.length > MAX_LONGUEUR_NOM) {
+      throw new ConvexError({
+        code: "TEST_RECHERCHE_INVALIDE",
+        message: "Le nom et le prénom doivent contenir au maximum 100 caractères.",
+      });
+    }
     const { drive, driveId, rootFolderId } = configurationDrive({
-      driveId: process.env.ABO_TESTS_DRIVE_ID,
+      driveId: process.env.ABO_REGLEMENTS_DRIVE_ID,
       rootFolderId: process.env.ABO_TESTS_DRIVE_ROOT_FOLDER_ID,
       scope: "lecture",
       messageConfiguration:
