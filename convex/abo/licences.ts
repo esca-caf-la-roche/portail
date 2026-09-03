@@ -21,6 +21,7 @@ import { api, internal } from "../_generated/api";
 import { requireAboAdmin } from "./auth";
 import { canoniserLicence, normaliserNomPrenom, similarite } from "./lib";
 import { champsModifies } from "../dbUtils";
+import { ANNUAIRE_ATTEMPT_KEY } from "./syncConstants";
 
 // Annuaire des licences du club (export JSON protégé par Basic Auth DÉDIÉE).
 const URL_ANNUAIRE =
@@ -29,21 +30,29 @@ const URL_ANNUAIRE =
 // Seuil de similarité trigram (défaut de pg_trgm : 0.3) pour retenir un candidat.
 const SEUIL_TRGM = 0.3;
 
-async function assertGenerationSynchronisation(ctx: MutationCtx, generation: number | undefined) {
+async function assertGenerationSynchronisation(
+  ctx: MutationCtx, generation: number | undefined, tentativeAt?: string,
+) {
+  // Un téléchargement lent du créneau précédent ne doit pas écraser le suivant.
+  if (tentativeAt !== undefined) {
+    const tentative = await ctx.db.query("abo_app_config")
+      .withIndex("by_cle", (q) => q.eq("cle", ANNUAIRE_ATTEMPT_KEY)).unique();
+    if (tentative?.valeur !== tentativeAt) {
+      throw new ConvexError("Synchronisation annuaire remplacée par un créneau plus récent.");
+    }
+  }
   if (generation === undefined) return;
   const [active, currentGeneration] = await Promise.all([
     ctx.db.query("abo_app_config").withIndex("by_cle", (q) => q.eq("cle", "synchronisation_externe_active")).first(),
     ctx.db.query("abo_app_config").withIndex("by_cle", (q) => q.eq("cle", "synchronisation_externe_generation")).first(),
   ]);
   if (active?.valeur === "false" || (Number(currentGeneration?.valeur) || 0) !== generation) {
-    throw new Error("Synchronisation annulée : la campagne Abonnements a changé.");
+    throw new ConvexError("Synchronisation annulée : la campagne Abonnements a changé.");
   }
 }
 // Le club dépasse 2 000 licenciés : cette borne laisse une marge explicite
 // tout en protégeant les imports et les parcours complets accidentels.
 const MAX_ANNUAIRE_LICENCES = 5_000;
-const ANNUAIRE_SYNC_KEY = "last_sync_annuaire";
-const ANNUAIRE_TTL_MS = 12 * 60 * 60_000;
 const MAX_CANDIDATS = 5;
 
 // ── getLicencesAValider : personnes sans licence + candidats fuzzy ───
@@ -341,6 +350,7 @@ export const fusionnerPersonnesLicence = authenticatedMutation({
 export const upsertLicencesBatch = internalMutation({
   args: {
     generation: v.optional(v.number()),
+    tentativeAt: v.optional(v.string()),
     lignes: v.array(
       v.object({
         licence: v.string(),
@@ -350,7 +360,7 @@ export const upsertLicencesBatch = internalMutation({
     ),
   },
   handler: async (ctx, args) => {
-    await assertGenerationSynchronisation(ctx, args.generation);
+    await assertGenerationSynchronisation(ctx, args.generation, args.tentativeAt);
     const maintenant = new Date().toISOString();
     let upsertees = 0;
     for (const ligne of args.lignes) {
@@ -389,10 +399,10 @@ export const upsertLicencesBatch = internalMutation({
 // L'annuaire est une référence externe : cette purge ne modifie ni les
 // licences déjà attribuées aux personnes ni leurs dossiers portail.
 export const supprimerLicencesAbsentes = internalMutation({
-  args: { licences: v.array(v.string()), generation: v.optional(v.number()) },
+  args: { licences: v.array(v.string()), generation: v.optional(v.number()), tentativeAt: v.optional(v.string()) },
   returns: v.number(),
   handler: async (ctx, args) => {
-    await assertGenerationSynchronisation(ctx, args.generation);
+    await assertGenerationSynchronisation(ctx, args.generation, args.tentativeAt);
     if (args.licences.length === 0) {
       throw new Error("Refus de purger l'annuaire sans licence reçue.");
     }
@@ -433,66 +443,42 @@ interface LigneAnnuaire {
   prenom?: string;
 }
 
+const resultatImportValidator = v.object({
+  statut: v.union(v.literal("done"), v.literal("skipped"), v.literal("desactive")),
+  retryAt: v.union(v.string(), v.null()),
+  upsertees: v.number(), recus: v.number(), supprimees: v.number(),
+});
+type ResultatImport = {
+  statut: "done" | "skipped" | "desactive";
+  retryAt: string | null;
+  upsertees: number; recus: number; supprimees: number;
+};
+
 export const importerAnnuaireLicences = authenticatedAction({
   args: {},
-  returns: v.object({
-    statut: v.union(v.literal("done"), v.literal("skipped"), v.literal("desactive")),
-    retryAt: v.union(v.string(), v.null()),
-    upsertees: v.number(),
-    recus: v.number(),
-    supprimees: v.number(),
-  }),
-  handler: async (ctx): Promise<{
-    statut: "done" | "skipped" | "desactive";
-    retryAt: string | null;
-    upsertees: number;
-    recus: number;
-    supprimees: number;
-  }> => {
+  returns: resultatImportValidator,
+  handler: async (ctx): Promise<ResultatImport> => {
     const me = await ctx.runQuery(api.abo.identity.me, {});
     if (!me || me.aboRole !== "admin") {
-      throw new Error("Réservé aux administrateurs.");
+      throw new ConvexError("Réservé aux administrateurs.");
     }
-    const etat = await ctx.runQuery(internal.abo.config.etatSynchronisationExterneInterne, {});
-    if (!etat.active) {
-      return { statut: "desactive", retryAt: null, upsertees: 0, recus: 0, supprimees: 0 };
-    }
-    const reservation = await ctx.runMutation(internal.abo.sync.reserverSync, {
-      cle: ANNUAIRE_SYNC_KEY,
-      ttlMs: ANNUAIRE_TTL_MS,
-    });
-    if (!reservation.proceed) {
-      const lastMs = reservation.precedent ? Date.parse(reservation.precedent) : NaN;
-      return {
-        statut: "skipped",
-        retryAt: Number.isFinite(lastMs) ? new Date(lastMs + ANNUAIRE_TTL_MS).toISOString() : null,
-        upsertees: 0,
-        recus: 0,
-        supprimees: 0,
-      };
-    }
-    try {
-      const resultat: { upsertees: number; recus: number; supprimees: number } =
-        await ctx.runAction(internal.abo.licences.importerAnnuaireLicencesInternal, { generation: etat.generation });
-      return { statut: "done", retryAt: null, ...resultat };
-    } catch (error) {
-      await ctx.runMutation(internal.abo.sync.restaurerMarqueur, {
-        cle: ANNUAIRE_SYNC_KEY,
-        valeur: reservation.precedent,
-      });
-      throw error;
-    }
+    return await ctx.runAction(internal.abo.licences.importerAnnuaireLicencesInternal, {});
   },
 });
 
-// ── importerAnnuaireLicencesInternal : logique partagée (cron + action admin) ──
+// ── importerAnnuaireLicencesInternal : import à la demande, jamais planifié ──
 export const importerAnnuaireLicencesInternal = internalAction({
   args: { generation: v.optional(v.number()) },
-  handler: async (ctx, args): Promise<{ upsertees: number; recus: number; supprimees: number }> => {
+  returns: resultatImportValidator,
+  handler: async (ctx, args): Promise<ResultatImport> => {
+    const reservation = await ctx.runMutation(internal.abo.sync.reserverSyncAnnuaire, args);
+    if (reservation.statut !== "reserved") {
+      return { statut: reservation.statut, retryAt: reservation.retryAt, upsertees: 0, recus: 0, supprimees: 0 };
+    }
     const user = process.env.LICENCES_USER;
     const pass = process.env.LICENCES_PASSWORD;
     if (!user || !pass) {
-      throw new Error(
+      throw new ConvexError(
         "Annuaire non configuré (LICENCES_USER / LICENCES_PASSWORD manquants).",
       );
     }
@@ -500,11 +486,11 @@ export const importerAnnuaireLicencesInternal = internalAction({
     const auth = "Basic " + btoa(`${user}:${pass}`);
     const res = await fetch(URL_ANNUAIRE, { headers: { Authorization: auth } });
     if (!res.ok) {
-      throw new Error(`Téléchargement de l'annuaire : HTTP ${res.status}`);
+      throw new ConvexError(`Téléchargement de l'annuaire : HTTP ${res.status}`);
     }
     const data = (await res.json()) as unknown;
     if (!Array.isArray(data)) {
-      throw new Error("Réponse inattendue de l'annuaire (tableau JSON attendu).");
+      throw new ConvexError("Réponse inattendue de l'annuaire (tableau JSON attendu).");
     }
 
     // Déduplication sur la licence canonique (clé d'upsert).
@@ -523,12 +509,12 @@ export const importerAnnuaireLicencesInternal = internalAction({
     }
     const lignes = [...parLicence.values()];
     if (lignes.length === 0) {
-      throw new Error(
+      throw new ConvexError(
         "0 licence exploitable — authentification KO ou format de l'annuaire modifié.",
       );
     }
     if (lignes.length > MAX_ANNUAIRE_LICENCES) {
-      throw new Error(
+      throw new ConvexError(
         `L'annuaire dépasse la limite de ${MAX_ANNUAIRE_LICENCES} licences ; aucune donnée n'a été modifiée.`,
       );
     }
@@ -539,13 +525,17 @@ export const importerAnnuaireLicencesInternal = internalAction({
       const lot = lignes.slice(i, i + 200);
       const n: number = await ctx.runMutation(
         internal.abo.licences.upsertLicencesBatch,
-        { lignes: lot, generation: args.generation },
+        { lignes: lot, generation: reservation.generation, tentativeAt: reservation.tentativeAt },
       );
       upsertees += n;
     }
     const supprimees: number = await ctx.runMutation(internal.abo.licences.supprimerLicencesAbsentes, {
-      licences: lignes.map((ligne) => ligne.licence), generation: args.generation,
+      licences: lignes.map((ligne) => ligne.licence), generation: reservation.generation,
+      tentativeAt: reservation.tentativeAt,
     });
-    return { upsertees, recus: data.length, supprimees };
+    await ctx.runMutation(internal.abo.sync.marquerSyncReussie, {
+      source: "annuaire", reussieAt: new Date().toISOString(), annuaireTentativeAt: reservation.tentativeAt,
+    });
+    return { statut: "done", retryAt: null, upsertees, recus: data.length, supprimees };
   },
 });

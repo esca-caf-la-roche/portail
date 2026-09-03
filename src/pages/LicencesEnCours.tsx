@@ -65,6 +65,7 @@ function formaterDateHeure(value: string | number | null): string {
   return new Intl.DateTimeFormat("fr-FR", {
     dateStyle: "short",
     timeStyle: "short",
+    timeZone: "Europe/Paris",
   }).format(date);
 }
 
@@ -422,15 +423,15 @@ export default function LicencesEnCours() {
         </p>
         <p className={`licences-cours-sync-resume licences-cours-sync-resume--${syncStatut}`} role="status">
           {syncStatut === "en_cours" && "Synchronisation avec le site club en cours…"}
-          {syncStatut === "ok" && "Synchronisation vérifiée. Les délais propres à chaque source sont indiqués ci-dessous."}
+          {syncStatut === "ok" && "Synchronisation vérifiée. Les disponibilités propres à chaque source sont indiquées ci-dessous."}
           {syncStatut === "erreur" && `Synchronisation échouée : ${syncMsg} — données potentiellement obsolètes.`}
         </p>
       </header>
 
-      <section className="licences-cours-syncs" aria-label="État des synchronisations">
+      <section className="licences-cours-syncs" aria-label="État des synchronisations, heures de Paris">
         {([
           { cle: "eleves", titre: "Élèves du site club", delai: "1 heure" },
-          { cle: "annuaire", titre: "Annuaire des licences", delai: "12 heures" },
+          { cle: "annuaire", titre: "Annuaire des licences", delai: "À partir de 7 h et 9 h (heure de Paris), à la consultation. 2 tentatives maximum par jour, même en cas d’échec." },
         ] as const).map((source) => {
           const statut = statutSynchronisation?.[source.cle];
           return (
@@ -441,7 +442,7 @@ export default function LicencesEnCours() {
               ) : (
                 <dl>
                   <div>
-                    <dt>Dernière synchronisation</dt>
+                    <dt>{source.cle === "annuaire" ? "Dernière synchronisation réussie" : "Dernière synchronisation"}</dt>
                     <dd>{statut?.lastSyncAt ? formaterDateHeure(statut.lastSyncAt) : "Jamais synchronisée"}</dd>
                   </div>
                   <div>
@@ -450,7 +451,7 @@ export default function LicencesEnCours() {
                   </div>
                 </dl>
               )}
-              <p className="licences-cours-sync-delai">Délai minimal : {source.delai}</p>
+              <p className="licences-cours-sync-delai">{source.cle === "eleves" ? "Délai minimal : " : ""}{source.delai}</p>
             </article>
           );
         })}

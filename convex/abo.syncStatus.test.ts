@@ -71,10 +71,10 @@ describe("état des synchronisations Abonnements", () => {
     expect(statut.annuaire).toMatchObject({
       active: false,
       lastSyncAt: derniereSync,
-      minimumIntervalMs: 12 * 60 * 60_000,
-      nextSyncAt: "2026-09-01T20:00:00.000Z",
-      manualIntervalMs: 12 * 60 * 60_000,
-      manualNextSyncAt: "2026-09-01T20:00:00.000Z",
+      minimumIntervalMs: 0,
+      nextSyncAt: "2026-09-02T05:00:00.000Z",
+      manualIntervalMs: 0,
+      manualNextSyncAt: "2026-09-02T05:00:00.000Z",
     });
     expect(statut.eleves).toMatchObject({
       active: false,

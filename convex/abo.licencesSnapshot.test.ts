@@ -37,15 +37,4 @@ describe("snapshot de l'annuaire des licences", () => {
     expect(await t.run(async (ctx) => await ctx.db.get(existante))).not.toBeNull();
   });
 
-  test("le verrou partagé annuaire bloque une seconde synchronisation avant 12 heures", async () => {
-    const t = convexTest(schema, modules);
-    const premiere = await t.mutation(internal.abo.sync.reserverSync, {
-      cle: "last_sync_annuaire", ttlMs: 12 * 60 * 60_000,
-    });
-    const seconde = await t.mutation(internal.abo.sync.reserverSync, {
-      cle: "last_sync_annuaire", ttlMs: 12 * 60 * 60_000,
-    });
-    expect(premiere.proceed).toBe(true);
-    expect(seconde.proceed).toBe(false);
-  });
 });

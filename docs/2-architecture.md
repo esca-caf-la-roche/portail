@@ -189,9 +189,11 @@ presse-papiers, puis les coller dans l'outil de son choix. Aucun contenu de mail
 n'est généré et aucun email n'est envoyé par Convex depuis cette page.
 
 Son actualisation traite le snapshot des élèves du site club comme source de
-vérité, avant l'annuaire des licences. Les deux sources conservent des délais
-distincts, affichés dans la page : une heure pour les élèves et douze heures pour
-l'annuaire. Le staff peut marquer temporairement une personne « traitée » après
+vérité, avant l'annuaire des licences. La page affiche un délai d'une heure pour
+les élèves et les créneaux de 7 h et 9 h, heure de Paris, pour l'annuaire.
+L'annuaire est limité à une tentative par créneau, uniquement à la demande
+(voir [Synchronisations à la demande](5-module-abonnements.md#synchronisations-à-la-demande-convexabosyncts)).
+Le staff peut marquer temporairement une personne « traitée » après
 avoir saisi sa licence sur le site club ; elle reste visible mais sort des
 sélections de relance jusqu'à ce que la synchronisation confirme la licence. Ce
 suivi est hors saison comptable et une licence réellement remontée par le site

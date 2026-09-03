@@ -214,6 +214,18 @@ si l'ordre des destinataires change.
 
 ### Scénarios ciblés — Licences élèves en cours
 
+Les tests `convex/abo.annuaireSync.test.ts` couvrent le calendrier annuaire
+7 h / 9 h en heure de Paris, les changements d'heure, la réservation partagée
+entre utilisateurs et boutons, l'absence d'appel avant 7 h ou pendant une pause,
+le plafond de tentatives malgré un échec et la date du dernier succès.
+Ils vérifient aussi qu'un import ancien ne peut écraser celui du créneau suivant.
+Les tests `convex/abo.syncStatus.test.ts` vérifient les disponibilités affichées ;
+`convex/abo.config.test.ts` couvre la conservation des marqueurs lors d'un reset.
+
+```bash
+npm test -- convex/abo.annuaireSync.test.ts convex/abo.syncStatus.test.ts convex/abo.licencesSnapshot.test.ts convex/abo.config.test.ts
+```
+
 1. ouvrir `/licences-cours` un lundi et vérifier l'ordre : hors tolérance de
    septembre en premier, puis lundi, mardi, etc., puis cours et élèves ;
 2. cliquer sur l'action d'un élève et vérifier que son adresse unique est copiée

@@ -38,11 +38,12 @@ type ResultatsSync = Record<SourceId, ResultatSync>;
 const FORMAT_DATE = new Intl.DateTimeFormat("fr-FR", {
   dateStyle: "short",
   timeStyle: "short",
+  timeZone: "Europe/Paris",
 });
 
 const LIBELLES_RESULTAT: Record<ResultatSync, string> = {
   done: "Mise à jour réussie",
-  skipped: "Délai automatique en cours",
+  skipped: "Aucun appel disponible pour le moment",
   desactive: "Désactivée",
   erreur: "Échec",
 };
@@ -81,7 +82,7 @@ function resumerResultats(resultats: ResultatsSync) {
     return `Vérification terminée avec un succès partiel : ${reussites} source${reussites > 1 ? "s" : ""} mise${reussites > 1 ? "s" : ""} à jour, ${echecs} en échec et ${ignores} sans changement.`;
   }
   if (reussites === 0) {
-    return "Vérification terminée : toutes les sources sont déjà à jour ou désactivées.";
+    return "Vérification terminée : aucune source disponible pour un nouvel appel ou sources désactivées.";
   }
   return `Vérification terminée : ${reussites} source${reussites > 1 ? "s ont" : " a"} été mise${reussites > 1 ? "s" : ""} à jour.`;
 }
@@ -147,8 +148,8 @@ export default function SyncStatusPanel() {
           <h2 id="abo-sync-panel-title">État des synchronisations</h2>
           <p className="abo-admin-sync-panel-intro">
             La vérification se lance automatiquement à l’ouverture. Chaque source n’est mise à jour
-            que lorsque son délai minimal est écoulé. Le bouton unifié respecte ces délais. Certains
-            onglets proposent aussi leur propre actualisation manuelle, avec un délai distinct.
+            que lorsqu’elle est disponible. Pour l’annuaire, les créneaux s’ouvrent à 7 h et 9 h,
+            heure de Paris. Sans consultation, aucun appel à l’annuaire n’est lancé.
           </p>
         </div>
         <button
@@ -229,7 +230,7 @@ export default function SyncStatusPanel() {
                       )}
                     </div>
                     <div>
-                      <dt>Prochaine vérification automatique</dt>
+                      <dt>Disponible à la prochaine consultation</dt>
                       <dd>
                         {!etat.active ? (
                           <span className="abo-admin-sync-panel-state is-disabled">
@@ -247,8 +248,10 @@ export default function SyncStatusPanel() {
                       </dd>
                     </div>
                     <div>
-                      <dt>Délai minimal automatique</dt>
-                      <dd>{formaterDuree(etat.minimumIntervalMs)}</dd>
+                      <dt>{source.id === "annuaire" ? "Créneaux quotidiens" : "Délai minimal automatique"}</dt>
+                      <dd>{source.id === "annuaire"
+                        ? "À partir de 7 h et 9 h · heure de Paris"
+                        : formaterDuree(etat.minimumIntervalMs)}</dd>
                     </div>
                   </dl>
 
@@ -271,9 +274,11 @@ export default function SyncStatusPanel() {
                         </dd>
                       </div>
                       <div>
-                        <dt>Délai manuel</dt>
+                        <dt>{source.id === "annuaire" ? "Limite partagée" : "Délai manuel"}</dt>
                         <dd>
-                          {etat.manualIntervalMs === null
+                          {source.id === "annuaire"
+                            ? "Mêmes créneaux · 2 tentatives maximum par jour, même en cas d’échec"
+                            : etat.manualIntervalMs === null
                             ? "Non proposé"
                             : formaterDuree(etat.manualIntervalMs)}
                         </dd>
@@ -296,9 +301,9 @@ export default function SyncStatusPanel() {
       <p className="abo-admin-sync-panel-note" id="abo-sync-panel-button-note">
         {!enCours && statut !== undefined && !sourceDisponible
           ? "Aucune source n’est disponible pour l’actualisation automatique actuellement. "
-          : "Le bouton actualise uniquement les sources dont le délai automatique est écoulé. "}
-        Les actualisations manuelles proposées dans certains onglets conservent leurs propres
-        délais.
+          : "Le bouton actualise uniquement les sources disponibles. "}
+        Pour l’annuaire, une première consultation après 9 h lance un seul appel, sans rattrapage.
+        Les autres sources conservent leurs propres délais. Toutes les heures affichées sont celles de Paris.
       </p>
     </section>
   );

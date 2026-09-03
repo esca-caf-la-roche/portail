@@ -301,6 +301,7 @@ describe("autorisation du reset annuel Abonnements", () => {
         "last_sync_eleves",
         "last_manual_sync_paiements_abo",
         "last_sync_annuaire",
+        "last_attempt_sync_annuaire",
       ]) {
         await ctx.db.insert("abo_app_config", {
           cle,
@@ -360,6 +361,7 @@ describe("autorisation du reset annuel Abonnements", () => {
         eleves: await lire("last_sync_eleves"),
         verrouPaiements: await lire("last_manual_sync_paiements_abo"),
         annuaire: await lire("last_sync_annuaire"),
+        tentativeAnnuaire: await lire("last_attempt_sync_annuaire"),
       };
     });
     expect(marqueursSync).toMatchObject({
@@ -368,6 +370,7 @@ describe("autorisation du reset annuel Abonnements", () => {
       eleves: null,
       verrouPaiements: null,
       annuaire: { valeur: "2026-08-08T00:00:00.000Z" },
+      tentativeAnnuaire: { valeur: "2026-08-08T00:00:00.000Z" },
     });
   });
 
