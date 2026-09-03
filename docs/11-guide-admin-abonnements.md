@@ -21,17 +21,20 @@ disponibilité des fenêtres automatique et manuelle.
 
 La vérification automatique démarre à l'ouverture de l'administration. Le
 bouton **Actualiser les sources disponibles** ne relance que les sources dont
-le délai automatique est écoulé. Les relances manuelles gardent leur propre
+la synchronisation est disponible. Les relances manuelles gardent leur propre
 fenêtre et restent placées dans l'onglet métier concerné : HelloAsso dans
 **Paiements**, le site du club dans **Dossiers**, l'annuaire dans **Licences** ;
 les élèves sont inclus dans le bouton du site du club. L'encart indique les
-délais et l'heure exacte de la prochaine disponibilité de chaque action.
+délais et l'heure exacte de la prochaine disponibilité de chaque action, en
+heure de Paris. L'annuaire utilise les mêmes créneaux de 7 h et 9 h pour les
+vérifications automatiques et le bouton manuel.
 
 Après un changement de campagne, les sources concernées sont indiquées comme
 **suspendues** jusqu'à leur réactivation dans **Configuration**. Le reset efface
 les marqueurs de synchronisation propres à la campagne afin de permettre un
 premier import immédiat après cette réactivation ; l'annuaire des licences et
-son marqueur sont conservés, car ce cache est transversal aux campagnes.
+ses marqueurs de tentative et de réussite sont conservés, car ce cache est
+transversal aux campagnes.
 
 Les règlements et scans stockés dans **Drive** sont hors du périmètre de cet
 encart : leur synchronisation et leur suivi restent dans les onglets dédiés.
@@ -279,9 +282,13 @@ sont résolues automatiquement. Les cas restants exigent un arbitrage humain.
 ### Procédure conseillée
 
 1. Cliquer **Synchroniser l'annuaire des licences** si l'annuaire peut avoir
-   changé ou si c'est le début de journée de traitement. L'import est limité à
-   deux passages sur 24 heures : le bouton indique l'heure de disponibilité si
-   l'annuaire a déjà été actualisé au cours des 12 dernières heures.
+   changé ou si c'est le début de journée de traitement. Les créneaux s'ouvrent
+   à **7 h** puis **9 h**, heure de Paris, avec une seule tentative par créneau,
+   même en cas d'échec. Le bouton partage cette limite avec les consultations
+   des pages : au maximum deux appels par jour. Avant 7 h, attendre le premier
+   créneau. Si personne ne consulte avant 9 h, un seul appel suffit lors de la
+   première visite ; sans visite, aucun appel n'est lancé. Le bouton indique
+   la prochaine disponibilité lorsqu'un nouvel appel n'est pas autorisé.
 2. Cliquer **Relancer la résolution automatique** : cela peut résoudre les
    nouveaux cas exacts.
 3. Pour chaque personne restante, examiner les candidats proposés et leur

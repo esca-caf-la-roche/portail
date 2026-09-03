@@ -69,11 +69,11 @@ export default function Licences() {
         r.statut === "desactive"
           ? "Synchronisation de l'annuaire en pause pour la nouvelle saison. Réactivez-la dans l'onglet Configuration lorsque l'annuaire est prêt."
           : r.statut === "skipped"
-          ? `Annuaire déjà actualisé. Nouvelle synchronisation possible après ${r.retryAt ? new Date(r.retryAt).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" }) : "12 heures après la dernière synchronisation"}.`
+          ? `Aucun appel disponible pour le moment. Nouvelle synchronisation possible ${r.retryAt ? `le ${new Date(r.retryAt).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short", timeZone: "Europe/Paris" })} (heure de Paris)` : "au prochain créneau de 7 h ou 9 h (heure de Paris)"}.`
           : `Annuaire synchronisé : ${r.upsertees} licence(s) (sur ${r.recus} reçue(s)), ${r.supprimees} retirée(s) du cache.`,
       );
     } catch (err) {
-      setMsgImport(`Échec : ${aboError(err).message}`);
+      setMsgImport(`Échec : ${aboError(err).message} Une tentative consomme son créneau ; le prochain appel sera possible au créneau suivant de 7 h ou 9 h (heure de Paris).`);
     } finally {
       setBusy(false);
     }

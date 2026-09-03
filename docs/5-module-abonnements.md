@@ -238,7 +238,8 @@ des compteurs (jamais cookies, credentials, HTML, noms ou licences).
 remplacés par des synchronisations déclenchées au chargement des pages utiles,
 avec un verrou anti-rejeu partagé côté serveur. Une même source n'est
 resynchronisée qu'une fois par fenêtre, environ 60 minutes par défaut et
-configurable avec `SYNC_TTL_MINUTES`.
+configurable avec `SYNC_TTL_MINUTES`, sauf l'annuaire qui suit les créneaux
+quotidiens ci-dessous.
 
 | Déclencheur | Action | Sources |
 |---|---|---|
@@ -269,8 +270,19 @@ issues du site sont retirées jusqu'à une nouvelle présence dans le snapshot.
 L'annuaire FFCAM des licences suit le même principe de snapshot : une licence
 absente d'un export réussi et non vide est retirée du cache `abo_licences`, sans
 modifier les licences déjà attribuées aux personnes ni leurs dossiers. Cette
-source est limitée à une synchronisation toutes les 12 heures (au plus deux
-passages sur 24 heures), y compris depuis le bouton administratif.
+source dispose de deux créneaux par jour civil en **heure de Paris** : de 7 h
+à 9 h, puis de 9 h à minuit. Chaque créneau autorise une seule tentative,
+partagée entre toutes les pages, les administrateurs et le bouton manuel.
+Avant 7 h, aucun appel n'est autorisé. Une première consultation après 9 h
+déclenche un seul appel, sans rattraper le créneau de 7 h. Une journée sans
+consultation ne déclenche aucune synchronisation ; une page laissée ouverte
+ne programme pas d'appel à l'heure du créneau suivant.
+
+Une tentative consomme son créneau même si elle échoue, afin de ne jamais
+dépasser deux appels par jour. Le dernier succès reste affiché séparément de
+la réservation du créneau. Ces deux marqueurs sont transversaux et conservés
+au reset de campagne ; aucune migration de schéma n'est nécessaire. Le fuseau
+`Europe/Paris` prend en compte les changements d'heure été/hiver.
 
 Le bouton admin « Synchroniser le site club » appelle toujours
 `api.abo.scrap.synchroniserClub` avec une garde `aboRole === "admin"`. Chacun des
