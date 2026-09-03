@@ -2,6 +2,9 @@ export type SyncSource = "helloasso" | "scrap" | "annuaire" | "eleves";
 
 const SYNC_INTERVAL_MS = (Number(process.env.SYNC_TTL_MINUTES) || 60) * 60_000;
 export const MANUAL_SYNC_INTERVAL_MS = 5 * 60_000;
+export const CLUB_SYNC_MAX_AGE_MS = 15 * 60_000;
+export const CLUB_SYNC_ATTEMPT_KEY = "last_attempt_sync_club";
+export const CLUB_SYNC_COMPLETE_KEY = "last_complete_sync_club";
 // SAISON-EXEMPT: verrou transversal conservé avec l'annuaire au reset de campagne.
 export const ANNUAIRE_ATTEMPT_KEY = "last_attempt_sync_annuaire";
 

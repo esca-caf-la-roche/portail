@@ -368,6 +368,21 @@ même si sa licence, son âge ou le besoin de test ne sont pas encore connus. La
 réservation est alors un **RDV provisoire** : elle évite de retarder la prise de
 rendez-vous sur la seule attente des données du site du club.
 
+Une personne déjà inscrite sur le site du club peut aussi réserver sans dossier
+portail. Au clic sur **Vérifier ma situation**, le portail canonise d'abord le
+numéro de licence, puis tente de rafraîchir les snapshots des abonnés et des
+élèves en cours avant de contrôler la licence exacte et l'adresse e-mail du
+compte connecté. Cette synchronisation publique authentifiée réutilise le verrou
+global du bouton admin et ajoute une limite publique d'une tentative globale par
+quart d'heure, ainsi que deux tentatives par compte sur la même période. Elle ne
+se lance ni à la saisie, ni au chargement de la page, ni au choix du créneau. Si
+une mise à jour vient déjà d'avoir lieu et que la licence reste absente, le
+portail indique l'heure à partir de laquelle réessayer au lieu de présenter le
+snapshot comme définitivement à jour. La vérification et la mutation de
+réservation exigent toutes deux que les snapshots abonnés et élèves aient été
+entièrement actualisés depuis moins de quinze minutes ; une tentative partielle,
+échouée ou trop ancienne ferme donc le parcours côté serveur.
+
 Après une synchronisation réussie du site, la réévaluation ne s'appuie que sur
 une **licence exactement identique**. Un rapprochement par nom et prénom ne
 peut ni confirmer ni annuler un rendez-vous. Lorsque les données ainsi
@@ -426,6 +441,13 @@ déploiement `npx.cmd convex dev` actif.
   provisoire ; réserver/annuler ; retirer un encadrant d'un créneau surbooké →
   délogement LIFO + email `test_annule`. Vérifier qu'un staff sans la tuile
   `abonnements` ne voit pas la liste et ne peut pas la rejoindre.
+- [ ] **Test d'autonomie sans dossier** : avec un compte `abo-otp`, saisir une
+  licence venant d'être ajoutée ou remplacée sur le site du club. Vérifier que
+  le clic actualise les abonnés puis les élèves avant la recherche, que le
+  numéro avec espaces ou clé de contrôle est canonisé, et qu'un second clic
+  respecte le verrou partagé. Simuler aussi une source indisponible, une
+  synchronisation de campagne désactivée et une licence toujours absente :
+  aucun de ces cas ne doit autoriser une réservation sur un snapshot incertain.
 - [ ] **Réévaluation et rappel du test** : après un scrap, seul un match de
   licence exact confirme un RDV lorsque le test est requis et l'âge est d'au
   moins 16 ans, ou l'annule lorsque les conditions connues ne le permettent pas.

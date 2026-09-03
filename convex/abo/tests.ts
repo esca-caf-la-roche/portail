@@ -30,6 +30,13 @@ import { internal } from "../_generated/api";
 import { requireAboIdentity, requireAboAdmin } from "./auth";
 import { parisWallToUtcMs } from "./config";
 import { getAboStaffActifsIds, getAboStaffActifsParId } from "../users";
+import { canoniserLicence } from "./lib";
+import {
+  CLUB_SYNC_ATTEMPT_KEY,
+  CLUB_SYNC_COMPLETE_KEY,
+  CLUB_SYNC_MAX_AGE_MS,
+  MANUAL_SYNC_LOCK_KEYS,
+} from "./syncConstants";
 
 const SLOT_MS = 20 * 60 * 1000; // slot de base = 20 min
 const MAX_CRENEAUX_STAFF = 200;
@@ -233,9 +240,47 @@ async function reservationActive(
 
 type EligibiliteDirecte = {
   autorisee: boolean;
-  motif: "eligible" | "eleve_en_cours" | "test_valide" | "age_insuffisant" | "inscription_introuvable" | "email_different" | "situation_incomplete";
+  motif: "eligible" | "snapshot_a_actualiser" | "licence_invalide" | "eleve_en_cours" | "test_valide" | "age_insuffisant" | "inscription_non_verifiable" | "situation_incomplete";
   message: string;
   candidat: { licence: string; nom: string; prenom: string } | null;
+};
+
+async function snapshotClubCompletEtRecent(
+  ctx: QueryCtx | MutationCtx,
+  maintenantMs: number,
+): Promise<boolean> {
+  const [verrou, tentative, completion] = await Promise.all([
+    ctx.db
+      .query("abo_app_config")
+      .withIndex("by_cle", (q) => q.eq("cle", MANUAL_SYNC_LOCK_KEYS.scrap))
+      .unique(),
+    ctx.db
+      .query("abo_app_config")
+      .withIndex("by_cle", (q) => q.eq("cle", CLUB_SYNC_ATTEMPT_KEY))
+      .unique(),
+    ctx.db
+      .query("abo_app_config")
+      .withIndex("by_cle", (q) => q.eq("cle", CLUB_SYNC_COMPLETE_KEY))
+      .unique(),
+  ]);
+  const instant = tentative?.valeur;
+  if (
+    !instant ||
+    verrou?.valeur !== instant ||
+    completion?.valeur !== instant
+  ) {
+    return false;
+  }
+  const synchroniseMs = Date.parse(instant);
+  const ageMs = maintenantMs - synchroniseMs;
+  return Number.isFinite(synchroniseMs) && ageMs >= 0 && ageMs <= CLUB_SYNC_MAX_AGE_MS;
+}
+
+const snapshotAActualiser: EligibiliteDirecte = {
+  autorisee: false,
+  motif: "snapshot_a_actualiser",
+  message: "Les inscriptions du club doivent être actualisées. Relancez « Vérifier ma situation ».",
+  candidat: null,
 };
 
 // Une réservation directe est rattachée à une inscription actuellement visible
@@ -250,9 +295,15 @@ async function eligibiliteDirecte(
     .query("abo_abonnes_scrap")
     .withIndex("by_licence", (q) => q.eq("licence", licence))
     .first();
-  if (!scrap) return { autorisee: false, motif: "inscription_introuvable", message: "Cette licence ne correspond pas à une inscription actuelle sur le site du club.", candidat: null };
+  const inscriptionNonVerifiable: EligibiliteDirecte = {
+    autorisee: false,
+    motif: "inscription_non_verifiable",
+    message: "Nous ne pouvons pas confirmer cette inscription avec ce compte. Vérifiez la licence et l'adresse e-mail utilisée sur le site du club.",
+    candidat: null,
+  };
+  if (!scrap) return inscriptionNonVerifiable;
   if (!scrap.email || scrap.email.trim().toLowerCase() !== id.email.trim().toLowerCase()) {
-    return { autorisee: false, motif: "email_different", message: "Connectez-vous avec l'adresse e-mail utilisée pour cette inscription sur le site du club.", candidat: null };
+    return inscriptionNonVerifiable;
   }
   const eleve = await ctx.db
     .query("abo_eleves_en_cours")
@@ -266,8 +317,44 @@ async function eligibiliteDirecte(
 }
 
 export const eligibiliteReservationDirecteTest = authenticatedQuery({
-  args: { licence: v.string() },
-  handler: async (ctx, args) => eligibiliteDirecte(ctx, args.licence.trim()),
+  args: { licence: v.string(), maintenantMs: v.number() },
+  returns: v.object({
+    autorisee: v.boolean(),
+    motif: v.union(
+      v.literal("eligible"),
+      v.literal("snapshot_a_actualiser"),
+      v.literal("licence_invalide"),
+      v.literal("eleve_en_cours"),
+      v.literal("test_valide"),
+      v.literal("age_insuffisant"),
+      v.literal("inscription_non_verifiable"),
+      v.literal("situation_incomplete"),
+    ),
+    message: v.string(),
+    candidat: v.union(
+      v.object({ licence: v.string(), nom: v.string(), prenom: v.string() }),
+      v.null(),
+    ),
+  }),
+  handler: async (ctx, args) => {
+    await requireAboIdentity(ctx);
+    if (
+      !Number.isFinite(args.maintenantMs) ||
+      !(await snapshotClubCompletEtRecent(ctx, args.maintenantMs))
+    ) {
+      return snapshotAActualiser;
+    }
+    const licence = canoniserLicence(args.licence);
+    if (!licence) {
+      return {
+        autorisee: false,
+        motif: "licence_invalide" as const,
+        message: "Le numéro de licence est invalide : 12 ou 14 chiffres attendus.",
+        candidat: null,
+      };
+    }
+    return await eligibiliteDirecte(ctx, licence);
+  },
 });
 
 export const getMesReservationsDirectes = authenticatedQuery({
@@ -285,7 +372,19 @@ export const reserverTestDirect = authenticatedMutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const id = await requireAboIdentity(ctx);
-    const licence = args.licence.trim();
+    if (!(await snapshotClubCompletEtRecent(ctx, Date.now()))) {
+      throw new ConvexError({
+        code: "ABO_SNAPSHOT_CLUB_A_ACTUALISER",
+        message: snapshotAActualiser.message,
+      });
+    }
+    const licence = canoniserLicence(args.licence);
+    if (!licence) {
+      throw new ConvexError({
+        code: "LICENCE_INVALIDE",
+        message: "Le numéro de licence est invalide : 12 ou 14 chiffres attendus.",
+      });
+    }
     const eligibilite = await eligibiliteDirecte(ctx, licence);
     if (!eligibilite.autorisee || !eligibilite.candidat) throw new ConvexError({ code: "TEST_DIRECT_NON_ELIGIBLE", message: eligibilite.message });
     const existantes = await ctx.db.query("abo_test_reservations")

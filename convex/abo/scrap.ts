@@ -16,10 +16,12 @@
 // actions (les mutations/queries appelées vivent dans matching.ts / compteur.ts).
 
 import readXlsxFile from "read-excel-file/node";
+import { MINUTE, RateLimiter } from "@convex-dev/rate-limiter";
 import { ConvexError, v } from "convex/values";
 import { internalAction } from "../_generated/server";
+import type { ActionCtx } from "../_generated/server";
 import { authenticatedAction } from "../customFunctions";
-import { internal, api } from "../_generated/api";
+import { components, internal, api } from "../_generated/api";
 import { canoniserLicence } from "./lib";
 import { MANUAL_SYNC_INTERVAL_MS, MANUAL_SYNC_LOCK_KEYS } from "./syncConstants";
 
@@ -28,6 +30,28 @@ const MANUAL_SYNC_TTL_MS = MANUAL_SYNC_INTERVAL_MS;
 // en parallèle via le bouton manuel et la synchronisation au chargement.
 const MANUAL_SYNC_KEY = MANUAL_SYNC_LOCK_KEYS.scrap;
 const MAX_ABONNES_SCRAP = 500;
+const PUBLIC_SYNC_COOLDOWN_MS = 15 * MINUTE;
+const FETCH_TIMEOUT_MS = 20_000;
+
+const rateLimiter = new RateLimiter(components.rateLimiter, {
+  testAutonomieDirectSyncParUtilisateur: {
+    kind: "fixed window",
+    rate: 2,
+    period: PUBLIC_SYNC_COOLDOWN_MS,
+  },
+  testAutonomieDirectSyncGlobal: {
+    kind: "fixed window",
+    rate: 1,
+    period: PUBLIC_SYNC_COOLDOWN_MS,
+  },
+});
+
+function messageErreurSynchronisation(error: unknown): string {
+  const message = error instanceof Error ? error.message : "Erreur inconnue";
+  return message
+    .replace(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/g, "[email masqué]")
+    .replace(/(?:\d[\s.-]*){12,14}/g, "[licence masquée]");
+}
 
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
@@ -102,6 +126,7 @@ async function authentifier(club: {
 
   const posterAuthAjax = async (): Promise<Response> => {
     const reponse = await fetch(`${club.base}/scripts/ajax_operations.php`, {
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       method: "POST",
       redirect: "manual",
       headers: {
@@ -133,6 +158,7 @@ async function authentifier(club: {
   await posterAuthAjax();
 
   const accueil = await fetch(`${club.base}/`, {
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     redirect: "manual",
     headers: {
       Accept: ACCEPT_HTML,
@@ -216,6 +242,7 @@ export const scraperAbonnes = internalAction({
     const jar = await authentifier(club);
     // GET puis POST AdminMode=Liste → HTML de la liste.
     const g = await fetch(`${club.base}/abonnement-escalade.html`, {
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       redirect: "manual",
       headers: {
         Accept: ACCEPT_HTML,
@@ -226,6 +253,7 @@ export const scraperAbonnes = internalAction({
     });
     jar.absorber(g);
     const r = await fetch(`${club.base}/abonnement-escalade.html`, {
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       method: "POST",
       redirect: "manual",
       headers: {
@@ -453,6 +481,7 @@ export const importerElevesEnCours = internalAction({
 
     const jar = await authentifier(club);
     const g = await fetch(`${club.base}/cours.html`, {
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       redirect: "manual",
       headers: {
         Accept: ACCEPT_HTML,
@@ -463,6 +492,7 @@ export const importerElevesEnCours = internalAction({
     });
     jar.absorber(g);
     const p = await fetch(`${club.base}/cours.html`, {
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       method: "POST",
       redirect: "manual",
       headers: {
@@ -486,6 +516,7 @@ export const importerElevesEnCours = internalAction({
       `${club.base}/pages/cours-export-xlsx.php` +
       `?Onglet=Unique&Encadrants=${encadrants}&ListeAttente=&Columns=${COLUMNS}`;
     const x = await fetch(url, {
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       headers: {
         Accept: ACCEPT_XLSX,
         "User-Agent": UA,
@@ -525,6 +556,93 @@ export const importerElevesEnCours = internalAction({
 // ── synchroniserClub : bouton admin « Synchroniser maintenant » ─────────
 // Gate rôle abo explicite (les actions internes n'ont pas de garde d'auth).
 // Enchaîne : scrap abonnés (+ matching) puis import des élèves en cours.
+type ResultatSynchronisationClub = {
+  statut: "done" | "skipped" | "en_cours" | "desactive";
+  retryAt: string | null;
+  abonnes: { upsertees: number; sansLicence: number; supprimees: number; maj: number };
+  eleves: { avecLicence: number; sansLicence: number; enAttente: number };
+};
+type ResultatSynchronisationClubAdmin = Omit<
+  ResultatSynchronisationClub,
+  "statut"
+> & { statut: "done" | "skipped" | "desactive" };
+
+const compteursVides = () => ({
+  abonnes: { upsertees: 0, sansLicence: 0, supprimees: 0, maj: 0 },
+  eleves: { avecLicence: 0, sansLicence: 0, enAttente: 0 },
+});
+
+async function synchroniserClubAvecVerrou(
+  ctx: ActionCtx,
+  restaurerSurEchec: boolean,
+): Promise<ResultatSynchronisationClub> {
+  const etat = await ctx.runQuery(
+    internal.abo.config.etatSynchronisationExterneInterne,
+    {},
+  );
+  if (!etat.active) {
+    return { statut: "desactive", retryAt: null, ...compteursVides() };
+  }
+
+  const reservation: {
+    proceed: boolean;
+    complete: boolean;
+    precedent: string | undefined;
+    tentativeAt?: string;
+  } = await ctx.runMutation(internal.abo.sync.reserverSyncClub, {
+    ttlMs: MANUAL_SYNC_TTL_MS,
+  });
+  if (!reservation.proceed) {
+    const lastMs = reservation.precedent
+      ? Date.parse(reservation.precedent)
+      : NaN;
+    return {
+      statut: reservation.complete ? "skipped" : "en_cours",
+      retryAt: Number.isFinite(lastMs)
+        ? new Date(lastMs + MANUAL_SYNC_TTL_MS).toISOString()
+        : null,
+      ...compteursVides(),
+    };
+  }
+
+  try {
+    const abonnes = await ctx.runAction(internal.abo.scrap.scraperAbonnes, {
+      generation: etat.generation,
+    });
+    const eleves = await ctx.runAction(
+      internal.abo.scrap.importerElevesEnCours,
+      { contexteAbo: true },
+    );
+    await ctx.runMutation(internal.abo.sync.marquerSyncReussie, {
+      source: "eleves",
+      reussieAt: new Date().toISOString(),
+    });
+    if (!reservation.tentativeAt) {
+      throw new ConvexError({
+        code: "ABO_SYNC_CLUB_SANS_TENTATIVE",
+        message: "La synchronisation du site club n'a pas de marqueur de tentative.",
+      });
+    }
+    await ctx.runMutation(internal.abo.sync.marquerSyncClubComplete, {
+      tentativeAt: reservation.tentativeAt,
+    });
+    return { statut: "done", retryAt: null, abonnes, eleves };
+  } catch (error) {
+    if (restaurerSurEchec) {
+      if (!reservation.tentativeAt) throw error;
+      await ctx.runMutation(
+        internal.abo.sync.restaurerMarqueurSiTentativeCourante,
+        {
+        cle: MANUAL_SYNC_KEY,
+        tentativeAt: reservation.tentativeAt,
+        valeur: reservation.precedent,
+        },
+      );
+    }
+    throw error;
+  }
+}
+
 export const synchroniserClub = authenticatedAction({
   args: {},
   returns: v.object({
@@ -533,58 +651,118 @@ export const synchroniserClub = authenticatedAction({
     abonnes: v.object({ upsertees: v.number(), sansLicence: v.number(), supprimees: v.number(), maj: v.number() }),
     eleves: v.object({ avecLicence: v.number(), sansLicence: v.number(), enAttente: v.number() }),
   }),
-  handler: async (
-    ctx,
-  ): Promise<{
-    statut: "done" | "skipped" | "desactive";
-    retryAt: string | null;
-    abonnes: { upsertees: number; sansLicence: number; supprimees: number; maj: number };
-    eleves: { avecLicence: number; sansLicence: number; enAttente: number };
-  }> => {
+  handler: async (ctx): Promise<ResultatSynchronisationClubAdmin> => {
     const me = await ctx.runQuery(api.abo.identity.me, {});
     if (!me || me.aboRole !== "admin") {
       throw new Error("Réservé aux administrateurs.");
     }
-    const etat = await ctx.runQuery(internal.abo.config.etatSynchronisationExterneInterne, {});
-    if (!etat.active) {
-      return {
-        statut: "desactive",
-        retryAt: null,
-        abonnes: { upsertees: 0, sansLicence: 0, supprimees: 0, maj: 0 },
-        eleves: { avecLicence: 0, sansLicence: 0, enAttente: 0 },
-      };
+    const resultat = await synchroniserClubAvecVerrou(ctx, true);
+    if (resultat.statut === "en_cours") {
+      throw new ConvexError({
+        code: "ABO_SYNC_CLUB_EN_COURS",
+        message: "Une synchronisation du site club est déjà en cours.",
+      });
     }
-    const reservation: { proceed: boolean; precedent: string | undefined } = await ctx.runMutation(
-      internal.abo.sync.reserverSync,
-      { cle: MANUAL_SYNC_KEY, ttlMs: MANUAL_SYNC_TTL_MS },
+    return {
+      statut: resultat.statut,
+      retryAt: resultat.retryAt,
+      abonnes: resultat.abonnes,
+      eleves: resultat.eleves,
+    };
+  },
+});
+
+const resultatSynchronisationDirecteValidator = v.object({
+  statut: v.union(
+    v.literal("done"),
+    v.literal("skipped"),
+    v.literal("en_cours"),
+    v.literal("desactive"),
+    v.literal("erreur"),
+  ),
+  retryAt: v.union(v.string(), v.null()),
+  licence: v.string(),
+});
+
+// Synchronisation limitée au clic de vérification d'une licence. L'identité
+// Abonnements est contrôlée avant tout accès au site club et le résultat ne
+// divulgue ni donnée personnelle ni compteur du snapshot.
+export const synchroniserPourTestAutonomieDirect = authenticatedAction({
+  args: { licence: v.string() },
+  returns: resultatSynchronisationDirecteValidator,
+  handler: async (ctx, args): Promise<{
+    statut: "done" | "skipped" | "en_cours" | "desactive" | "erreur";
+    retryAt: string | null;
+    licence: string;
+  }> => {
+    const me = await ctx.runQuery(api.abo.identity.me, {});
+    if (!me) {
+      throw new ConvexError({
+        code: "ABO_ACCES_REFUSE",
+        message: "Vous devez utiliser un compte Abonnements ou un compte staff.",
+      });
+    }
+
+    const licence = canoniserLicence(args.licence);
+    if (!licence) {
+      throw new ConvexError({
+        code: "LICENCE_INVALIDE",
+        message: "Le numéro de licence est invalide : 12 ou 14 chiffres attendus.",
+      });
+    }
+
+    const limiteUtilisateur = await rateLimiter.limit(
+      ctx,
+      "testAutonomieDirectSyncParUtilisateur",
+      { key: ctx.userId },
     );
-    if (!reservation.proceed) {
-      const lastMs = reservation.precedent ? Date.parse(reservation.precedent) : NaN;
+    if (!limiteUtilisateur.ok) {
+      const etat = await ctx.runQuery(internal.abo.sync.etatSyncClubInterne, {});
       return {
-        statut: "skipped",
-        retryAt: Number.isFinite(lastMs)
-          ? new Date(lastMs + MANUAL_SYNC_TTL_MS).toISOString()
-          : null,
-        abonnes: { upsertees: 0, sansLicence: 0, supprimees: 0, maj: 0 },
-        eleves: { avecLicence: 0, sansLicence: 0, enAttente: 0 },
+        statut: !etat.active
+          ? "desactive"
+          : etat.complete
+            ? "skipped"
+            : etat.verrouAt
+              ? "en_cours"
+              : "erreur",
+        retryAt: new Date(Date.now() + (limiteUtilisateur.retryAfter ?? 0)).toISOString(),
+        licence,
       };
     }
+    const limiteGlobale = await rateLimiter.limit(
+      ctx,
+      "testAutonomieDirectSyncGlobal",
+      { key: "global" },
+    );
+    if (!limiteGlobale.ok) {
+      const etat = await ctx.runQuery(internal.abo.sync.etatSyncClubInterne, {});
+      return {
+        statut: !etat.active
+          ? "desactive"
+          : etat.complete
+            ? "skipped"
+            : etat.verrouAt
+              ? "en_cours"
+              : "erreur",
+        retryAt: new Date(Date.now() + (limiteGlobale.retryAfter ?? 0)).toISOString(),
+        licence,
+      };
+    }
+
     try {
-      const abonnes = await ctx.runAction(internal.abo.scrap.scraperAbonnes, { generation: etat.generation });
-      const eleves = await ctx.runAction(internal.abo.scrap.importerElevesEnCours, {
-        contexteAbo: true,
-      });
-      await ctx.runMutation(internal.abo.sync.marquerSyncReussie, {
-        source: "eleves",
-        reussieAt: new Date().toISOString(),
-      });
-      return { statut: "done", retryAt: null, abonnes, eleves };
+      const resultat = await synchroniserClubAvecVerrou(ctx, true);
+      return {
+        statut: resultat.statut,
+        retryAt: resultat.retryAt,
+        licence,
+      };
     } catch (error) {
-      await ctx.runMutation(internal.abo.sync.restaurerMarqueur, {
-        cle: MANUAL_SYNC_KEY,
-        valeur: reservation.precedent,
-      });
-      throw error;
+      console.error(
+        "Synchronisation pour test d'autonomie direct en échec :",
+        messageErreurSynchronisation(error),
+      );
+      return { statut: "erreur", retryAt: null, licence };
     }
   },
 });

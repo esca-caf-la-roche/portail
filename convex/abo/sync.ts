@@ -17,7 +17,7 @@
 // l'annuaire partage deux créneaux quotidiens à 7 h et 9 h (Europe/Paris).
 
 import { v, ConvexError } from "convex/values";
-import { internalMutation } from "../_generated/server";
+import { internalMutation, internalQuery } from "../_generated/server";
 import type { ActionCtx } from "../_generated/server";
 import { authenticatedAction, authenticatedQuery } from "../customFunctions";
 import { api, internal } from "../_generated/api";
@@ -29,6 +29,9 @@ import {
   AUTOMATIC_SYNC_INTERVALS_MS,
   MANUAL_SYNC_INTERVALS_MS,
   MANUAL_SYNC_LOCK_KEYS,
+  CLUB_SYNC_ATTEMPT_KEY,
+  CLUB_SYNC_COMPLETE_KEY,
+  CLUB_SYNC_MAX_AGE_MS,
   SYNC_SUCCESS_KEYS,
   type SyncSource,
 } from "./syncConstants";
@@ -130,6 +133,188 @@ export const reserverSync = internalMutation({
   },
 });
 
+// Réservation propre à la synchronisation complète du site club. Le verrou
+// `last_sync_scrap` reste partagé avec les synchronisations existantes, tandis
+// que la clé de complétion n'est posée qu'après abonnés + élèves. Un verrou
+// récent sans complétion correspond donc sans ambiguïté à une tentative en
+// cours ou échouée, jamais à un snapshot exploitable.
+export const reserverSyncClub = internalMutation({
+  args: { ttlMs: v.number() },
+  returns: v.object({
+    proceed: v.boolean(),
+    complete: v.boolean(),
+    precedent: v.optional(v.string()),
+    tentativeAt: v.optional(v.string()),
+  }),
+  handler: async (ctx, args) => {
+    if (!Number.isFinite(args.ttlMs) || args.ttlMs <= 0) {
+      throw new ConvexError({
+        code: "22023",
+        message: "Durée de synchronisation invalide.",
+      });
+    }
+    const [verrou, tentative, completion] = await Promise.all([
+      ctx.db
+        .query("abo_app_config")
+        .withIndex("by_cle", (q) => q.eq("cle", MANUAL_SYNC_LOCK_KEYS.scrap))
+        .unique(),
+      ctx.db
+        .query("abo_app_config")
+        .withIndex("by_cle", (q) => q.eq("cle", CLUB_SYNC_ATTEMPT_KEY))
+        .unique(),
+      ctx.db
+        .query("abo_app_config")
+        .withIndex("by_cle", (q) => q.eq("cle", CLUB_SYNC_COMPLETE_KEY))
+        .unique(),
+    ]);
+    const precedent = verrou?.valeur;
+    const lastMs = precedent ? Date.parse(precedent) : NaN;
+    if (Number.isFinite(lastMs) && Date.now() - lastMs < args.ttlMs) {
+      return {
+        proceed: false,
+        complete:
+          tentative?.valeur !== undefined &&
+          tentative.valeur === precedent &&
+          completion?.valeur === tentative.valeur,
+        precedent,
+      };
+    }
+
+    const tentativeAt = new Date().toISOString();
+    const patch = { valeur: tentativeAt, updated_at: tentativeAt };
+    if (verrou) {
+      await ctx.db.patch(verrou._id, patch);
+    } else {
+      await ctx.db.insert("abo_app_config", {
+        cle: MANUAL_SYNC_LOCK_KEYS.scrap,
+        ...patch,
+      });
+    }
+    const tentativeExistante = await ctx.db
+      .query("abo_app_config")
+      .withIndex("by_cle", (q) => q.eq("cle", CLUB_SYNC_ATTEMPT_KEY))
+      .unique();
+    if (tentativeExistante) {
+      await ctx.db.patch(tentativeExistante._id, patch);
+    } else {
+      await ctx.db.insert("abo_app_config", {
+        cle: CLUB_SYNC_ATTEMPT_KEY,
+        ...patch,
+      });
+    }
+    return {
+      proceed: true,
+      complete: false,
+      precedent,
+      tentativeAt,
+    };
+  },
+});
+
+export const marquerSyncClubComplete = internalMutation({
+  args: { tentativeAt: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const [verrou, tentative] = await Promise.all([
+      ctx.db
+        .query("abo_app_config")
+        .withIndex("by_cle", (q) => q.eq("cle", MANUAL_SYNC_LOCK_KEYS.scrap))
+        .unique(),
+      ctx.db
+        .query("abo_app_config")
+        .withIndex("by_cle", (q) => q.eq("cle", CLUB_SYNC_ATTEMPT_KEY))
+        .unique(),
+    ]);
+    if (
+      verrou?.valeur !== args.tentativeAt ||
+      tentative?.valeur !== args.tentativeAt
+    ) {
+      throw new ConvexError({
+        code: "ABO_SYNC_CLUB_REMPLACEE",
+        message: "Cette synchronisation a été remplacée par une tentative plus récente.",
+      });
+    }
+    const completion = await ctx.db
+      .query("abo_app_config")
+      .withIndex("by_cle", (q) => q.eq("cle", CLUB_SYNC_COMPLETE_KEY))
+      .unique();
+    const patch = { valeur: args.tentativeAt, updated_at: args.tentativeAt };
+    if (completion) {
+      if (champsModifies(completion, patch)) {
+        await ctx.db.patch(completion._id, patch);
+      }
+    } else {
+      await ctx.db.insert("abo_app_config", {
+        cle: CLUB_SYNC_COMPLETE_KEY,
+        ...patch,
+      });
+    }
+    await ctx.scheduler.runAfter(
+      CLUB_SYNC_MAX_AGE_MS,
+      internal.abo.sync.expirerSyncClubComplete,
+      { tentativeAt: args.tentativeAt },
+    );
+    return null;
+  },
+});
+
+export const expirerSyncClubComplete = internalMutation({
+  args: { tentativeAt: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const completion = await ctx.db
+      .query("abo_app_config")
+      .withIndex("by_cle", (q) => q.eq("cle", CLUB_SYNC_COMPLETE_KEY))
+      .unique();
+    if (completion?.valeur === args.tentativeAt) {
+      await ctx.db.patch(completion._id, {
+        valeur: undefined,
+        updated_at: new Date().toISOString(),
+      });
+    }
+    return null;
+  },
+});
+
+export const etatSyncClubInterne = internalQuery({
+  args: {},
+  returns: v.object({
+    active: v.boolean(),
+    verrouAt: v.union(v.string(), v.null()),
+    complete: v.boolean(),
+  }),
+  handler: async (ctx) => {
+    const [active, verrou, tentative, completion] = await Promise.all([
+      ctx.db
+        .query("abo_app_config")
+        .withIndex("by_cle", (q) =>
+          q.eq("cle", "synchronisation_externe_active"),
+        )
+        .unique(),
+      ctx.db
+        .query("abo_app_config")
+        .withIndex("by_cle", (q) => q.eq("cle", MANUAL_SYNC_LOCK_KEYS.scrap))
+        .unique(),
+      ctx.db
+        .query("abo_app_config")
+        .withIndex("by_cle", (q) => q.eq("cle", CLUB_SYNC_ATTEMPT_KEY))
+        .unique(),
+      ctx.db
+        .query("abo_app_config")
+        .withIndex("by_cle", (q) => q.eq("cle", CLUB_SYNC_COMPLETE_KEY))
+        .unique(),
+    ]);
+    return {
+      active: active?.valeur !== "false",
+      verrouAt: verrou?.valeur ?? null,
+      complete:
+        tentative?.valeur !== undefined &&
+        verrou?.valeur === tentative.valeur &&
+        completion?.valeur === tentative.valeur,
+    };
+  },
+});
+
 // ── restaurerMarqueur : remet l'ancienne valeur si la synchro échoue ──
 // Ainsi un échec ne « consomme » pas la fenêtre : le prochain chargement
 // réessaiera. Valeur absente (jamais synchronisé) → on vide le marqueur.
@@ -150,6 +335,30 @@ export const restaurerMarqueur = internalMutation({
       await ctx.db.insert("abo_app_config", { cle: args.cle, valeur: args.valeur });
     }
     return null;
+  },
+});
+
+// Restauration CAS pour une orchestration longue : une exécution ancienne ne
+// peut pas remettre son marqueur si une tentative plus récente a déjà repris
+// le verrou partagé.
+export const restaurerMarqueurSiTentativeCourante = internalMutation({
+  args: {
+    cle: v.string(),
+    tentativeAt: v.string(),
+    valeur: v.optional(v.string()),
+  },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const row = await ctx.db
+      .query("abo_app_config")
+      .withIndex("by_cle", (q) => q.eq("cle", args.cle))
+      .unique();
+    if (row?.valeur !== args.tentativeAt) return false;
+    await ctx.db.patch(row._id, {
+      valeur: args.valeur ?? undefined,
+      updated_at: new Date().toISOString(),
+    });
+    return true;
   },
 });
 

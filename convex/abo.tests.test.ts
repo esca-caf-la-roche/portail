@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
+import rateLimiterTest from "@convex-dev/rate-limiter/test";
 import { describe, expect, test } from "vitest";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
@@ -99,7 +100,8 @@ async function creerAdminAbo(
 
 async function creerCandidatDirect(
   t: ReturnType<typeof convexTest>,
-  licence = "DIRECT-123",
+  licence = "748012345678",
+  avecSnapshotComplet = true,
 ): Promise<Id<"users">> {
   return await t.run(async (ctx) => {
     const userId = await ctx.db.insert("users", { email: "direct@example.test" });
@@ -119,6 +121,20 @@ async function creerCandidatDirect(
       abonnement_valide: "oui",
       last_scrap_at: new Date().toISOString(),
     });
+    if (avecSnapshotComplet) {
+      const snapshotAt = new Date().toISOString();
+      for (const cle of [
+        "last_sync_scrap",
+        "last_attempt_sync_club",
+        "last_complete_sync_club",
+      ]) {
+        await ctx.db.insert("abo_app_config", {
+          cle,
+          valeur: snapshotAt,
+          updated_at: snapshotAt,
+        });
+      }
+    }
     return userId;
   });
 }
@@ -579,7 +595,7 @@ describe("réservation de test d'autonomie", () => {
     const creneauId = await creerCreneau(t, "2099-06-02", adminId);
 
     await candidat.mutation(api.abo.tests.reserverTestDirect, {
-      licence: "DIRECT-123",
+      licence: "7480 1234 5678",
       tranche: await trancheDisponible(candidat),
     });
 
@@ -587,7 +603,7 @@ describe("réservation de test d'autonomie", () => {
     expect(inscrits).toEqual(expect.arrayContaining([
       expect.objectContaining({
         personne_id: null,
-        licence: "DIRECT-123",
+        licence: "748012345678",
         nom: "DIRECT",
         prenom: "Camille",
         email: "direct@example.test",
@@ -601,7 +617,7 @@ describe("réservation de test d'autonomie", () => {
     expect(aArchiver).toEqual(expect.arrayContaining([
       expect.objectContaining({
         personneId: null,
-        licence: "DIRECT-123",
+        licence: "748012345678",
         nom: "DIRECT",
         prenom: "Camille",
         reservationPassee: true,
@@ -611,7 +627,7 @@ describe("réservation de test d'autonomie", () => {
     const reservation = await t.run((ctx) =>
       ctx.db
         .query("abo_test_reservations")
-        .withIndex("by_candidat_licence", (q) => q.eq("candidat_licence", "DIRECT-123"))
+        .withIndex("by_candidat_licence", (q) => q.eq("candidat_licence", "748012345678"))
         .unique(),
     );
     expect(reservation?.rappel_prevu_le).toBeTruthy();
@@ -622,5 +638,344 @@ describe("réservation de test d'autonomie", () => {
       statut: "annulee",
       annulee_raison: "creneau_admin_annule",
     });
+  }, 10_000);
+
+  test("canonise la licence avant l'éligibilité et la réservation directes", async () => {
+    const t = convexTest(schema, modules);
+    const candidatId = await creerCandidatDirect(t);
+    const candidat = t.withIdentity({ subject: candidatId });
+    await creerCreneau(t, "2099-06-02");
+
+    const eligibilite = await candidat.query(
+      api.abo.tests.eligibiliteReservationDirecteTest,
+      { licence: "7480 1234 5678 99", maintenantMs: Date.now() },
+    );
+    expect(eligibilite).toMatchObject({
+      autorisee: true,
+      motif: "eligible",
+      candidat: { licence: "748012345678" },
+    });
+
+    await candidat.mutation(api.abo.tests.reserverTestDirect, {
+      licence: "7480-1234-5678-99",
+      tranche: await trancheDisponible(candidat),
+    });
+    const reservation = await t.run((ctx) =>
+      ctx.db
+        .query("abo_test_reservations")
+        .withIndex("by_candidat_licence", (q) =>
+          q.eq("candidat_licence", "748012345678"),
+        )
+        .unique(),
+    );
+    expect(reservation?.candidat_licence).toBe("748012345678");
+  });
+
+  test("refuse explicitement une licence directe invalide", async () => {
+    const t = convexTest(schema, modules);
+    const candidatId = await creerCandidatDirect(t);
+    const candidat = t.withIdentity({ subject: candidatId });
+
+    await expect(
+      candidat.query(api.abo.tests.eligibiliteReservationDirecteTest, {
+        licence: "1234",
+        maintenantMs: Date.now(),
+      }),
+    ).resolves.toMatchObject({
+      autorisee: false,
+      motif: "licence_invalide",
+      message: expect.stringContaining("12 ou 14 chiffres"),
+      candidat: null,
+    });
+    await expect(
+      candidat.mutation(api.abo.tests.reserverTestDirect, {
+        licence: "1234",
+        tranche: "2099-06-02T08:00:00.000Z",
+      }),
+    ).rejects.toThrow("12 ou 14 chiffres");
+  });
+
+  test("refuse la réservation directe sans snapshot club complet", async () => {
+    const t = convexTest(schema, modules);
+    const candidatId = await creerCandidatDirect(
+      t,
+      "748012345678",
+      false,
+    );
+    const candidat = t.withIdentity({ subject: candidatId });
+    await creerCreneau(t, "2099-06-02");
+
+    await expect(
+      candidat.mutation(api.abo.tests.reserverTestDirect, {
+        licence: "748012345678",
+        tranche: await trancheDisponible(candidat),
+      }),
+    ).rejects.toThrow("Vérifier ma situation");
+  });
+
+  test("refuse la réservation directe avec un snapshot club trop ancien", async () => {
+    const t = convexTest(schema, modules);
+    const candidatId = await creerCandidatDirect(t);
+    const candidat = t.withIdentity({ subject: candidatId });
+    await creerCreneau(t, "2099-06-02");
+    const ancienSnapshot = new Date(Date.now() - 16 * 60_000).toISOString();
+    await t.run(async (ctx) => {
+      for (const cle of [
+        "last_sync_scrap",
+        "last_attempt_sync_club",
+        "last_complete_sync_club",
+      ]) {
+        const row = await ctx.db
+          .query("abo_app_config")
+          .withIndex("by_cle", (q) => q.eq("cle", cle))
+          .unique();
+        await ctx.db.patch(row!._id, {
+          valeur: ancienSnapshot,
+          updated_at: ancienSnapshot,
+        });
+      }
+    });
+
+    await expect(
+      candidat.mutation(api.abo.tests.reserverTestDirect, {
+        licence: "748012345678",
+        tranche: await trancheDisponible(candidat),
+      }),
+    ).rejects.toThrow("Vérifier ma situation");
+  });
+
+  test("ne révèle pas si la licence directe existe avec un autre email", async () => {
+    const t = convexTest(schema, modules);
+    const candidatId = await creerCandidatDirect(t);
+    const candidat = t.withIdentity({ subject: candidatId });
+    await t.run(async (ctx) => {
+      await ctx.db.insert("abo_abonnes_scrap", {
+        licence: "748099999999",
+        nom: "AUTRE",
+        prenom: "Personne",
+        nom_prenom_normalise: "AUTRE PERSONNE",
+        email: "autre@example.test",
+        age: 30,
+        autonomie: "Doit passer le test",
+        abonnement_valide: "oui",
+        last_scrap_at: new Date().toISOString(),
+      });
+    });
+
+    const absente = await candidat.query(
+      api.abo.tests.eligibiliteReservationDirecteTest,
+      { licence: "748088888888", maintenantMs: Date.now() },
+    );
+    const autreEmail = await candidat.query(
+      api.abo.tests.eligibiliteReservationDirecteTest,
+      { licence: "748099999999", maintenantMs: Date.now() },
+    );
+    expect(autreEmail).toEqual(absente);
+    expect(absente).toMatchObject({
+      autorisee: false,
+      motif: "inscription_non_verifiable",
+      candidat: null,
+    });
+  });
+
+  test("la synchronisation directe réutilise le verrou global sans exposer les compteurs", async () => {
+    const t = convexTest(schema, modules);
+    rateLimiterTest.register(t);
+    const candidatId = await creerCandidatDirect(t, "748012345678", false);
+    const derniereSync = new Date().toISOString();
+    await t.run(async (ctx) => {
+      await ctx.db.insert("abo_app_config", {
+        cle: "last_sync_scrap",
+        valeur: derniereSync,
+        updated_at: derniereSync,
+      });
+      await ctx.db.insert("abo_app_config", {
+        cle: "last_complete_sync_club",
+        valeur: derniereSync,
+        updated_at: derniereSync,
+      });
+      await ctx.db.insert("abo_app_config", {
+        cle: "last_attempt_sync_club",
+        valeur: derniereSync,
+        updated_at: derniereSync,
+      });
+    });
+
+    const resultat = await t
+      .withIdentity({ subject: candidatId })
+      .action(api.abo.scrap.synchroniserPourTestAutonomieDirect, {
+        licence: "7480 1234 5678",
+      });
+
+    expect(resultat).toEqual({
+      statut: "skipped",
+      retryAt: new Date(Date.parse(derniereSync) + 5 * 60_000).toISOString(),
+      licence: "748012345678",
+    });
+    expect(resultat).not.toHaveProperty("abonnes");
+    expect(resultat).not.toHaveProperty("eleves");
+  });
+
+  test("un verrou sans marqueur de complétion est signalé en cours", async () => {
+    const t = convexTest(schema, modules);
+    rateLimiterTest.register(t);
+    const candidatId = await creerCandidatDirect(t, "748012345678", false);
+    const tentativeAt = new Date().toISOString();
+    await t.run(async (ctx) => {
+      await ctx.db.insert("abo_app_config", {
+        cle: "last_sync_scrap",
+        valeur: tentativeAt,
+        updated_at: tentativeAt,
+      });
+    });
+
+    const resultat = await t
+      .withIdentity({ subject: candidatId })
+      .action(api.abo.scrap.synchroniserPourTestAutonomieDirect, {
+        licence: "748012345678",
+      });
+
+    expect(resultat).toMatchObject({
+      statut: "en_cours",
+      licence: "748012345678",
+    });
+  });
+
+  test("une restauration admin ne revalide pas un snapshot partiellement remplacé", async () => {
+    const t = convexTest(schema, modules);
+    const ancienSnapshot = "2020-01-01T00:00:00.000Z";
+    await t.run(async (ctx) => {
+      for (const cle of [
+        "last_sync_scrap",
+        "last_attempt_sync_club",
+        "last_complete_sync_club",
+      ]) {
+        await ctx.db.insert("abo_app_config", {
+          cle,
+          valeur: ancienSnapshot,
+          updated_at: ancienSnapshot,
+        });
+      }
+    });
+
+    const reservation = await t.mutation(internal.abo.sync.reserverSyncClub, {
+      ttlMs: 5 * 60_000,
+    });
+    expect(reservation).toMatchObject({ proceed: true, complete: false });
+    await t.mutation(internal.abo.sync.restaurerMarqueurSiTentativeCourante, {
+      cle: "last_sync_scrap",
+      tentativeAt: reservation.tentativeAt!,
+      valeur: ancienSnapshot,
+    });
+
+    await expect(
+      t.query(internal.abo.sync.etatSyncClubInterne, {}),
+    ).resolves.toMatchObject({ complete: false });
+  });
+
+  test("une ancienne tentative ne peut pas restaurer le verrou d'une nouvelle", async () => {
+    const t = convexTest(schema, modules);
+    const nouvelleTentative = new Date().toISOString();
+    await t.run(async (ctx) => {
+      await ctx.db.insert("abo_app_config", {
+        cle: "last_sync_scrap",
+        valeur: nouvelleTentative,
+        updated_at: nouvelleTentative,
+      });
+    });
+
+    await expect(
+      t.mutation(internal.abo.sync.restaurerMarqueurSiTentativeCourante, {
+        cle: "last_sync_scrap",
+        tentativeAt: "2020-01-01T00:00:00.000Z",
+        valeur: "2019-01-01T00:00:00.000Z",
+      }),
+    ).resolves.toBe(false);
+    await expect(
+      t.run((ctx) =>
+        ctx.db
+          .query("abo_app_config")
+          .withIndex("by_cle", (q) => q.eq("cle", "last_sync_scrap"))
+          .unique(),
+      ),
+    ).resolves.toMatchObject({ valeur: nouvelleTentative });
+  });
+
+  test("un échec public restaure le verrou sans rendre la tentative complète ni restituer le rate limit", async () => {
+    const t = convexTest(schema, modules);
+    rateLimiterTest.register(t);
+    const candidatId = await creerCandidatDirect(
+      t,
+      "748012345678",
+      false,
+    );
+    const candidat = t.withIdentity({ subject: candidatId });
+    const anciennesVariables = {
+      base: process.env.CLUB_BASE_URL,
+      username: process.env.CLUB_USERNAME,
+      password: process.env.CLUB_PASSWORD,
+    };
+    delete process.env.CLUB_BASE_URL;
+    delete process.env.CLUB_USERNAME;
+    delete process.env.CLUB_PASSWORD;
+
+    try {
+      await expect(
+        candidat.action(api.abo.scrap.synchroniserPourTestAutonomieDirect, {
+          licence: "748012345678",
+        }),
+      ).resolves.toMatchObject({ statut: "erreur" });
+
+      const apresEchec = await t.query(
+        internal.abo.sync.etatSyncClubInterne,
+        {},
+      );
+      expect(apresEchec).toMatchObject({ verrouAt: null, complete: false });
+      const tentativeApresEchec = await t.run((ctx) =>
+        ctx.db
+          .query("abo_app_config")
+          .withIndex("by_cle", (q) => q.eq("cle", "last_attempt_sync_club"))
+          .unique(),
+      );
+      expect(tentativeApresEchec?.valeur).toBeTruthy();
+
+      await expect(
+        candidat.action(api.abo.scrap.synchroniserPourTestAutonomieDirect, {
+          licence: "748012345678",
+        }),
+      ).resolves.toMatchObject({ statut: "erreur" });
+      const tentativeApresSecondAppel = await t.run((ctx) =>
+        ctx.db
+          .query("abo_app_config")
+          .withIndex("by_cle", (q) => q.eq("cle", "last_attempt_sync_club"))
+          .unique(),
+      );
+      expect(tentativeApresSecondAppel?.valeur).toBe(
+        tentativeApresEchec?.valeur,
+      );
+    } finally {
+      if (anciennesVariables.base === undefined) delete process.env.CLUB_BASE_URL;
+      else process.env.CLUB_BASE_URL = anciennesVariables.base;
+      if (anciennesVariables.username === undefined) delete process.env.CLUB_USERNAME;
+      else process.env.CLUB_USERNAME = anciennesVariables.username;
+      if (anciennesVariables.password === undefined) delete process.env.CLUB_PASSWORD;
+      else process.env.CLUB_PASSWORD = anciennesVariables.password;
+    }
+  });
+
+  test("la synchronisation directe refuse un compte hors Abonnements avant le scrap", async () => {
+    const t = convexTest(schema, modules);
+    rateLimiterTest.register(t);
+    const userId = await t.run((ctx) =>
+      ctx.db.insert("users", { email: "autre-portail@example.test" }),
+    );
+
+    await expect(
+      t
+        .withIdentity({ subject: userId })
+        .action(api.abo.scrap.synchroniserPourTestAutonomieDirect, {
+          licence: "748012345678",
+        }),
+    ).rejects.toThrow("compte Abonnements");
   });
 });
