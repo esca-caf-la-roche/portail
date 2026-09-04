@@ -127,7 +127,7 @@ function ReservationDirecte() {
   return <div className="abo-content"><h1>Réserver un test d'autonomie</h1>
     {active ? <section className="abo-carte"><h2>{active.prenom} {active.nom}</h2><p><strong>Votre RDV :</strong> {formatJour(active.tranche)}, {formatTranche(active.tranche, active.tranche_fin)}</p><button className="abo-link" type="button" disabled={busy} onClick={async () => { setBusy(true); try { await annuler({ reservationId: active.id }); } catch (err) { setErreur(aboError(err).message); } finally { setBusy(false); } }}>Annuler ce RDV</button></section> : <>
       <section className="abo-carte abo-verification-licence">
-        <p>Indiquez le numéro de licence utilisé sur le site du club. L'adresse e-mail de connexion doit être la même.</p>
+        <p>Indiquez le numéro de licence utilisé sur le site du club. L'adresse e-mail de connexion peut être celle du responsable familial.</p>
         <form onSubmit={(e) => { e.preventDefault(); void verifierLicence(); }}>
           <label className="abo-label">
             Numéro de licence

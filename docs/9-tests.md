@@ -59,7 +59,9 @@ Pour le module Abonnements, utiliser la checklist e2e de
 Le parcours public de test d'autonomie sans dossier doit notamment être vérifié
 avec une licence nouvellement créée ou remplacée sur le site du club : la
 synchronisation ne part qu'au clic, respecte le verrou partagé et précède la
-recherche dans le snapshot Convex.
+recherche dans le snapshot Convex. Vérifier également qu'une licence associée à
+une autre adresse e-mail est acceptée et que les notifications restent envoyées
+au compte connecté.
 
 Pour le module Samedis après-midi, utiliser la checklist détaillée dans
 [12-module-samedis.md](12-module-samedis.md). Elle complète les tests Convex par

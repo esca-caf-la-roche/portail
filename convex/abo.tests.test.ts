@@ -744,10 +744,11 @@ describe("réservation de test d'autonomie", () => {
     ).rejects.toThrow("Vérifier ma situation");
   });
 
-  test("ne révèle pas si la licence directe existe avec un autre email", async () => {
+  test("autorise une licence familiale associée à un autre email", async () => {
     const t = convexTest(schema, modules);
     const candidatId = await creerCandidatDirect(t);
     const candidat = t.withIdentity({ subject: candidatId });
+    await creerCreneau(t, "2099-06-02");
     await t.run(async (ctx) => {
       await ctx.db.insert("abo_abonnes_scrap", {
         licence: "748099999999",
@@ -762,19 +763,36 @@ describe("réservation de test d'autonomie", () => {
       });
     });
 
-    const absente = await candidat.query(
-      api.abo.tests.eligibiliteReservationDirecteTest,
-      { licence: "748088888888", maintenantMs: Date.now() },
-    );
     const autreEmail = await candidat.query(
       api.abo.tests.eligibiliteReservationDirecteTest,
       { licence: "748099999999", maintenantMs: Date.now() },
     );
-    expect(autreEmail).toEqual(absente);
-    expect(absente).toMatchObject({
-      autorisee: false,
-      motif: "inscription_non_verifiable",
-      candidat: null,
+    expect(autreEmail).toMatchObject({
+      autorisee: true,
+      motif: "eligible",
+      candidat: {
+        licence: "748099999999",
+        nom: "AUTRE",
+        prenom: "Personne",
+      },
+    });
+
+    await candidat.mutation(api.abo.tests.reserverTestDirect, {
+      licence: "748099999999",
+      tranche: await trancheDisponible(candidat),
+    });
+    const reservation = await t.run((ctx) =>
+      ctx.db
+        .query("abo_test_reservations")
+        .withIndex("by_candidat_licence", (q) =>
+          q.eq("candidat_licence", "748099999999"),
+        )
+        .unique(),
+    );
+    expect(reservation).toMatchObject({
+      candidat_email: "direct@example.test",
+      candidat_nom: "AUTRE",
+      candidat_prenom: "Personne",
     });
   });
 
