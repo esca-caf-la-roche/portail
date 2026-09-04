@@ -546,7 +546,7 @@ export const resetSaison = authenticatedMutation({
     // supprimées avant leurs parents (uploads → archives, notifications →
     // fusions) afin de ne laisser aucun état de suivi à la campagne suivante.
     await ctx.scheduler.runAfter(0, internal.abo.config.purgerSuiviCampagne, {
-      etape: "acquittements_anomalies",
+      etape: "envois_notifications_tests",
     });
     await ctx.scheduler.runAfter(0, internal.abo.config.purgerComptesPublics, {});
     await ctx.scheduler.runAfter(0, internal.abo.compteur.rafraichirCompteurPublic, {});
@@ -556,6 +556,10 @@ export const resetSaison = authenticatedMutation({
 });
 
 const etapePurgeSuiviValidator = v.union(
+  v.literal("envois_notifications_tests"),
+  v.literal("attentes_notifications_tests"),
+  v.literal("candidats_directs_tests"),
+  v.literal("lots_notifications_tests"),
   v.literal("acquittements_anomalies"),
   v.literal("journal_anomalies"),
   v.literal("uploads_tests"),
@@ -569,6 +573,10 @@ const etapePurgeSuiviValidator = v.union(
 );
 
 type EtapePurgeSuivi =
+  | "envois_notifications_tests"
+  | "attentes_notifications_tests"
+  | "candidats_directs_tests"
+  | "lots_notifications_tests"
   | "acquittements_anomalies"
   | "journal_anomalies"
   | "uploads_tests"
@@ -581,6 +589,10 @@ type EtapePurgeSuivi =
   | "fusions_licences";
 
 const ETAPES_PURGE_SUIVI: readonly EtapePurgeSuivi[] = [
+  "envois_notifications_tests",
+  "attentes_notifications_tests",
+  "candidats_directs_tests",
+  "lots_notifications_tests",
   "acquittements_anomalies",
   "journal_anomalies",
   "uploads_tests",
@@ -608,6 +620,38 @@ export const purgerSuiviCampagne = internalMutation({
   handler: async (ctx, args) => {
     let traites = 0;
     switch (args.etape) {
+      case "envois_notifications_tests": {
+        const envois = await ctx.db
+          .query("abo_test_notification_envois")
+          .take(LOT_PURGE_SUIVI_CAMPAGNE);
+        for (const envoi of envois) await ctx.db.delete(envoi._id);
+        traites = envois.length;
+        break;
+      }
+      case "attentes_notifications_tests": {
+        const attentes = await ctx.db
+          .query("abo_test_attentes_notifications")
+          .take(LOT_PURGE_SUIVI_CAMPAGNE);
+        for (const attente of attentes) await ctx.db.delete(attente._id);
+        traites = attentes.length;
+        break;
+      }
+      case "candidats_directs_tests": {
+        const candidats = await ctx.db
+          .query("abo_test_candidats_directs")
+          .take(LOT_PURGE_SUIVI_CAMPAGNE);
+        for (const candidat of candidats) await ctx.db.delete(candidat._id);
+        traites = candidats.length;
+        break;
+      }
+      case "lots_notifications_tests": {
+        const lots = await ctx.db
+          .query("abo_test_notification_lots")
+          .take(LOT_PURGE_SUIVI_CAMPAGNE);
+        for (const lot of lots) await ctx.db.delete(lot._id);
+        traites = lots.length;
+        break;
+      }
       case "acquittements_anomalies": {
         const acquittements = await ctx.db
           .query("abo_anomalies_acquittements")

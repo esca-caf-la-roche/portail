@@ -61,7 +61,11 @@ avec une licence nouvellement créée ou remplacée sur le site du club : la
 synchronisation ne part qu'au clic, respecte le verrou partagé et précède la
 recherche dans le snapshot Convex. Vérifier également qu'une licence associée à
 une autre adresse e-mail est acceptée et que les notifications restent envoyées
-au compte connecté.
+au compte connecté. Après reconnexion, vérifier que les licenciés mémorisés sont
+affichés avec leur nom et prénom sans nouvelle synchronisation. Sans créneau,
+activer une alerte sur deux personnes du même compte, ajouter plusieurs créneaux
+staff en moins de 30 minutes, puis vérifier qu'un seul e-mail groupé est reçu et
+que la désinscription empêche les lots suivants.
 
 Pour le module Samedis après-midi, utiliser la checklist détaillée dans
 [12-module-samedis.md](12-module-samedis.md). Elle complète les tests Convex par

@@ -23,10 +23,11 @@
 // re-jouent, la capacité reste respectée.
 
 import { v, ConvexError } from "convex/values";
+import { MINUTE, RateLimiter } from "@convex-dev/rate-limiter";
 import { authenticatedQuery, authenticatedMutation } from "../customFunctions";
-import type { QueryCtx, MutationCtx } from "../_generated/server";
+import { internalQuery, type QueryCtx, type MutationCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
-import { internal } from "../_generated/api";
+import { components, internal } from "../_generated/api";
 import { requireAboIdentity, requireAboAdmin } from "./auth";
 import { parisWallToUtcMs } from "./config";
 import { getAboStaffActifsIds, getAboStaffActifsParId } from "../users";
@@ -37,9 +38,22 @@ import {
   CLUB_SYNC_MAX_AGE_MS,
   MANUAL_SYNC_LOCK_KEYS,
 } from "./syncConstants";
+import { champsModifies } from "../dbUtils";
+import {
+  marquerAttente,
+  ouvrirLotNotification,
+} from "./testNotifications";
 
 const SLOT_MS = 20 * 60 * 1000; // slot de base = 20 min
 const MAX_CRENEAUX_STAFF = 200;
+const MAX_CANDIDATS_DIRECTS_PAR_COMPTE = 10;
+const rateLimiter = new RateLimiter(components.rateLimiter, {
+  rattachementLicenceTest: {
+    kind: "fixed window",
+    rate: 10,
+    period: 10 * MINUTE,
+  },
+});
 
 const creneauStaffValidator = v.object({
   creneauId: v.id("abo_test_creneaux"),
@@ -203,6 +217,39 @@ export const testCreneauxDisponibles = authenticatedQuery({
   },
 });
 
+// Réutilisé par le lot différé de notification. La fonction reste interne :
+// aucune identité d'encadrant n'est exposée.
+export const disponibilitesPourNotification = internalQuery({
+  args: { lotId: v.id("abo_test_notification_lots") },
+  handler: async (ctx, args) => {
+    const creneauxDuLot = await ctx.db
+      .query("abo_test_creneaux")
+      .withIndex("by_notification_lot_id", (q) => q.eq("notification_lot_id", args.lotId))
+      .take(MAX_CRENEAUX_STAFF + 1);
+    const intervalles = creneauxDuLot.flatMap((creneau) => {
+      const debut = parisWallToUtcMs(`${creneau.date_jour}T${creneau.heure_debut}`);
+      const fin = parisWallToUtcMs(`${creneau.date_jour}T${creneau.heure_fin}`);
+      return debut == null || fin == null ? [] : [{ debut, fin }];
+    });
+    if (intervalles.length === 0) return [];
+    const tranches = await calculerTranches(ctx);
+    const reserves = await reservationsActivesParTranche(ctx);
+    const now = Date.now();
+    return tranches
+      .map((t) => ({
+        tranche_debut: t.tranche_debut,
+        tranche_fin: t.tranche_fin,
+        capacite: t.capacite,
+        disponible: t.capacite - (reserves.get(t.tranche_debut) ?? 0),
+      }))
+      .filter((t) => {
+        const debut = new Date(t.tranche_debut).getTime();
+        const fin = new Date(t.tranche_fin).getTime();
+        return debut > now && t.disponible > 0 && intervalles.some((intervalle) => debut < intervalle.fin && fin > intervalle.debut);
+      });
+  },
+});
+
 // Charge une personne du dossier de l'appelant (owner). Lève P0002 sinon.
 async function personneDuCaller(
   ctx: MutationCtx,
@@ -354,6 +401,141 @@ export const eligibiliteReservationDirecteTest = authenticatedQuery({
   },
 });
 
+export const mesCandidatsDirects = authenticatedQuery({
+  args: {},
+  handler: async (ctx) => {
+    const id = await requireAboIdentity(ctx);
+    return await ctx.db
+      .query("abo_test_candidats_directs")
+      .withIndex("by_user_id", (q) => q.eq("user_id", id.userId))
+      .take(20);
+  },
+});
+
+export const verifierEtMemoriserCandidatDirect = authenticatedMutation({
+  args: { licence: v.string() },
+  handler: async (ctx, args) => {
+    const id = await requireAboIdentity(ctx);
+    const limite = await rateLimiter.limit(ctx, "rattachementLicenceTest", { key: id.userId });
+    if (!limite.ok) {
+      throw new ConvexError({ code: "ABO_TEST_RATE_LIMIT", message: "Trop de vérifications rapprochées. Réessayez dans quelques minutes." });
+    }
+    const candidatsDuCompte = await ctx.db
+      .query("abo_test_candidats_directs")
+      .withIndex("by_user_id", (q) => q.eq("user_id", id.userId))
+      .take(MAX_CANDIDATS_DIRECTS_PAR_COMPTE + 1);
+    if (!(await snapshotClubCompletEtRecent(ctx, Date.now()))) return snapshotAActualiser;
+    const licence = canoniserLicence(args.licence);
+    if (!licence) {
+      return {
+        autorisee: false,
+        motif: "licence_invalide" as const,
+        message: "Le numéro de licence est invalide : 12 ou 14 chiffres attendus.",
+        candidat: null,
+      };
+    }
+    const resultat = await eligibiliteDirecte(ctx, licence);
+    if (!resultat.autorisee || !resultat.candidat) return resultat;
+
+    const personnesLiees = await ctx.db
+      .query("abo_personnes")
+      .withIndex("by_licence", (q) => q.eq("licence", licence))
+      .take(10);
+    for (const personne of personnesLiees) {
+      const dossier = await ctx.db.get(personne.dossier_id);
+      if (dossier) {
+        return {
+          autorisee: false,
+          motif: "inscription_non_verifiable" as const,
+          message: dossier.owner_id === id.userId
+            ? "Cette personne figure déjà dans votre demande. Utilisez son suivi pour réserver le test."
+            : "Cette licence est déjà suivie dans une demande. Contactez la commission abonnements si vous êtes son responsable.",
+          candidat: null,
+        };
+      }
+    }
+
+    const existant = await ctx.db
+      .query("abo_test_candidats_directs")
+      .withIndex("by_user_id_and_licence", (q) => q.eq("user_id", id.userId).eq("licence", licence))
+      .first();
+    if (!existant && candidatsDuCompte.length >= MAX_CANDIDATS_DIRECTS_PAR_COMPTE) {
+      throw new ConvexError({ code: "ABO_TEST_MAX_CANDIDATS", message: "Ce compte a atteint la limite de 10 personnes. Contactez la commission abonnements." });
+    }
+    const maintenant = Date.now();
+    const donnees = {
+      user_id: id.userId,
+      licence,
+      nom: resultat.candidat.nom,
+      prenom: resultat.candidat.prenom,
+      statut: "eligible" as const,
+      motif_ineligibilite: undefined,
+      reevalue_le: maintenant,
+    };
+    let candidatId: Id<"abo_test_candidats_directs">;
+    if (existant) {
+      if (champsModifies(existant, donnees, ["reevalue_le"])) {
+        await ctx.db.patch(existant._id, donnees);
+      }
+      candidatId = existant._id;
+    } else {
+      candidatId = await ctx.db.insert("abo_test_candidats_directs", {
+        ...donnees,
+        valide_le: maintenant,
+      });
+    }
+    return {
+      ...resultat,
+      candidat: { ...resultat.candidat, id: candidatId },
+    };
+  },
+});
+
+async function reservationActivePourLicence(
+  ctx: QueryCtx | MutationCtx,
+  licence: string,
+): Promise<boolean> {
+  const directes = await ctx.db
+    .query("abo_test_reservations")
+    .withIndex("by_candidat_licence", (q) => q.eq("candidat_licence", licence))
+    .collect();
+  if (directes.some(estReservationActive)) return true;
+  const personnes = await ctx.db
+    .query("abo_personnes")
+    .withIndex("by_licence", (q) => q.eq("licence", licence))
+    .take(20);
+  for (const personne of personnes) {
+    const reservations = await ctx.db
+      .query("abo_test_reservations")
+      .withIndex("by_personne", (q) => q.eq("personne_id", personne._id))
+      .collect();
+    if (reservations.some(estReservationActive)) return true;
+  }
+  return false;
+}
+
+export const retirerCandidatDirect = authenticatedMutation({
+  args: { candidatId: v.id("abo_test_candidats_directs") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const id = await requireAboIdentity(ctx);
+    const candidat = await ctx.db.get(args.candidatId);
+    if (!candidat || candidat.user_id !== id.userId) {
+      throw new ConvexError({ code: "P0002", message: "Candidat introuvable." });
+    }
+    if (await reservationActivePourLicence(ctx, candidat.licence)) {
+      throw new ConvexError({ code: "P0011", message: "Annulez d'abord la réservation de cette personne." });
+    }
+    const attente = await ctx.db
+      .query("abo_test_attentes_notifications")
+      .withIndex("by_cle_candidat", (q) => q.eq("cle_candidat", `direct:${candidat._id}`))
+      .first();
+    if (attente) await ctx.db.delete(attente._id);
+    await ctx.db.delete(candidat._id);
+    return null;
+  },
+});
+
 export const getMesReservationsDirectes = authenticatedQuery({
   args: {},
   handler: async (ctx) => {
@@ -365,28 +547,32 @@ export const getMesReservationsDirectes = authenticatedQuery({
 });
 
 export const reserverTestDirect = authenticatedMutation({
-  args: { licence: v.string(), tranche: v.string() },
+  args: {
+    candidatId: v.optional(v.id("abo_test_candidats_directs")),
+    licence: v.optional(v.string()),
+    tranche: v.string(),
+  },
   returns: v.null(),
   handler: async (ctx, args) => {
     const id = await requireAboIdentity(ctx);
-    if (!(await snapshotClubCompletEtRecent(ctx, Date.now()))) {
-      throw new ConvexError({
-        code: "ABO_SNAPSHOT_CLUB_A_ACTUALISER",
-        message: snapshotAActualiser.message,
-      });
-    }
-    const licence = canoniserLicence(args.licence);
-    if (!licence) {
-      throw new ConvexError({
-        code: "LICENCE_INVALIDE",
-        message: "Le numéro de licence est invalide : 12 ou 14 chiffres attendus.",
-      });
-    }
+    const licenceCanonique = args.licence ? canoniserLicence(args.licence) : null;
+    const candidat = args.candidatId
+      ? await ctx.db.get(args.candidatId)
+      : licenceCanonique
+        ? await ctx.db
+          .query("abo_test_candidats_directs")
+          .withIndex("by_user_id_and_licence", (q) => q.eq("user_id", id.userId).eq("licence", licenceCanonique))
+          .first()
+        : null;
+    if (!candidat || candidat.user_id !== id.userId) throw new ConvexError({ code: "P0002", message: "Candidat introuvable." });
+    const licence = candidat.licence;
     const eligibilite = await eligibiliteDirecte(ctx, licence);
-    if (!eligibilite.autorisee || !eligibilite.candidat) throw new ConvexError({ code: "TEST_DIRECT_NON_ELIGIBLE", message: eligibilite.message });
-    const existantes = await ctx.db.query("abo_test_reservations")
-      .withIndex("by_candidat_licence", (q) => q.eq("candidat_licence", licence)).collect();
-    if (existantes.some(estReservationActive)) throw new ConvexError({ code: "P0011", message: "Cette personne a déjà une réservation. Annulez-la pour en changer." });
+    if (!eligibilite.autorisee || !eligibilite.candidat) {
+      await ctx.db.patch(candidat._id, { statut: "ineligible", motif_ineligibilite: eligibilite.message, reevalue_le: Date.now() });
+      await marquerAttente(ctx, `direct:${candidat._id}`, "ineligible");
+      return null;
+    }
+    if (await reservationActivePourLicence(ctx, licence)) throw new ConvexError({ code: "P0011", message: "Cette personne a déjà une réservation. Annulez-la pour en changer." });
     const cible = (await calculerTranches(ctx)).find((t) => t.tranche_debut === args.tranche);
     if (!cible || new Date(cible.tranche_debut).getTime() <= Date.now()) throw new ConvexError({ code: "P0012", message: "Ce créneau n'existe pas, ou il est passé." });
     const reserves = await reservationsActivesParTranche(ctx);
@@ -412,6 +598,7 @@ export const reserverTestDirect = authenticatedMutation({
       internal.abo.emailsRappel.envoyerRappelTest,
       { reservationId },
     );
+    await marquerAttente(ctx, `direct:${candidat._id}`, "reservee");
     return null;
   },
 });
@@ -443,6 +630,9 @@ export const reserverTest = authenticatedMutation({
       const eleve = await ctx.db.query("abo_eleves_en_cours")
         .withIndex("by_licence", (q) => q.eq("licence", personne.licence!)).first();
       if (eleve) throw new ConvexError({ code: "TEST_ELEVE_EN_COURS", message: "Vous êtes inscrit·e à un cours : demandez à votre moniteur de vous faire passer le test pendant le cours." });
+      if (await reservationActivePourLicence(ctx, personne.licence)) {
+        throw new ConvexError({ code: "P0011", message: "Cette licence a déjà une réservation active." });
+      }
     }
     if (await reservationActive(ctx, args.personneId)) {
       throw new ConvexError({
@@ -490,6 +680,7 @@ export const reserverTest = authenticatedMutation({
       internal.abo.emailsRappel.envoyerRappelTest,
       { reservationId },
     );
+    await marquerAttente(ctx, `dossier:${personne._id}`, "reservee");
     return null;
   },
 });
@@ -787,11 +978,13 @@ export const creerTestCreneau = authenticatedMutation({
       });
     }
 
+    const notificationLotId = await ouvrirLotNotification(ctx);
     return await ctx.db.insert("abo_test_creneaux", {
       admin_id: id.userId,
       date_jour: args.date,
       heure_debut: args.debut,
       heure_fin: args.fin,
+      notification_lot_id: notificationLotId,
     });
   },
 });
@@ -846,11 +1039,13 @@ export const rejoindreTestCreneau = authenticatedMutation({
       });
     }
 
+    const notificationLotId = await ouvrirLotNotification(ctx);
     return await ctx.db.insert("abo_test_creneaux", {
       admin_id: id.userId,
       date_jour: reference.date_jour,
       heure_debut: reference.heure_debut,
       heure_fin: reference.heure_fin,
+      notification_lot_id: notificationLotId,
     });
   },
 });
@@ -923,10 +1118,18 @@ export const supprimerTestCreneau = authenticatedMutation({
         // Notifie l'annulation (envoi réel via la boîte abo ; journalisation
         // dans abo_email_log faite par le pipeline, sans dedup pour test_annule).
         if (!r.personne_id) {
+          if (r.candidat_user_id && r.candidat_licence) {
+            const candidat = await ctx.db
+              .query("abo_test_candidats_directs")
+              .withIndex("by_user_id_and_licence", (q) => q.eq("user_id", r.candidat_user_id!).eq("licence", r.candidat_licence!))
+              .first();
+            if (candidat) await marquerAttente(ctx, `direct:${candidat._id}`, "en_attente");
+          }
           await ctx.scheduler.runAfter(0, internal.abo.emails.envoyerAnnulationCreneauTest, {
             reservationId: r._id,
           });
         } else {
+          await marquerAttente(ctx, `dossier:${r.personne_id}`, "en_attente");
           const personne = await ctx.db.get(r.personne_id);
           const dossier = personne ? await ctx.db.get(personne.dossier_id) : null;
           if (dossier) {

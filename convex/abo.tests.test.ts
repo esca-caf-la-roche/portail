@@ -588,14 +588,21 @@ describe("réservation de test d'autonomie", () => {
 
   test("rend une réservation directe visible au staff, archivable et rappelable", async () => {
     const t = convexTest(schema, modules);
+    rateLimiterTest.register(t);
     const adminId = await creerAdminAbo(t);
     const candidatId = await creerCandidatDirect(t);
     const admin = t.withIdentity({ subject: adminId });
     const candidat = t.withIdentity({ subject: candidatId });
     const creneauId = await creerCreneau(t, "2099-06-02", adminId);
 
+    const rattachement = await candidat.mutation(
+      api.abo.tests.verifierEtMemoriserCandidatDirect,
+      { licence: "7480 1234 5678" },
+    );
+    if (!rattachement.candidat || !("id" in rattachement.candidat)) throw new Error("Candidat non mémorisé");
+
     await candidat.mutation(api.abo.tests.reserverTestDirect, {
-      licence: "7480 1234 5678",
+      candidatId: rattachement.candidat.id,
       tranche: await trancheDisponible(candidat),
     });
 
@@ -642,6 +649,7 @@ describe("réservation de test d'autonomie", () => {
 
   test("canonise la licence avant l'éligibilité et la réservation directes", async () => {
     const t = convexTest(schema, modules);
+    rateLimiterTest.register(t);
     const candidatId = await creerCandidatDirect(t);
     const candidat = t.withIdentity({ subject: candidatId });
     await creerCreneau(t, "2099-06-02");
@@ -656,8 +664,14 @@ describe("réservation de test d'autonomie", () => {
       candidat: { licence: "748012345678" },
     });
 
+    const rattachement = await candidat.mutation(
+      api.abo.tests.verifierEtMemoriserCandidatDirect,
+      { licence: "7480-1234-5678-99" },
+    );
+    if (!rattachement.candidat || !("id" in rattachement.candidat)) throw new Error("Candidat non mémorisé");
+
     await candidat.mutation(api.abo.tests.reserverTestDirect, {
-      licence: "7480-1234-5678-99",
+      candidatId: rattachement.candidat.id,
       tranche: await trancheDisponible(candidat),
     });
     const reservation = await t.run((ctx) =>
@@ -671,8 +685,50 @@ describe("réservation de test d'autonomie", () => {
     expect(reservation?.candidat_licence).toBe("748012345678");
   });
 
+  test("mémorise le licencié sur le compte et ouvre un seul lot d'alerte de 30 minutes", async () => {
+    const t = convexTest(schema, modules);
+    rateLimiterTest.register(t);
+    const candidatUserId = await creerCandidatDirect(t);
+    const candidat = t.withIdentity({ subject: candidatUserId });
+    const rattachement = await candidat.mutation(
+      api.abo.tests.verifierEtMemoriserCandidatDirect,
+      { licence: "748012345678" },
+    );
+    if (!rattachement.candidat || !("id" in rattachement.candidat)) throw new Error("Candidat non mémorisé");
+
+    await candidat.mutation(api.abo.testNotifications.suivreCandidatDirect, {
+      candidatId: rattachement.candidat.id,
+      actif: true,
+    });
+    const adminId = await creerAdminAbo(t);
+    const admin = t.withIdentity({ subject: adminId });
+    const premier = await admin.mutation(api.abo.tests.creerTestCreneau, {
+      date: "2099-06-02",
+      debut: "10:00",
+      fin: "10:40",
+    });
+    await admin.mutation(api.abo.tests.creerTestCreneau, {
+      date: "2099-06-02",
+      debut: "11:00",
+      fin: "11:40",
+    });
+
+    const etat = await t.run(async (ctx) => ({
+      candidats: await ctx.db.query("abo_test_candidats_directs").collect(),
+      lots: await ctx.db.query("abo_test_notification_lots").collect(),
+      creneau: await ctx.db.get(premier),
+    }));
+    expect(etat.candidats).toEqual([
+      expect.objectContaining({ licence: "748012345678", nom: "DIRECT", prenom: "Camille" }),
+    ]);
+    expect(etat.lots).toHaveLength(1);
+    expect(etat.lots[0]?.envoi_prevu_le - etat.lots[0]?.ouvert_le).toBe(30 * 60 * 1_000);
+    expect(etat.creneau?.notification_lot_id).toBe(etat.lots[0]?._id);
+  });
+
   test("refuse explicitement une licence directe invalide", async () => {
     const t = convexTest(schema, modules);
+    rateLimiterTest.register(t);
     const candidatId = await creerCandidatDirect(t);
     const candidat = t.withIdentity({ subject: candidatId });
 
@@ -688,15 +744,15 @@ describe("réservation de test d'autonomie", () => {
       candidat: null,
     });
     await expect(
-      candidat.mutation(api.abo.tests.reserverTestDirect, {
+      candidat.mutation(api.abo.tests.verifierEtMemoriserCandidatDirect, {
         licence: "1234",
-        tranche: "2099-06-02T08:00:00.000Z",
       }),
-    ).rejects.toThrow("12 ou 14 chiffres");
+    ).resolves.toMatchObject({ autorisee: false, motif: "licence_invalide" });
   });
 
-  test("refuse la réservation directe sans snapshot club complet", async () => {
+  test("refuse de mémoriser une licence directe sans snapshot club complet", async () => {
     const t = convexTest(schema, modules);
+    rateLimiterTest.register(t);
     const candidatId = await creerCandidatDirect(
       t,
       "748012345678",
@@ -706,15 +762,15 @@ describe("réservation de test d'autonomie", () => {
     await creerCreneau(t, "2099-06-02");
 
     await expect(
-      candidat.mutation(api.abo.tests.reserverTestDirect, {
+      candidat.mutation(api.abo.tests.verifierEtMemoriserCandidatDirect, {
         licence: "748012345678",
-        tranche: await trancheDisponible(candidat),
       }),
-    ).rejects.toThrow("Vérifier ma situation");
+    ).resolves.toMatchObject({ autorisee: false, motif: "snapshot_a_actualiser" });
   });
 
-  test("refuse la réservation directe avec un snapshot club trop ancien", async () => {
+  test("refuse de mémoriser une licence directe avec un snapshot club trop ancien", async () => {
     const t = convexTest(schema, modules);
+    rateLimiterTest.register(t);
     const candidatId = await creerCandidatDirect(t);
     const candidat = t.withIdentity({ subject: candidatId });
     await creerCreneau(t, "2099-06-02");
@@ -737,15 +793,15 @@ describe("réservation de test d'autonomie", () => {
     });
 
     await expect(
-      candidat.mutation(api.abo.tests.reserverTestDirect, {
+      candidat.mutation(api.abo.tests.verifierEtMemoriserCandidatDirect, {
         licence: "748012345678",
-        tranche: await trancheDisponible(candidat),
       }),
-    ).rejects.toThrow("Vérifier ma situation");
+    ).resolves.toMatchObject({ autorisee: false, motif: "snapshot_a_actualiser" });
   });
 
   test("autorise une licence familiale associée à un autre email", async () => {
     const t = convexTest(schema, modules);
+    rateLimiterTest.register(t);
     const candidatId = await creerCandidatDirect(t);
     const candidat = t.withIdentity({ subject: candidatId });
     await creerCreneau(t, "2099-06-02");
@@ -777,8 +833,14 @@ describe("réservation de test d'autonomie", () => {
       },
     });
 
+    const rattachement = await candidat.mutation(
+      api.abo.tests.verifierEtMemoriserCandidatDirect,
+      { licence: "748099999999" },
+    );
+    if (!rattachement.candidat || !("id" in rattachement.candidat)) throw new Error("Candidat non mémorisé");
+
     await candidat.mutation(api.abo.tests.reserverTestDirect, {
-      licence: "748099999999",
+      candidatId: rattachement.candidat.id,
       tranche: await trancheDisponible(candidat),
     });
     const reservation = await t.run((ctx) =>
