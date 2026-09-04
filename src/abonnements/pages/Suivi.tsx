@@ -7,6 +7,7 @@ import { useMaintenantMinute } from "../lib/useMaintenantMinute";
 import { cleJour, formatJour, formatTranche } from "../lib/tests";
 import FilDiscussion from "../FilDiscussion";
 import N1RedirectModal from "../N1RedirectModal";
+import NotificationDisponibilitesTest from "../NotificationDisponibilitesTest";
 
 // Tableau de suivi (abonné, lecture seule pour l'essentiel).
 // Le rendu d'une personne dépend de sa décision admin (etape_validation) :
@@ -592,12 +593,12 @@ function ModalReservation({
         {dispos === undefined ? (
           <p>Chargement…</p>
         ) : jours.size === 0 ? (
-          <p className="abo-placeholder">
-            Aucun créneau disponible pour l'instant. Revenez plus tard : de
-            nouvelles disponibilités sont ajoutées régulièrement.
-          </p>
+          <div className="abo-placeholder">
+            <p>Aucun créneau disponible pour l'instant.</p>
+            <NotificationDisponibilitesTest cible={{ type: "dossier", personneId }} />
+          </div>
         ) : (
-          <div className="abo-resa-jours">
+          <><div className="abo-resa-jours">
             {[...jours.values()].map((j) => (
               <div key={j.label} className="abo-resa-jour">
                 <h4>{j.label}</h4>
@@ -619,7 +620,7 @@ function ModalReservation({
                 </div>
               </div>
             ))}
-          </div>
+          </div><NotificationDisponibilitesTest masquerSiInactif cible={{ type: "dossier", personneId }} /></>
         )}
 
         {msg && (

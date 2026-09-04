@@ -38,6 +38,7 @@ import type * as abo_syncConstants from "../abo/syncConstants.js";
 import type * as abo_testAutonomiePdf from "../abo/testAutonomiePdf.js";
 import type * as abo_testDocuments from "../abo/testDocuments.js";
 import type * as abo_testDocumentsDrive from "../abo/testDocumentsDrive.js";
+import type * as abo_testNotifications from "../abo/testNotifications.js";
 import type * as abo_tests from "../abo/tests.js";
 import type * as aboOtp from "../aboOtp.js";
 import type * as access from "../access.js";
@@ -124,6 +125,7 @@ declare const fullApi: ApiFromModules<{
   "abo/testAutonomiePdf": typeof abo_testAutonomiePdf;
   "abo/testDocuments": typeof abo_testDocuments;
   "abo/testDocumentsDrive": typeof abo_testDocumentsDrive;
+  "abo/testNotifications": typeof abo_testNotifications;
   "abo/tests": typeof abo_tests;
   aboOtp: typeof aboOtp;
   access: typeof access;

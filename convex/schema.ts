@@ -1155,9 +1155,13 @@ export default defineSchema({
     date_jour: v.string(), // 'YYYY-MM-DD'
     heure_debut: v.string(), // 'HH:mm'
     heure_fin: v.string(), // 'HH:mm'
+    // WIDEN: absent des créneaux historiques. Les nouveaux créneaux créés
+    // dans une même fenêtre de 30 minutes partagent ce lot de notification.
+    notification_lot_id: v.optional(v.id("abo_test_notification_lots")),
   })
     .index("by_admin", ["admin_id"])
-    .index("by_date", ["date_jour"]),
+    .index("by_date", ["date_jour"])
+    .index("by_notification_lot_id", ["notification_lot_id"]),
 
   // Réservation d'une tranche horaire de test par une personne (anonyme côté
   // encadrant). Une seule réservation "active" par personne (contrôlé en mutation).
@@ -1196,6 +1200,88 @@ export default defineSchema({
     .index("by_candidat_user_id", ["candidat_user_id"])
     .index("by_candidat_licence", ["candidat_licence"])
     .index("by_tranche", ["tranche"]),
+
+  // SAISON-EXEMPT: cache des candidats au test d'autonomie rattaché au
+  // compte Abonnements et renouvelé lors du reset de campagne, indépendamment
+  // de la saison comptable sélectionnée dans le portail staff.
+  abo_test_candidats_directs: defineTable({
+    user_id: v.string(),
+    licence: v.string(),
+    nom: v.string(),
+    prenom: v.string(),
+    statut: v.union(v.literal("eligible"), v.literal("ineligible")),
+    motif_ineligibilite: v.optional(v.string()),
+    valide_le: v.number(),
+    reevalue_le: v.optional(v.number()),
+  })
+    .index("by_user_id", ["user_id"])
+    .index("by_user_id_and_licence", ["user_id", "licence"])
+    .index("by_licence", ["licence"]),
+
+  // SAISON-EXEMPT: intention explicite d'un candidat d'être prévenu lors
+  // de l'ajout de créneaux. Ce suivi appartient à la campagne Abonnements.
+  // Le backend garantit qu'une ligne référence exactement un candidat direct
+  // ou une personne d'un dossier.
+  abo_test_attentes_notifications: defineTable({
+    user_id: v.string(),
+    type_candidat: v.union(v.literal("direct"), v.literal("dossier")),
+    candidat_direct_id: v.optional(v.id("abo_test_candidats_directs")),
+    personne_id: v.optional(v.id("abo_personnes")),
+    cle_candidat: v.string(),
+    statut: v.union(
+      v.literal("en_attente"),
+      v.literal("reservee"),
+      v.literal("desabonnee"),
+      v.literal("ineligible"),
+    ),
+    cree_le: v.number(),
+    modifie_le: v.number(),
+  })
+    .index("by_cle_candidat", ["cle_candidat"])
+    .index("by_user_id", ["user_id"])
+    .index("by_user_id_and_cle_candidat", ["user_id", "cle_candidat"])
+    .index("by_statut", ["statut"]),
+
+  // SAISON-EXEMPT: lot opérationnel regroupant pendant 30 minutes les
+  // nouveaux créneaux d'une campagne Abonnements. Aucun cron n'est nécessaire.
+  abo_test_notification_lots: defineTable({
+    statut: v.union(
+      v.literal("en_attente"),
+      v.literal("preparation"),
+      v.literal("termine"),
+      v.literal("sans_destinataire"),
+    ),
+    ouvert_le: v.number(),
+    envoi_prevu_le: v.number(),
+    termine_le: v.optional(v.number()),
+    curseur_attentes: v.optional(v.string()),
+    preparation_terminee: v.optional(v.boolean()),
+  })
+    .index("by_statut", ["statut"])
+    .index("by_envoi_prevu_le", ["envoi_prevu_le"]),
+
+  // SAISON-EXEMPT: outbox idempotente d'un email par compte et par lot de
+  // nouveaux créneaux. Le reset de campagne la purge avant ses lots parents.
+  abo_test_notification_envois: defineTable({
+    lot_id: v.id("abo_test_notification_lots"),
+    user_id: v.string(),
+    destinataire: v.string(),
+    personnes: v.array(v.string()),
+    statut: v.union(
+      v.literal("a_envoyer"),
+      v.literal("en_cours"),
+      v.literal("envoye"),
+      v.literal("echec"),
+    ),
+    tentatives: v.number(),
+    cree_le: v.number(),
+    reclame_le: v.optional(v.number()),
+    envoye_le: v.optional(v.number()),
+    erreur: v.optional(v.string()),
+  })
+    .index("by_lot_id", ["lot_id"])
+    .index("by_lot_id_and_user_id", ["lot_id", "user_id"])
+    .index("by_lot_id_and_statut", ["lot_id", "statut"]),
 
   // SAISON-EXEMPT: singleton du dernier compteur public calculé, transversal
   // et remplacé à chaque recalcul indépendamment de la saison sélectionnée.

@@ -374,17 +374,36 @@ numéro de licence, puis tente de rafraîchir les snapshots des abonnés et des
 élèves en cours avant de contrôler la licence exacte. L'adresse e-mail du site
 du club n'est pas comparée à celle du compte connecté, afin qu'un même compte
 puisse réserver pour un membre de sa famille. L'adresse du compte reste utilisée
-pour les confirmations et rappels. Cette synchronisation publique authentifiée
+pour les confirmations et rappels. Une licence validée est mémorisée avec le nom
+et le prénom du licencié pour la campagne courante. Plusieurs licenciés peuvent
+ainsi être rattachés au même compte familial ; une reconnexion relit ces
+rattachements sans relancer la synchronisation. L'éligibilité est néanmoins
+réévaluée au moment de réserver et une licence ne peut avoir qu'une réservation
+active, y compris entre le parcours direct et le suivi d'une demande.
+
+Cette synchronisation publique authentifiée
 réutilise le verrou global du bouton admin et ajoute une limite publique d'une
 tentative globale par quart d'heure, ainsi que deux tentatives par compte sur la
 même période. Elle ne se lance ni à la saisie, ni au chargement de la page, ni au
 choix du créneau. Si
 une mise à jour vient déjà d'avoir lieu et que la licence reste absente, le
 portail indique l'heure à partir de laquelle réessayer au lieu de présenter le
-snapshot comme définitivement à jour. La vérification et la mutation de
-réservation exigent toutes deux que les snapshots abonnés et élèves aient été
-entièrement actualisés depuis moins de quinze minutes ; une tentative partielle,
-échouée ou trop ancienne ferme donc le parcours côté serveur.
+snapshot comme définitivement à jour. Seul l'ajout initial d'une licence exige
+un snapshot entièrement actualisé depuis moins de quinze minutes ; la réservation
+ultérieure s'appuie sur le rattachement mémorisé et les données club actuellement
+disponibles.
+
+Quand aucun créneau n'est disponible, chaque personne éligible peut demander
+explicitement à être prévenue par e-mail. Le premier créneau réellement ajouté
+par le staff ouvre une fenêtre fixe de 30 minutes ; les créations et ajouts de
+capacité de cette fenêtre sont regroupés, sans cron. À l'échéance, le backend
+recalcule les tranches futures encore disponibles et envoie au plus un e-mail par
+compte familial, avec tous les noms concernés. La préparation est paginée par
+lots de 25 comptes et chaque envoi est réclamé atomiquement avant SMTP. Une
+réservation met l'alerte en veille ; une annulation volontaire ne la réactive pas,
+tandis qu'une annulation imposée par le staff restaure un consentement antérieur.
+Les rattachements, alertes, lots et journaux d'envoi sont purgés au reset de la
+campagne.
 
 Après une synchronisation réussie du site, la réévaluation ne s'appuie que sur
 une **licence exactement identique**. Un rapprochement par nom et prénom ne

@@ -714,6 +714,37 @@ textarea.abo-input {
   opacity: 0.8;
 }
 
+.abo-candidat-test__entete {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.abo-candidat-test__entete h2,
+.abo-candidat-test__entete p {
+  margin-top: 0;
+}
+
+.abo-alerte-creneaux {
+  margin-top: 0.75rem;
+  padding: 0.85rem;
+  border: 2px solid var(--abo-noir, #111);
+  background: #fff7b8;
+}
+
+.abo-alerte-creneaux > p:first-child {
+  margin-top: 0;
+}
+
+.abo-retour-test-direct {
+  margin: 1rem;
+}
+
+.abo-acces-test-direct {
+  padding-top: 0;
+}
+
 /* ── Espace staff Abonnements ──────────────────────────────────────────── */
 /* Cette route appartient au portail staff : elle réutilise les variables
    globales plutôt que celles, volontairement isolées, de .abo-root. */
