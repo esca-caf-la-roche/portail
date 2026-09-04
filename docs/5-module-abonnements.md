@@ -371,11 +371,14 @@ rendez-vous sur la seule attente des données du site du club.
 Une personne déjà inscrite sur le site du club peut aussi réserver sans dossier
 portail. Au clic sur **Vérifier ma situation**, le portail canonise d'abord le
 numéro de licence, puis tente de rafraîchir les snapshots des abonnés et des
-élèves en cours avant de contrôler la licence exacte et l'adresse e-mail du
-compte connecté. Cette synchronisation publique authentifiée réutilise le verrou
-global du bouton admin et ajoute une limite publique d'une tentative globale par
-quart d'heure, ainsi que deux tentatives par compte sur la même période. Elle ne
-se lance ni à la saisie, ni au chargement de la page, ni au choix du créneau. Si
+élèves en cours avant de contrôler la licence exacte. L'adresse e-mail du site
+du club n'est pas comparée à celle du compte connecté, afin qu'un même compte
+puisse réserver pour un membre de sa famille. L'adresse du compte reste utilisée
+pour les confirmations et rappels. Cette synchronisation publique authentifiée
+réutilise le verrou global du bouton admin et ajoute une limite publique d'une
+tentative globale par quart d'heure, ainsi que deux tentatives par compte sur la
+même période. Elle ne se lance ni à la saisie, ni au chargement de la page, ni au
+choix du créneau. Si
 une mise à jour vient déjà d'avoir lieu et que la licence reste absente, le
 portail indique l'heure à partir de laquelle réessayer au lieu de présenter le
 snapshot comme définitivement à jour. La vérification et la mutation de
@@ -444,8 +447,9 @@ déploiement `npx.cmd convex dev` actif.
 - [ ] **Test d'autonomie sans dossier** : avec un compte `abo-otp`, saisir une
   licence venant d'être ajoutée ou remplacée sur le site du club. Vérifier que
   le clic actualise les abonnés puis les élèves avant la recherche, que le
-  numéro avec espaces ou clé de contrôle est canonisé, et qu'un second clic
-  respecte le verrou partagé. Simuler aussi une source indisponible, une
+  numéro avec espaces ou clé de contrôle est canonisé, qu'une licence associée
+  à une autre adresse e-mail est acceptée pour le cas familial, et qu'un second
+  clic respecte le verrou partagé. Simuler aussi une source indisponible, une
   synchronisation de campagne désactivée et une licence toujours absente :
   aucun de ces cas ne doit autoriser une réservation sur un snapshot incertain.
 - [ ] **Réévaluation et rappel du test** : après un scrap, seul un match de

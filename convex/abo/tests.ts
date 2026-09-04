@@ -284,13 +284,13 @@ const snapshotAActualiser: EligibiliteDirecte = {
 };
 
 // Une réservation directe est rattachée à une inscription actuellement visible
-// sur le site du club, par licence exacte puis e-mail du compte connecté. Le
+// sur le site du club par licence exacte. L'e-mail du scrap n'est pas contrôlé :
+// une même adresse peut représenter plusieurs membres d'une famille. Le
 // rapprochement nom/prénom ne donne jamais le droit de réserver.
 async function eligibiliteDirecte(
   ctx: QueryCtx | MutationCtx,
   licence: string,
 ): Promise<EligibiliteDirecte> {
-  const id = await requireAboIdentity(ctx);
   const scrap = await ctx.db
     .query("abo_abonnes_scrap")
     .withIndex("by_licence", (q) => q.eq("licence", licence))
@@ -298,13 +298,10 @@ async function eligibiliteDirecte(
   const inscriptionNonVerifiable: EligibiliteDirecte = {
     autorisee: false,
     motif: "inscription_non_verifiable",
-    message: "Nous ne pouvons pas confirmer cette inscription avec ce compte. Vérifiez la licence et l'adresse e-mail utilisée sur le site du club.",
+    message: "Nous ne pouvons pas confirmer cette inscription. Vérifiez le numéro de licence utilisé sur le site du club.",
     candidat: null,
   };
   if (!scrap) return inscriptionNonVerifiable;
-  if (!scrap.email || scrap.email.trim().toLowerCase() !== id.email.trim().toLowerCase()) {
-    return inscriptionNonVerifiable;
-  }
   const eleve = await ctx.db
     .query("abo_eleves_en_cours")
     .withIndex("by_licence", (q) => q.eq("licence", licence))
