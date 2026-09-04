@@ -71,7 +71,7 @@ La documentation fonctionnelle complète est dans
 | Administration | `src/abonnements/admin/` | `convex/abo/` |
 | Paiements | `src/abonnements/admin/Paiements.tsx` | `convex/abo/paiements.ts`, `convex/helloasso.ts` |
 | Licences et conflits | `src/abonnements/admin/Licences.tsx`, `src/abonnements/admin/FusionDossiersModal.tsx` | `convex/abo/licences.ts`, `convex/abo/matching.ts`, `convex/abo/fusionsDossiers.ts` |
-| Tests d'autonomie | `src/abonnements/admin/Tests.tsx`, `src/abonnements/pages/Suivi.tsx`, `src/abonnements/pages/TestAutonomieDirectV2.tsx`, `src/abonnements/NotificationDisponibilitesTest.tsx` | `convex/abo/tests.ts`, `convex/abo/testNotifications.ts`, `convex/abo/testDocuments.ts`, `convex/abo/testDocumentsDrive.ts`, `convex/abo/testAutonomiePdf.ts` |
+| Tests d'autonomie | `src/abonnements/admin/Tests.tsx`, `src/abonnements/admin/SuiviTestsModal.tsx`, `src/abonnements/pages/Suivi.tsx`, `src/abonnements/pages/TestAutonomieDirectV2.tsx`, `src/abonnements/NotificationDisponibilitesTest.tsx` | `convex/abo/tests.ts`, `convex/abo/testNotifications.ts`, `convex/abo/testDocuments.ts`, `convex/abo/testDocumentsDrive.ts`, `convex/abo/testAutonomiePdf.ts` |
 | Règlements signés | `src/abonnements/admin/Reglements.tsx`, `src/abonnements/pages/Suivi.tsx` | `convex/abo/reglements.ts`, `convex/abo/reglementsDrive.ts`, `convex/abo/reglementsConstants.ts` |
 | Historique Google Drive | `src/abonnements/admin/HistoriqueDrive.tsx` | `convex/abo/testDocumentsDrive.ts`, `convex/abo/reglementsDrive.ts`, `convex/abo/driveArchives.ts` |
 | Compteur public | `src/abonnements/Compteur.tsx` | `convex/abo/compteur.ts` |

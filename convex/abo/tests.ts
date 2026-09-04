@@ -47,6 +47,8 @@ import {
 const SLOT_MS = 20 * 60 * 1000; // slot de base = 20 min
 const MAX_CRENEAUX_STAFF = 200;
 const MAX_CANDIDATS_DIRECTS_PAR_COMPTE = 10;
+const MAX_SUIVI_CANDIDATS_PAR_SOURCE = 1_000;
+const MAX_SUIVI_RESERVATIONS = 2_000;
 const rateLimiter = new RateLimiter(components.rateLimiter, {
   rattachementLicenceTest: {
     kind: "fixed window",
@@ -1143,6 +1145,272 @@ export const supprimerTestCreneau = authenticatedMutation({
       }
     }
     return total;
+  },
+});
+
+const suiviCandidatValidator = v.object({
+  cle: v.string(),
+  nom: v.string(),
+  prenom: v.string(),
+  licence: v.union(v.string(), v.null()),
+  statut: v.union(
+    v.literal("en_attente"),
+    v.literal("reserve"),
+    v.literal("passe"),
+  ),
+  trancheDebut: v.union(v.string(), v.null()),
+  trancheFin: v.union(v.string(), v.null()),
+});
+
+type SuiviCandidatSource = {
+  cle: string;
+  nom: string;
+  prenom: string;
+  licence: string | null;
+  archive: boolean;
+  reservationFuture: Doc<"abo_test_reservations"> | null;
+  reservationPassee: Doc<"abo_test_reservations"> | null;
+};
+
+function licencePourSuivi(licence: string | undefined): string | null {
+  const nettoyee = licence?.trim();
+  if (!nettoyee) return null;
+  return canoniserLicence(nettoyee) ?? nettoyee.toUpperCase();
+}
+
+function ajouterCandidatSuivi(
+  candidats: Map<string, SuiviCandidatSource>,
+  source: {
+    cleLogique: string;
+    nom: string;
+    prenom: string;
+    licence?: string;
+  },
+): SuiviCandidatSource {
+  const licence = licencePourSuivi(source.licence);
+  const cle = licence ? `licence:${licence}` : source.cleLogique;
+  const existant = candidats.get(cle);
+  if (existant) {
+    if (!existant.nom.trim() && source.nom.trim()) existant.nom = source.nom.trim();
+    if (!existant.prenom.trim() && source.prenom.trim()) {
+      existant.prenom = source.prenom.trim();
+    }
+    return existant;
+  }
+  const candidat: SuiviCandidatSource = {
+    cle,
+    nom: source.nom.trim(),
+    prenom: source.prenom.trim(),
+    licence,
+    archive: false,
+    reservationFuture: null,
+    reservationPassee: null,
+  };
+  candidats.set(cle, candidat);
+  return candidat;
+}
+
+function verifierBorneSuivi(
+  lignes: readonly unknown[],
+  maximum: number,
+  libelle: string,
+): void {
+  if (lignes.length <= maximum) return;
+  throw new ConvexError({
+    code: "ABO_TEST_SUIVI_TROP_VOLUMINEUX",
+    message: `Trop de ${libelle} existent pour afficher un suivi complet.`,
+  });
+}
+
+// ── Admin : suivi consolidé de la campagne de tests d'autonomie ─────
+// Toutes les lectures sont bornées et indexées. Les réservations et archives
+// sont aussi des sources de cohorte afin de conserver les personnes déjà
+// passées même si leur dossier ou leur éligibilité ont évolué depuis.
+export const suiviCandidatsAdmin = authenticatedQuery({
+  args: { instantReference: v.string() },
+  returns: v.object({
+    total: v.number(),
+    aPlanifier: v.number(),
+    reserves: v.number(),
+    passes: v.number(),
+    candidats: v.array(suiviCandidatValidator),
+  }),
+  handler: async (ctx, args) => {
+    await requireAboAdmin(ctx);
+    const instantReferenceMs = Date.parse(args.instantReference);
+    if (
+      !Number.isFinite(instantReferenceMs) ||
+      new Date(instantReferenceMs).toISOString() !== args.instantReference
+    ) {
+      throw new ConvexError({
+        code: "22023",
+        message: "Instant de référence ISO invalide.",
+      });
+    }
+
+    const [personnes, directs, reservations, archivesATraiter, archivesTraitees] =
+      await Promise.all([
+        ctx.db
+          .query("abo_personnes")
+          .withIndex("by_etape_test_autonomie_and_etape_validation", (q) =>
+            q.eq("etape_test_autonomie", "requis").eq("etape_validation", "validee"),
+          )
+          .take(MAX_SUIVI_CANDIDATS_PAR_SOURCE + 1),
+        ctx.db
+          .query("abo_test_candidats_directs")
+          .withIndex("by_statut", (q) => q.eq("statut", "eligible"))
+          .take(MAX_SUIVI_CANDIDATS_PAR_SOURCE + 1),
+        ctx.db
+          .query("abo_test_reservations")
+          .withIndex("by_statut_and_tranche", (q) => q.eq("statut", "active"))
+          .take(MAX_SUIVI_RESERVATIONS + 1),
+        ctx.db
+          .query("abo_tests_autonomie_archive")
+          .withIndex("by_statut", (q) => q.eq("statut", "a_traiter"))
+          .take(MAX_SUIVI_CANDIDATS_PAR_SOURCE + 1),
+        ctx.db
+          .query("abo_tests_autonomie_archive")
+          .withIndex("by_statut", (q) => q.eq("statut", "traite"))
+          .take(MAX_SUIVI_CANDIDATS_PAR_SOURCE + 1),
+      ]);
+
+    verifierBorneSuivi(personnes, MAX_SUIVI_CANDIDATS_PAR_SOURCE, "personnes à tester");
+    verifierBorneSuivi(directs, MAX_SUIVI_CANDIDATS_PAR_SOURCE, "candidats directs");
+    verifierBorneSuivi(reservations, MAX_SUIVI_RESERVATIONS, "réservations actives");
+    verifierBorneSuivi(archivesATraiter, MAX_SUIVI_CANDIDATS_PAR_SOURCE, "archives à traiter");
+    verifierBorneSuivi(archivesTraitees, MAX_SUIVI_CANDIDATS_PAR_SOURCE, "archives traitées");
+
+    const candidats = new Map<string, SuiviCandidatSource>();
+    const cleParPersonne = new Map<Id<"abo_personnes">, string>();
+
+    for (const personne of personnes) {
+      const candidat = ajouterCandidatSuivi(candidats, {
+        cleLogique: `personne:${personne._id}`,
+        nom: personne.nom,
+        prenom: personne.prenom,
+        licence: personne.licence,
+      });
+      cleParPersonne.set(personne._id, candidat.cle);
+    }
+    for (const direct of directs) {
+      ajouterCandidatSuivi(candidats, {
+        cleLogique: `direct:${direct._id}`,
+        nom: direct.nom,
+        prenom: direct.prenom,
+        licence: direct.licence,
+      });
+    }
+
+    for (const reservation of reservations) {
+      let candidat: SuiviCandidatSource;
+      if (reservation.personne_id) {
+        const cleExistante = cleParPersonne.get(reservation.personne_id);
+        candidat = cleExistante
+          ? candidats.get(cleExistante)!
+          : await (async () => {
+              const personne = await ctx.db.get(reservation.personne_id!);
+              if (!personne) {
+                throw new ConvexError({
+                  code: "ABO_TEST_RESERVATION_INCOHERENTE",
+                  message: "Une réservation active référence une personne introuvable.",
+                });
+              }
+              const ajoute = ajouterCandidatSuivi(candidats, {
+                cleLogique: `personne:${personne._id}`,
+                nom: personne.nom,
+                prenom: personne.prenom,
+                licence: personne.licence,
+              });
+              cleParPersonne.set(personne._id, ajoute.cle);
+              return ajoute;
+            })();
+      } else {
+        if (!reservation.candidat_nom || !reservation.candidat_prenom) {
+          throw new ConvexError({
+            code: "ABO_TEST_RESERVATION_INCOHERENTE",
+            message: "Une réservation directe active ne contient pas l'identité du candidat.",
+          });
+        }
+        candidat = ajouterCandidatSuivi(candidats, {
+          cleLogique: reservation.candidat_user_id
+            ? `direct:${reservation.candidat_user_id}:${reservation.candidat_prenom.trim().toLocaleLowerCase("fr")}:${reservation.candidat_nom.trim().toLocaleLowerCase("fr")}`
+            : `reservation:${reservation._id}`,
+          nom: reservation.candidat_nom,
+          prenom: reservation.candidat_prenom,
+          licence: reservation.candidat_licence,
+        });
+      }
+
+      const trancheMs = Date.parse(reservation.tranche);
+      if (!Number.isFinite(trancheMs)) {
+        throw new ConvexError({
+          code: "ABO_TEST_TRANCHE_INVALIDE",
+          message: "Une réservation active contient un instant de tranche invalide.",
+        });
+      }
+      if (trancheMs <= instantReferenceMs) {
+        if (
+          !candidat.reservationPassee ||
+          reservation.tranche > candidat.reservationPassee.tranche
+        ) {
+          candidat.reservationPassee = reservation;
+        }
+      } else if (
+        !candidat.reservationFuture ||
+        reservation.tranche < candidat.reservationFuture.tranche
+      ) {
+        candidat.reservationFuture = reservation;
+      }
+    }
+
+    for (const archive of [...archivesATraiter, ...archivesTraitees]) {
+      const candidat = ajouterCandidatSuivi(candidats, {
+        cleLogique: `archive:${archive._id}`,
+        nom: archive.nom,
+        prenom: archive.prenom,
+        licence: archive.licence,
+      });
+      candidat.archive = true;
+    }
+
+    const ordreStatut = { en_attente: 0, reserve: 1, passe: 2 } as const;
+    const liste = [...candidats.values()]
+      .map((candidat) => {
+        const estPasse = candidat.archive || candidat.reservationPassee !== null;
+        const reservation = estPasse
+          ? candidat.reservationPassee
+          : candidat.reservationFuture;
+        return {
+          cle: candidat.cle,
+          nom: candidat.nom,
+          prenom: candidat.prenom,
+          licence: candidat.licence,
+          statut: estPasse
+            ? ("passe" as const)
+            : candidat.reservationFuture
+              ? ("reserve" as const)
+              : ("en_attente" as const),
+          trancheDebut: reservation?.tranche ?? null,
+          trancheFin: reservation?.tranche_fin ?? null,
+        };
+      })
+      .sort(
+        (a, b) =>
+          ordreStatut[a.statut] - ordreStatut[b.statut] ||
+          a.nom.localeCompare(b.nom, "fr", { sensitivity: "base" }) ||
+          a.prenom.localeCompare(b.prenom, "fr", { sensitivity: "base" }) ||
+          a.cle.localeCompare(b.cle),
+      );
+
+    const reserves = liste.filter((candidat) => candidat.statut === "reserve").length;
+    const passes = liste.filter((candidat) => candidat.statut === "passe").length;
+    return {
+      total: liste.length,
+      aPlanifier: liste.length - passes,
+      reserves,
+      passes,
+      candidats: liste,
+    };
   },
 });
 

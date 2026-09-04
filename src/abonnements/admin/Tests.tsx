@@ -4,6 +4,7 @@ import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { aboError } from "../lib/errors";
 import { cleJour, formatDateJour, formatJour, formatTranche } from "../lib/tests";
+import SuiviTestsModal from "./SuiviTestsModal";
 
 // Vue admin « Tests d'autonomie » : gestion des disponibilités + inscrits.
 // Chaque admin propose ses créneaux (jour + plage). La capacité par slot de 20 min
@@ -41,6 +42,7 @@ const borneTemporelle = () => {
 
 export default function Tests({ licenceInitiale }: { licenceInitiale: string | null }) {
   const [borneCreneaux, setBorneCreneaux] = useState(borneTemporelle);
+  const [suiviOuvert, setSuiviOuvert] = useState(false);
   useEffect(() => {
     let timeoutId: number;
     const planifierProchainPalier = () => {
@@ -64,6 +66,9 @@ export default function Tests({ licenceInitiale }: { licenceInitiale: string | n
     instantReference: borneCreneaux.instantReference,
   });
   const inscrits = useQuery(api.abo.tests.testInscritsAdmin);
+  const suiviCandidats = useQuery(api.abo.tests.suiviCandidatsAdmin, {
+    instantReference: borneCreneaux.instantReference,
+  });
   const creer = useMutation(api.abo.tests.creerTestCreneau);
   const rejoindre = useMutation(api.abo.tests.rejoindreTestCreneau);
   const supprimer = useMutation(api.abo.tests.supprimerTestCreneau);
@@ -75,6 +80,48 @@ export default function Tests({ licenceInitiale }: { licenceInitiale: string | n
         de 20 min ; la capacité de plusieurs encadrants se cumule. Les candidats
         réservent une tranche de 40 ou 60 min (répartition fine le jour J).
       </p>
+
+      <section className="abo-admin-tests-followup" aria-labelledby="suivi-tests-heading">
+        <div className="abo-admin-tests-followup-heading">
+          <div>
+            <h3 id="suivi-tests-heading" className="abo-admin-subheading">Personnes à tester</h3>
+            <p>Visualisez en un clic qui attend encore un créneau, qui a réservé et qui a déjà passé son test.</p>
+          </div>
+          <button
+            type="button"
+            className="abo-admin-tests-followup-button"
+            disabled={suiviCandidats === undefined}
+            onClick={() => setSuiviOuvert(true)}
+            aria-haspopup="dialog"
+          >
+            {suiviCandidats === undefined ? (
+              <span>Chargement du suivi…</span>
+            ) : (
+              <>
+                <span className="abo-admin-tests-followup-main-count">
+                  <strong>{suiviCandidats.reserves}</strong> personne{suiviCandidats.reserves === 1 ? "" : "s"} {suiviCandidats.reserves === 1 ? "a" : "ont"} réservé
+                </span>
+                <span>
+                  sur {suiviCandidats.aPlanifier} personne{suiviCandidats.aPlanifier === 1 ? "" : "s"} devant encore passer le test
+                </span>
+                <span className="abo-admin-tests-followup-passed">
+                  {suiviCandidats.passes} test{suiviCandidats.passes === 1 ? "" : "s"} passé{suiviCandidats.passes === 1 ? "" : "s"}
+                </span>
+              </>
+            )}
+          </button>
+        </div>
+      </section>
+
+      {suiviOuvert && suiviCandidats && (
+        <SuiviTestsModal
+          candidats={suiviCandidats.candidats}
+          aPlanifier={suiviCandidats.aPlanifier}
+          reserves={suiviCandidats.reserves}
+          passes={suiviCandidats.passes}
+          onFermer={() => setSuiviOuvert(false)}
+        />
+      )}
 
       <section className="abo-admin-subsection">
         <h3 className="abo-admin-subheading">Proposer une disponibilité</h3>

@@ -779,7 +779,11 @@ export default defineSchema({
   })
     .index("by_dossier", ["dossier_id"])
     .index("by_nom_prenom_normalise", ["nom_prenom_normalise"])
-    .index("by_licence", ["licence"]),
+    .index("by_licence", ["licence"])
+    .index("by_etape_test_autonomie_and_etape_validation", [
+      "etape_test_autonomie",
+      "etape_validation",
+    ]),
 
   // SAISON-EXEMPT: suivi administratif des scans de la campagne courante, sans
   // saison comptable. Les fichiers restent dans Drive après le reset ; leurs
@@ -1199,7 +1203,8 @@ export default defineSchema({
     .index("by_personne", ["personne_id"])
     .index("by_candidat_user_id", ["candidat_user_id"])
     .index("by_candidat_licence", ["candidat_licence"])
-    .index("by_tranche", ["tranche"]),
+    .index("by_tranche", ["tranche"])
+    .index("by_statut_and_tranche", ["statut", "tranche"]),
 
   // SAISON-EXEMPT: cache des candidats au test d'autonomie rattaché au
   // compte Abonnements et renouvelé lors du reset de campagne, indépendamment
@@ -1216,7 +1221,8 @@ export default defineSchema({
   })
     .index("by_user_id", ["user_id"])
     .index("by_user_id_and_licence", ["user_id", "licence"])
-    .index("by_licence", ["licence"]),
+    .index("by_licence", ["licence"])
+    .index("by_statut", ["statut"]),
 
   // SAISON-EXEMPT: intention explicite d'un candidat d'être prévenu lors
   // de l'ajout de créneaux. Ce suivi appartient à la campagne Abonnements.
