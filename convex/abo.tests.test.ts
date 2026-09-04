@@ -251,6 +251,105 @@ describe("réservation de test d'autonomie", () => {
     })).rejects.toThrow("Réservé aux administrateurs");
   });
 
+  test("réserve le suivi consolidé aux administrateurs Abonnements", async () => {
+    const t = convexTest(schema, modules);
+    const { userId } = await creerPersonne(t);
+
+    await expect(
+      t.withIdentity({ subject: userId }).query(
+        api.abo.tests.suiviCandidatsAdmin,
+        { instantReference: "2099-01-01T00:00:00.000Z" },
+      ),
+    ).rejects.toThrow("Réservé aux administrateurs");
+  });
+
+  test("consolide attente, réservation et passage sans doubler une licence", async () => {
+    const t = convexTest(schema, modules);
+    const adminId = await creerAdminAbo(t);
+    const attente = await creerPersonne(t, { licence: "748000000001" });
+    const reserve = await creerPersonne(t, { licence: "748000000002" });
+    const passe = await creerPersonne(t, { licence: "748000000003" });
+
+    await t.run(async (ctx) => {
+      await ctx.db.insert("abo_test_candidats_directs", {
+        user_id: attente.userId,
+        licence: "748000000001",
+        nom: "Candidate",
+        prenom: "Test",
+        statut: "eligible",
+        valide_le: 1,
+      });
+      await ctx.db.insert("abo_test_reservations", {
+        personne_id: reserve.personneId,
+        tranche: "2099-06-02T08:00:00.000Z",
+        tranche_fin: "2099-06-02T08:40:00.000Z",
+        statut: "active",
+      });
+      await ctx.db.insert("abo_test_reservations", {
+        personne_id: passe.personneId,
+        tranche: "2098-06-02T08:00:00.000Z",
+        tranche_fin: "2098-06-02T08:40:00.000Z",
+        statut: "active",
+      });
+      await ctx.db.insert("abo_tests_autonomie_archive", {
+        licence: "748000000003",
+        nom: "Candidate",
+        prenom: "Test",
+        nom_prenom_normalise: "candidate test",
+        drive_file_id: "drive-test",
+        drive_url: "https://drive.example.test/test",
+        statut: "traite",
+      });
+      await ctx.db.insert("abo_tests_autonomie_archive", {
+        licence: "748000000004",
+        nom: "ARCHIVE",
+        prenom: "Alex",
+        nom_prenom_normalise: "archive alex",
+        drive_file_id: "drive-archive-only",
+        drive_url: "https://drive.example.test/archive-only",
+        statut: "a_traiter",
+      });
+    });
+
+    const suivi = await t.withIdentity({ subject: adminId }).query(
+      api.abo.tests.suiviCandidatsAdmin,
+      { instantReference: "2099-01-01T00:00:00.000Z" },
+    );
+
+    expect(suivi).toMatchObject({
+      total: 4,
+      aPlanifier: 2,
+      reserves: 1,
+      passes: 2,
+    });
+    expect(suivi.candidats).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        licence: "748000000001",
+        statut: "en_attente",
+        trancheDebut: null,
+        trancheFin: null,
+      }),
+      expect.objectContaining({
+        licence: "748000000002",
+        statut: "reserve",
+        trancheDebut: "2099-06-02T08:00:00.000Z",
+        trancheFin: "2099-06-02T08:40:00.000Z",
+      }),
+      expect.objectContaining({
+        licence: "748000000003",
+        statut: "passe",
+        trancheDebut: "2098-06-02T08:00:00.000Z",
+        trancheFin: "2098-06-02T08:40:00.000Z",
+      }),
+      expect.objectContaining({
+        licence: "748000000004",
+        statut: "passe",
+        trancheDebut: null,
+        trancheFin: null,
+      }),
+    ]));
+  });
+
   test("exige un nom configuré pour proposer ou rejoindre un créneau", async () => {
     const t = convexTest(schema, modules);
     const adminNommeId = await creerAdminAbo(t, {

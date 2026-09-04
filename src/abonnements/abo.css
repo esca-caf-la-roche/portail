@@ -937,6 +937,34 @@ textarea.abo-input {
 .abo-admin-test-upload { display: grid; gap: 0.65rem; max-width: 36rem; }
 .abo-admin-test-upload--compact { width: min(100%, 26rem); }
 .abo-admin-test-upload .abo-admin-button { justify-self: start; }
+.abo-admin-tests-followup { padding: 1rem; border: var(--border-width) solid var(--border-color); background: var(--warning); box-shadow: 5px 5px 0 var(--border-color); }
+.abo-admin-tests-followup-heading { display: grid; grid-template-columns: minmax(0, 1fr) minmax(18rem, 28rem); align-items: center; gap: 1rem; }
+.abo-admin-tests-followup-heading h3,
+.abo-admin-tests-followup-heading p { margin: 0; }
+.abo-admin-tests-followup-heading p { max-width: 40rem; margin-top: 0.35rem; font-weight: 700; }
+.abo-admin-tests-followup-button { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 0.15rem 0.5rem; width: 100%; min-height: 5rem; padding: 0.8rem; border: var(--border-width) solid var(--border-color); background: var(--card); box-shadow: 4px 4px 0 var(--border-color); color: var(--foreground); font: 800 0.82rem var(--font-sans); text-align: left; cursor: pointer; }
+.abo-admin-tests-followup-button:hover:not(:disabled),
+.abo-admin-tests-followup-button:focus-visible { transform: translate(3px, 3px); box-shadow: 1px 1px 0 var(--border-color); outline: 4px solid var(--info); outline-offset: 2px; }
+.abo-admin-tests-followup-button:disabled { cursor: wait; opacity: 0.7; box-shadow: none; }
+.abo-admin-tests-followup-main-count { grid-row: span 2; display: grid; min-width: 5.4rem; place-items: center; align-self: stretch; padding: 0.45rem; border: 2px solid var(--border-color); background: var(--info); text-align: center; }
+.abo-admin-tests-followup-main-count strong { font-size: 2rem; line-height: 1; }
+.abo-admin-tests-followup-passed { font-size: 0.72rem; }
+.abo-admin-tests-followup-modal { width: min(100%, 58rem); }
+.abo-admin-tests-followup-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.65rem; margin: 1rem 0; }
+.abo-admin-tests-followup-summary > div { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.65rem; border: 2px solid var(--border-color); background: var(--background); }
+.abo-admin-tests-followup-summary dt { font-size: 0.75rem; font-weight: 900; text-transform: uppercase; }
+.abo-admin-tests-followup-summary dd { margin: 0; font-size: 1.4rem; font-weight: 900; }
+.abo-admin-tests-followup-list { display: grid; gap: 0.65rem; margin: 0; padding: 0; list-style: none; }
+.abo-admin-tests-followup-person { display: grid; grid-template-columns: minmax(10rem, 1fr) minmax(12rem, auto); align-items: center; gap: 0.75rem; padding: 0.75rem; border: 2px solid var(--border-color); background: var(--background); }
+.abo-admin-tests-followup-identity,
+.abo-admin-tests-followup-state { display: grid; min-width: 0; gap: 0.25rem; }
+.abo-admin-tests-followup-identity strong { overflow-wrap: anywhere; }
+.abo-admin-tests-followup-state { justify-items: end; text-align: right; }
+.abo-admin-tests-followup-badge { display: inline-block; padding: 0.25rem 0.45rem; border: 2px solid var(--border-color); font-size: 0.72rem; font-weight: 900; text-transform: uppercase; }
+.abo-admin-tests-followup-badge--en_attente { background: var(--warning); }
+.abo-admin-tests-followup-badge--reserve { background: var(--info); }
+.abo-admin-tests-followup-badge--passe { background: var(--success); }
+.abo-admin-tests-followup-slot { font-size: 0.78rem; font-weight: 800; }
 .abo-admin-staff-slots { grid-template-columns: repeat(auto-fit, minmax(min(100%, 21rem), 1fr)); }
 .abo-admin-staff-slot { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 1rem; }
 .abo-admin-staff-slot--joined { background: var(--success); }
@@ -1207,4 +1235,10 @@ textarea.abo-input {
   .abo-admin-fusion-modes { grid-template-columns: 1fr; }
   .abo-admin-fusion-modal { max-height: calc(100vh - 1rem); padding: 0.8rem; box-shadow: 4px 4px 0 var(--border-color); }
   .abo-admin-fusion-actions { display: grid; }
+  .abo-admin-tests-followup-heading,
+  .abo-admin-tests-followup-person { grid-template-columns: 1fr; }
+  .abo-admin-tests-followup-button { grid-template-columns: auto 1fr; }
+  .abo-admin-tests-followup-summary { grid-template-columns: 1fr; }
+  .abo-admin-tests-followup-state { justify-items: start; text-align: left; }
+  .abo-admin-tests-followup-modal { width: 100%; max-height: calc(100dvh - 2rem); }
 }

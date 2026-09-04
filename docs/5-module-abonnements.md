@@ -422,6 +422,16 @@ sécurisé du demandeur. Ce mécanisme utilise une tâche différée attachée �
 réservation, jamais un cron périodique. Ces créneaux, réservations, rappels et
 réévaluations relèvent de la campagne courante et sont purgés à son reset.
 
+Dans l'onglet staff **Tests**, le bloc **Personnes à tester** affiche en temps
+réel le nombre de créneaux réservés sur le nombre de personnes devant encore
+passer le test. Un clic ouvre la liste consolidée des dossiers validés dont le test
+est requis, des candidats directs éligibles, des réservations actives et des
+tests archivés pendant la campagne. Chaque personne apparaît une seule fois,
+avec le statut **En attente de créneau**, **Créneau réservé** ou **Test passé**.
+Une réservation dont le début est atteint est considérée comme passée ; ce
+statut décrit le rendez-vous et ne vaut pas validation du résultat sur le site
+du club. La vue est réservée au staff Abonnements, hors saison comptable.
+
 Les destinataires sont validés comme adresses uniques à l'entrée de
 l'authentification puis de nouveau dans les actions SMTP. Les listes de
 destinataires, noms d'affichage et injections d'en-têtes sont refusés, y compris

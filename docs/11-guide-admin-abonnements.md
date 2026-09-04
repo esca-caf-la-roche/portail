@@ -367,6 +367,13 @@ licence, son âge ou son besoin de test ne sont pas encore connus. Le rendez-vou
 est alors affiché comme **provisoire**. Cette réservation reste possible hors
 saison : elle ne dépend pas de l'ouverture d'une vague.
 
+Le bloc **Personnes à tester** indique combien de personnes ont réservé parmi
+celles qui doivent encore passer le test. Cliquez sur ce bloc pour ouvrir la
+liste complète et distinguer **En attente de créneau**, **Créneau réservé** et
+**Test passé**. Le statut « passé » signifie que l'heure du rendez-vous est
+atteinte ou que le document a été archivé ; il ne confirme pas la réussite du
+test sur le site du club.
+
 ### Proposer une disponibilité
 
 1. Choisir un jour, aujourd'hui ou dans le futur.
@@ -384,8 +391,9 @@ l'identité de l'encadrant.
 
 ### Mes créneaux et inscrits
 
-- **Mes créneaux** : seuls vos créneaux y apparaissent. Vous pouvez supprimer
-  uniquement ceux que vous avez créés.
+- **Créneaux de l'équipe** : tous les créneaux futurs y apparaissent. Vous
+  pouvez rejoindre ceux d'un collègue et vous retirer uniquement de vos propres
+  disponibilités.
 - **Inscrits par créneau** : tous les admins Abonnements voient les rendez-vous
   actifs, avec le nom, le prénom et l'e-mail des candidats.
 
