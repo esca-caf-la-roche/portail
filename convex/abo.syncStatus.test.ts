@@ -3,6 +3,8 @@ import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
 import { api, internal } from "./_generated/api";
 import schema from "./schema";
+import { actualiserStatutSource } from "./abo/syncStatus";
+import { AUTOMATIC_SYNC_INTERVALS_MS } from "./abo/syncConstants";
 
 const modules = import.meta.glob("./**/*.ts");
 
@@ -133,8 +135,31 @@ describe("état des synchronisations Abonnements", () => {
       api.abo.sync.getStatutSyncLicencesCours,
       {},
     )).resolves.toEqual({
-      eleves: { lastSyncAt: null, nextSyncAt: null },
-      annuaire: { lastSyncAt: null, nextSyncAt: null },
+      eleves: { lastSyncAt: null, nextSyncAt: null, minimumIntervalMs: AUTOMATIC_SYNC_INTERVALS_MS.eleves },
+      annuaire: { lastSyncAt: null, nextSyncAt: null, lastAttemptAt: null },
     });
+  });
+
+  test("le même état brut ouvre les créneaux 7 h et 9 h sans nouvelle query", async () => {
+    const t = convexTest(schema, modules);
+    const userId = await t.run(async (ctx) => {
+      const id = await ctx.db.insert("users", { email: "horloge-sync@example.test" });
+      await ctx.db.insert("userSettings", { userId: id, allowedTiles: ["abonnements"], role: "user" });
+      await ctx.db.insert("abo_app_config", { cle: "last_attempt_sync_annuaire", valeur: "2026-09-05T05:00:00.000Z" });
+      await ctx.db.insert("abo_app_config", { cle: "last_sync_scrap", valeur: "2026-09-05T04:00:00.000Z" });
+      return id;
+    });
+    const brut = await t.withIdentity({ subject: userId }).query(api.abo.sync.getStatutSyncAbo, {});
+    const annuaire = brut.annuaire;
+    expect(actualiserStatutSource("annuaire", annuaire, Date.parse("2026-09-05T06:59:00Z")).nextSyncAt)
+      .toBe("2026-09-05T07:00:00.000Z");
+    expect(actualiserStatutSource("annuaire", annuaire, Date.parse("2026-09-05T07:00:00Z")).nextSyncAt).toBeNull();
+    expect(actualiserStatutSource("annuaire", annuaire, Date.parse("2026-09-06T04:59:00Z")).nextSyncAt)
+      .toBe("2026-09-06T05:00:00.000Z");
+    expect(actualiserStatutSource("annuaire", annuaire, Date.parse("2026-09-06T05:00:00Z")).nextSyncAt).toBeNull();
+    const apresExpiration = actualiserStatutSource("scrap", brut.scrap, Date.parse(brut.scrap.nextSyncAt!));
+    expect(apresExpiration.nextSyncAt).toBeNull();
+    expect(apresExpiration.manualNextSyncAt).toBeNull();
+    expect(brut.scrap.nextSyncAt).not.toBeNull();
   });
 });

@@ -6,7 +6,8 @@
 // période d'inscriptions, alors que ce sont des données consultées par à-coups.
 //
 // Elles sont désormais déclenchées EN ON-DEMAND au chargement des pages qui en ont
-// besoin, avec un verrou anti-rejeu partagé (TTL ~1 h) — voir convex/abo/sync.ts :
+// besoin, avec un verrou anti-rejeu partagé (4 h par défaut, hors annuaire) :
+// voir convex/abo/sync.ts.
 //   - page Validation paiements cours → syncPourPaiements (HelloAsso)
 //   - espace admin abonnements        → syncPourAbo (HelloAsso → scrap → annuaire → élèves)
 //   - tuile licences élèves en cours   → syncPourLicencesCours (annuaire + élèves)

@@ -336,7 +336,7 @@ export const scraperAbonnes = internalAction({
       internal.abo.matching.matcherScrapPersonnes,
       { generation: args.generation },
     );
-    await ctx.runMutation(internal.abo.compteur.rafraichirCompteurPublic, {});
+    await ctx.runMutation(internal.abo.compteur.rafraichirCompteurPublic, { siNecessaire: true });
     console.log(
       `→ scrap : ${upsertees} upsertées, ${supprimees} supprimée(s), ${sansLicence} sans licence ; ${maj} personne(s) mise(s) à jour.`,
     );

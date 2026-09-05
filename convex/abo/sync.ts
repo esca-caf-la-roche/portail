@@ -36,6 +36,8 @@ import {
   type SyncSource,
 } from "./syncConstants";
 
+import { calculerStatutSource, calculerStatutAnnuaire } from "./syncStatus";
+
 type Source = SyncSource;
 type Resultat = "done" | "skipped" | "desactive" | "erreur";
 type ResultatEleves = Exclude<Resultat, "desactive">;
@@ -491,6 +493,8 @@ export const syncPourLicencesCours = authenticatedAction({
 const statutSourceValidator = v.object({
   lastSyncAt: v.union(v.string(), v.null()),
   nextSyncAt: v.union(v.string(), v.null()),
+  lastAttemptAt: v.optional(v.union(v.string(), v.null())),
+  minimumIntervalMs: v.optional(v.number()),
 });
 
 const statutSourceAboValidator = statutSourceValidator.extend({
@@ -500,37 +504,11 @@ const statutSourceAboValidator = statutSourceValidator.extend({
   manualIntervalMs: v.union(v.number(), v.null()),
 });
 
-function calculerStatutSource(
-  valeur: string | undefined,
-  ttlMs: number,
-  maintenantMs?: number,
-) {
-  const lastMs = valeur ? Date.parse(valeur) : NaN;
-  const prochaineMs = lastMs + ttlMs;
-  return {
-    lastSyncAt: Number.isFinite(lastMs) ? new Date(lastMs).toISOString() : null,
-    nextSyncAt: Number.isFinite(prochaineMs)
-      && (maintenantMs === undefined || prochaineMs > maintenantMs)
-      ? new Date(prochaineMs).toISOString()
-      : null,
-  };
-}
-
-function calculerStatutAnnuaire(valeur: string | undefined, tentative: string | undefined, maintenantMs?: number) {
-  return {
-    lastSyncAt: calculerStatutSource(valeur, 0).lastSyncAt,
-    // Les anciens clients sans horloge restent compatibles ; les clients actuels
-    // fournissent une minute stable pour afficher le calendrier sans timer serveur.
-    nextSyncAt: maintenantMs === undefined ? null
-      : calculerCreneauAnnuaire(maintenantMs, tentative, valeur).nextSyncAt,
-  };
-}
-
 // ── getStatutSyncAbo : synthèse des sources de l'espace admin Abonnements ──
-// `maintenantMs` est stabilisé côté client (arrondi à la minute) : une query
-// Convex ne doit pas lire l'horloge, car le passage du temps seul ne la réexécute pas.
+// Les clients actuels calculent le temps restant localement depuis les échéances.
+// Argument temporel conservé uniquement pour les anciens clients.
 export const getStatutSyncAbo = authenticatedQuery({
-  args: { maintenantMs: v.number() },
+  args: { maintenantMs: v.optional(v.number()) },
   returns: v.object({
     helloasso: statutSourceAboValidator,
     scrap: statutSourceAboValidator,
@@ -539,7 +517,7 @@ export const getStatutSyncAbo = authenticatedQuery({
   }),
   handler: async (ctx, args) => {
     await requireTile(ctx, ctx.userId, "abonnements");
-    if (!Number.isFinite(args.maintenantMs)) {
+    if (args.maintenantMs !== undefined && !Number.isFinite(args.maintenantMs)) {
       throw new ConvexError({ code: "22023", message: "Date de consultation invalide." });
     }
 
@@ -642,7 +620,7 @@ export const marquerSyncReussie = internalMutation({
 
 export const getStatutSyncLicencesCours = authenticatedQuery({
   // Optionnel pour conserver la compatibilité avec les clients déjà déployés.
-  // Les nouveaux clients le fournissent afin de masquer une échéance déjà passée.
+  // Les nouveaux clients utilisent les échéances absolues et leur horloge locale.
   args: { maintenantMs: v.optional(v.number()) },
   returns: v.object({
     eleves: statutSourceValidator,
@@ -667,11 +645,10 @@ export const getStatutSyncLicencesCours = authenticatedQuery({
     ]);
 
     return {
-      eleves: calculerStatutSource(
-        eleves?.valeur,
-        TTL_PAR_SOURCE.eleves,
-        args.maintenantMs,
-      ),
+      eleves: {
+        ...calculerStatutSource(eleves?.valeur, TTL_PAR_SOURCE.eleves, args.maintenantMs),
+        minimumIntervalMs: TTL_PAR_SOURCE.eleves,
+      },
       annuaire: calculerStatutAnnuaire(
         annuaire?.valeur,
         tentativeAnnuaire?.valeur,
