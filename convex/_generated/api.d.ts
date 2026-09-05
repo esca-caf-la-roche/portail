@@ -35,6 +35,7 @@ import type * as abo_scrap from "../abo/scrap.js";
 import type * as abo_statutAbonnement from "../abo/statutAbonnement.js";
 import type * as abo_sync from "../abo/sync.js";
 import type * as abo_syncConstants from "../abo/syncConstants.js";
+import type * as abo_syncStatus from "../abo/syncStatus.js";
 import type * as abo_testAutonomiePdf from "../abo/testAutonomiePdf.js";
 import type * as abo_testDocuments from "../abo/testDocuments.js";
 import type * as abo_testDocumentsDrive from "../abo/testDocumentsDrive.js";
@@ -122,6 +123,7 @@ declare const fullApi: ApiFromModules<{
   "abo/statutAbonnement": typeof abo_statutAbonnement;
   "abo/sync": typeof abo_sync;
   "abo/syncConstants": typeof abo_syncConstants;
+  "abo/syncStatus": typeof abo_syncStatus;
   "abo/testAutonomiePdf": typeof abo_testAutonomiePdf;
   "abo/testDocuments": typeof abo_testDocuments;
   "abo/testDocumentsDrive": typeof abo_testDocumentsDrive;

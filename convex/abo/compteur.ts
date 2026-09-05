@@ -578,10 +578,31 @@ export const compteurPublic = query({
   },
 });
 
+// Invalidation durable : un scrap interrompu entre deux lots ne doit pas perdre
+// son besoin de recalcul au prochain essai, même si ce dernier est identique.
+// SAISON-EXEMPT: marqueur technique du cache courant ; tout recalcul, y compris
+// celui du reset de campagne, le supprime dans la même transaction.
+const CLE_COMPTEUR_A_RECALCULER = "compteur_public_a_recalculer";
+
+export async function invaliderCompteurPublic(ctx: MutationCtx): Promise<void> {
+  const marqueur = await ctx.db.query("abo_app_config")
+    .withIndex("by_cle", (q) => q.eq("cle", CLE_COMPTEUR_A_RECALCULER)).first();
+  if (!marqueur) {
+    await ctx.db.insert("abo_app_config", { cle: CLE_COMPTEUR_A_RECALCULER, valeur: "true" });
+  }
+}
+
 export const rafraichirCompteurPublic = internalMutation({
-  args: {},
+  args: { siNecessaire: v.optional(v.boolean()) },
   returns: v.null(),
-  handler: async (ctx) => {
+  handler: async (ctx, args) => {
+    const cache = await ctx.db
+      .query("abo_compteur_public_cache")
+      .withIndex("by_cle", (q) => q.eq("cle", "courant"))
+      .first();
+    const marqueur = await ctx.db.query("abo_app_config")
+      .withIndex("by_cle", (q) => q.eq("cle", CLE_COMPTEUR_A_RECALCULER)).first();
+    if (args.siNecessaire && cache && !marqueur) return null;
     const c = await calculerCompteur(ctx, undefined);
     const places_max = await lirePlacesMax(ctx);
     const doc = {
@@ -591,15 +612,12 @@ export const rafraichirCompteurPublic = internalMutation({
       places_restantes: places_max - c.total_affiche,
       calcule_le: new Date().toISOString(),
     };
-    const cache = await ctx.db
-      .query("abo_compteur_public_cache")
-      .withIndex("by_cle", (q) => q.eq("cle", "courant"))
-      .first();
     if (cache) {
       if (champsModifies(cache, doc, ["calcule_le"])) await ctx.db.patch(cache._id, doc);
     } else {
       await ctx.db.insert("abo_compteur_public_cache", doc);
     }
+    if (marqueur) await ctx.db.delete(marqueur._id);
     return null;
   },
 });
@@ -767,6 +785,7 @@ export const remplacerElevesEnCours = internalMutation({
 
     let avecLicence = 0;
     let sansLicence = 0;
+    let snapshotModifie = false;
     for (const l of args.lignes) {
       const licence = canoniserLicence(l.licence) ?? undefined;
       const nouveau = doc(l, licence);
@@ -779,16 +798,21 @@ export const remplacerElevesEnCours = internalMutation({
       if (existant) {
         if (champsModifies(existant, nouveau, ["imported_at"])) {
           await ctx.db.patch(existant._id, nouveau);
+          snapshotModifie = true;
         }
       } else {
         await ctx.db.insert("abo_eleves_en_cours", nouveau);
+        snapshotModifie = true;
       }
     }
 
     // Chaque existant non consommé a disparu du snapshot, quelle que soit sa
     // licence ou sa saison historique.
     for (const restants of existantsParIdentite.values()) {
-      for (const e of restants) await ctx.db.delete(e._id);
+      for (const e of restants) {
+        await ctx.db.delete(e._id);
+        snapshotModifie = true;
+      }
     }
 
     // Le snapshot élèves reste prioritaire sur le suivi manuel. Après un
@@ -825,7 +849,10 @@ export const remplacerElevesEnCours = internalMutation({
       }
     }
 
-    await programmerRafraichissementCompteurPublic(ctx);
+    const cache = snapshotModifie ? null : await ctx.db
+      .query("abo_compteur_public_cache")
+      .withIndex("by_cle", (q) => q.eq("cle", "courant")).first();
+    if (snapshotModifie || !cache) await programmerRafraichissementCompteurPublic(ctx);
     return { avecLicence, sansLicence };
   },
 });

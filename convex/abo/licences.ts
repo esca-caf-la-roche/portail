@@ -22,6 +22,7 @@ import { requireAboAdmin } from "./auth";
 import { canoniserLicence, normaliserNomPrenom, similarite } from "./lib";
 import { champsModifies } from "../dbUtils";
 import { ANNUAIRE_ATTEMPT_KEY } from "./syncConstants";
+import { invaliderCompteurPublic, programmerRafraichissementCompteurPublic } from "./compteur";
 
 // Annuaire des licences du club (export JSON protégé par Basic Auth DÉDIÉE).
 const URL_ANNUAIRE =
@@ -127,20 +128,25 @@ async function poserLicence(
   licence: string,
   statut: "annuaire_auto" | "annuaire_valide",
   fiche: Doc<"abo_licences"> | null,
-): Promise<boolean> {
+): Promise<"conflit" | "inchange" | "modifie"> {
   if (await autrePorteuseLicence(ctx, personne._id, licence)) {
-    return false;
+    return "conflit";
   }
   const nom = fiche?.nom ?? personne.nom;
   const prenom = fiche?.prenom ?? personne.prenom;
-  await ctx.db.patch(personne._id, {
+  const patch = {
     licence,
     licence_statut: statut,
     nom,
     prenom,
     nom_prenom_normalise: normaliserNomPrenom(nom, prenom),
-  });
-  return true;
+  };
+  if (!champsModifies(personne, patch)) return "inchange";
+  await ctx.db.patch(personne._id, patch);
+  // Licence et nom pilotent aussi le dédoublonnage des demandes avec le site.
+  // Leur correction doit rafraîchir le compteur même si le scrap ne change pas.
+  await invaliderCompteurPublic(ctx);
+  return "modifie";
 }
 
 // ── resoudreLicencesPersonnes : match exact unique (auto) ────────────
@@ -179,11 +185,12 @@ export const resoudreLicencesPersonnes = authenticatedMutation({
       // Résolue SSI l'annuaire contient EXACTEMENT une licence correspondante.
       if (distinctes.size === 1) {
         const licence = [...distinctes][0];
-        if (await poserLicence(ctx, p, licence, "annuaire_auto", fiches.get(licence) ?? null)) {
+        if (await poserLicence(ctx, p, licence, "annuaire_auto", fiches.get(licence) ?? null) === "modifie") {
           resolues++;
         }
       }
     }
+    if (resolues > 0) await programmerRafraichissementCompteurPublic(ctx);
     return resolues;
   },
 });
@@ -236,12 +243,14 @@ export const validerLicence = authenticatedMutation({
         personneExistanteEmail: dossierPorteuse?.email ?? null,
       };
     }
-    if (!await poserLicence(ctx, personne, licence, "annuaire_valide", fiche)) {
+    const resultat = await poserLicence(ctx, personne, licence, "annuaire_valide", fiche);
+    if (resultat === "conflit") {
       throw new ConvexError({
         code: "LICENCE_CONCURRENTE",
         message: "Cette licence vient d'être affectée à une autre personne. Réessayez pour voir le conflit.",
       });
     }
+    if (resultat === "modifie") await programmerRafraichissementCompteurPublic(ctx);
     return { statut: "attribue" as const, licence };
   },
 });

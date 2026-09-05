@@ -5,6 +5,7 @@ import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { useMaintenantJourParis } from "../abonnements/lib/useMaintenantJourParis";
 import { useMaintenantMinute } from "../abonnements/lib/useMaintenantMinute";
+import { actualiserStatutSource } from "../../convex/abo/syncStatus";
 import {
   emailsUniques,
   normaliserAdresseEmailUnique,
@@ -258,16 +259,20 @@ function CoursRepliable({
 export default function LicencesEnCours() {
   const maintenantJour = useMaintenantJourParis();
   const maintenantMs = useMaintenantMinute();
+  const [afficherCandidats, setAfficherCandidats] = useState(false);
   const data = useQuery(api.abo.licencesEnCours.getElevesLicenceInvalide, { maintenantJour });
+  const rechercheCandidatsActive = afficherCandidats && !!data?.eleves.some((eleve) => !eleve.traite);
   const candidats = useQuery(
     api.abo.licencesEnCours.getCandidatsLicences,
-    data && data.eleves.some((eleve) => !eleve.traite)
+    rechercheCandidatsActive
       ? { maintenantJour }
       : "skip",
   );
-  const statutSynchronisation = useQuery(api.abo.sync.getStatutSyncLicencesCours, {
-    maintenantMs,
-  });
+  const etatSources = useQuery(api.abo.sync.getStatutSyncLicencesCours, {});
+  const statutSynchronisation = etatSources === undefined ? undefined : {
+    eleves: actualiserStatutSource("eleves", etatSources.eleves, maintenantMs),
+    annuaire: actualiserStatutSource("annuaire", etatSources.annuaire, maintenantMs),
+  };
   const synchroniser = useAction(api.abo.sync.syncPourLicencesCours);
   const definirTraite = useMutation(api.abo.licencesEnCours.definirTraite);
   const [syncStatut, setSyncStatut] = useState<"en_cours" | "ok" | "erreur">("en_cours");
@@ -306,13 +311,13 @@ export default function LicencesEnCours() {
   const eleves = useMemo<EleveLicence[]>(() => {
     if (!data) return [];
     const candidatsParEleve = new Map(
-      (candidats ?? []).map((item) => [item.eleveId, item.candidats]),
+      (afficherCandidats ? candidats ?? [] : []).map((item) => [item.eleveId, item.candidats]),
     );
     return data.eleves.map((eleve) => ({
       ...eleve,
       candidats: eleve.traite ? [] : (candidatsParEleve.get(eleve.eleve_id) ?? []),
     }));
-  }, [candidats, data]);
+  }, [afficherCandidats, candidats, data]);
 
   const elevesASelectionner = useMemo(
     () => eleves.filter(estSelectionnable),
@@ -430,7 +435,9 @@ export default function LicencesEnCours() {
 
       <section className="licences-cours-syncs" aria-label="État des synchronisations, heures de Paris">
         {([
-          { cle: "eleves", titre: "Élèves du site club", delai: "1 heure" },
+          { cle: "eleves", titre: "Élèves du site club", delai: statutSynchronisation?.eleves.minimumIntervalMs === undefined
+            ? "Chargement du délai…"
+            : `${statutSynchronisation.eleves.minimumIntervalMs / 3_600_000} h` },
           { cle: "annuaire", titre: "Annuaire des licences", delai: "À partir de 7 h et 9 h (heure de Paris), à la consultation. 2 tentatives maximum par jour, même en cas d’échec." },
         ] as const).map((source) => {
           const statut = statutSynchronisation?.[source.cle];
@@ -473,6 +480,28 @@ export default function LicencesEnCours() {
           </section>
 
           {traitementErreur && <p className="error-message" role="alert">{traitementErreur}</p>}
+
+          {data.total > 0 && <section aria-label="Correspondances de licences">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              aria-pressed={afficherCandidats}
+              onClick={() => setAfficherCandidats((afficher) => !afficher)}
+            >
+              {afficherCandidats ? "Masquer les correspondances possibles" : "Afficher les correspondances possibles"}
+            </button>
+            <p role="status">
+              {!afficherCandidats
+                ? "Les correspondances dans l'annuaire sont recherchées à votre demande."
+                : !rechercheCandidatsActive
+                  ? "Aucun élève à traiter pour rechercher une correspondance."
+                  : candidats === undefined
+                    ? "Recherche des correspondances…"
+                    : candidats.every((item) => item.candidats.length === 0)
+                      ? "Aucune correspondance possible trouvée dans l'annuaire."
+                      : "Les correspondances possibles sont affichées sous les élèves concernés."}
+            </p>
+          </section>}
 
           {data.total > 0 && (
             <section aria-label="Relance licence" className="licences-cours-relance">

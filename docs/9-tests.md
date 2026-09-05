@@ -231,6 +231,10 @@ le plafond de tentatives malgré un échec et la date du dernier succès.
 Ils vérifient aussi qu'un import ancien ne peut écraser celui du créneau suivant.
 Les tests `convex/abo.syncStatus.test.ts` vérifient les disponibilités affichées ;
 `convex/abo.config.test.ts` couvre la conservation des marqueurs lors d'un reset.
+`convex/abo.syncCadence.test.ts` vérifie le blocage des imports automatiques
+pendant quatre heures. `convex/abo.compteur-io.test.ts` couvre le court-circuit
+des imports identiques, l'invalidation durable entre lots, les suppressions
+et la reconstruction d'un cache absent.
 
 ```bash
 npm test -- convex/abo.annuaireSync.test.ts convex/abo.syncStatus.test.ts convex/abo.licencesSnapshot.test.ts convex/abo.config.test.ts
@@ -245,7 +249,13 @@ npm test -- convex/abo.annuaireSync.test.ts convex/abo.syncStatus.test.ts convex
 4. sélectionner plusieurs élèves, dont deux partageant la même adresse : le
    résultat collectif doit contenir uniquement les adresses uniques, séparées
    par une virgule ;
-5. vérifier qu'aucune fenêtre Google ou Gmail ne s'ouvre depuis cette page.
+5. vérifier qu'aucune fenêtre Google ou Gmail ne s'ouvre depuis cette page ;
+6. vérifier que les correspondances ne sont pas recherchées à l'ouverture :
+   cliquer « Afficher les correspondances possibles », contrôler le chargement,
+   les résultats ou leur absence, puis masquer les correspondances ;
+7. laisser le panneau de synchronisation ouvert et vérifier que les délais
+   évoluent sans nouvel appel de statut chaque minute, puis qu'une vraie
+   synchronisation met bien à jour la dernière réussite affichée.
 
 ### Scénarios ciblés — Remboursements élèves
 

@@ -1,6 +1,8 @@
 export type SyncSource = "helloasso" | "scrap" | "annuaire" | "eleves";
 
-const SYNC_INTERVAL_MS = (Number(process.env.SYNC_TTL_MINUTES) || 60) * 60_000;
+// Les imports administratifs restent à la demande ; quatre heures limitent
+// les relectures des snapshots. Le parcours public garde sa fraîcheur de 15 min.
+const SYNC_INTERVAL_MS = (Number(process.env.SYNC_TTL_MINUTES) || 240) * 60_000;
 export const MANUAL_SYNC_INTERVAL_MS = 5 * 60_000;
 export const CLUB_SYNC_MAX_AGE_MS = 15 * 60_000;
 export const CLUB_SYNC_ATTEMPT_KEY = "last_attempt_sync_club";
@@ -8,51 +10,7 @@ export const CLUB_SYNC_COMPLETE_KEY = "last_complete_sync_club";
 // SAISON-EXEMPT: verrou transversal conservé avec l'annuaire au reset de campagne.
 export const ANNUAIRE_ATTEMPT_KEY = "last_attempt_sync_annuaire";
 
-const parisDateFormatter = new Intl.DateTimeFormat("en-GB", {
-  timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit",
-  hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
-});
-
-function parisParts(ms: number) {
-  const parts = parisDateFormatter.formatToParts(ms);
-  const part = (type: Intl.DateTimeFormatPartTypes) =>
-    Number(parts.find((item) => item.type === type)!.value);
-  return { year: part("year"), month: part("month"), day: part("day"),
-    hour: part("hour"), minute: part("minute"), second: part("second") };
-}
-
-// Les heures 7 et 9 sont non ambiguës, y compris au changement d'heure.
-function parisMorningMs(year: number, month: number, day: number, hour: number) {
-  const wallMs = Date.UTC(year, month - 1, day, hour);
-  let utcMs = wallMs;
-  for (let i = 0; i < 2; i++) {
-    const p = parisParts(utcMs);
-    const offset = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - utcMs;
-    utcMs = wallMs - offset;
-  }
-  return utcMs;
-}
-
-// Un seul appel dans le créneau courant : aucun rattrapage de 7 h après 9 h.
-// Le marqueur historique compte pour son créneau, mais 5 h 30 ne bloque pas 7 h.
-export function calculerCreneauAnnuaire(
-  maintenantMs: number,
-  tentative?: string,
-  historique?: string,
-) {
-  const p = parisParts(maintenantMs);
-  const sept = parisMorningMs(p.year, p.month, p.day, 7);
-  const neuf = parisMorningMs(p.year, p.month, p.day, 9);
-  const debutMs = maintenantMs < sept ? null : maintenantMs < neuf ? sept : neuf;
-  const derniereTentative = Date.parse(tentative ?? historique ?? "") || 0;
-  const disponible = debutMs !== null && derniereTentative < debutMs;
-  const prochaineMs = maintenantMs < sept ? sept : maintenantMs < neuf ? neuf
-    : parisMorningMs(p.year, p.month, p.day + 1, 7);
-  return {
-    disponible,
-    nextSyncAt: disponible ? null : new Date(prochaineMs).toISOString(),
-  };
-}
+export { calculerCreneauAnnuaire } from "./syncStatus";
 
 export const SYNC_SUCCESS_KEYS: Record<SyncSource, string> = {
   helloasso: "last_sync_helloasso",

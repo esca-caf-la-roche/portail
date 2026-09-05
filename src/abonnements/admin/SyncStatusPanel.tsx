@@ -3,6 +3,7 @@ import { useAction, useQuery } from "convex/react";
 import { ConvexError } from "convex/values";
 import { api } from "../../../convex/_generated/api";
 import { useMaintenantMinute } from "../lib/useMaintenantMinute";
+import { actualiserStatutSource } from "../../../convex/abo/syncStatus";
 
 const SOURCES = [
   {
@@ -89,7 +90,13 @@ function resumerResultats(resultats: ResultatsSync) {
 
 export default function SyncStatusPanel() {
   const maintenantMs = useMaintenantMinute();
-  const statut = useQuery(api.abo.sync.getStatutSyncAbo, { maintenantMs });
+  const etatSources = useQuery(api.abo.sync.getStatutSyncAbo, {});
+  const statut = etatSources === undefined ? undefined : {
+    helloasso: actualiserStatutSource("helloasso", etatSources.helloasso, maintenantMs),
+    scrap: actualiserStatutSource("scrap", etatSources.scrap, maintenantMs),
+    annuaire: actualiserStatutSource("annuaire", etatSources.annuaire, maintenantMs),
+    eleves: actualiserStatutSource("eleves", etatSources.eleves, maintenantMs),
+  };
   const syncAbo = useAction(api.abo.sync.syncPourAbo);
   const verificationAutomatiqueLancee = useRef(false);
   const [enCours, setEnCours] = useState(false);

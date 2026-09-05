@@ -29,6 +29,11 @@ délais et l'heure exacte de la prochaine disponibilité de chaque action, en
 heure de Paris. L'annuaire utilise les mêmes créneaux de 7 h et 9 h pour les
 vérifications automatiques et le bouton manuel.
 
+Pour HelloAsso, le site du club et les élèves, la fenêtre automatique est de
+quatre heures par défaut. Les boutons manuels des onglets restent disponibles
+après cinq minutes. Les heures de disponibilité affichées continuent d'évoluer
+lorsque la page reste ouverte ; cela ne déclenche pas de synchronisation.
+
 Après un changement de campagne, les sources concernées sont indiquées comme
 **suspendues** jusqu'à leur réactivation dans **Configuration**. Le reset efface
 les marqueurs de synchronisation propres à la campagne afin de permettre un

@@ -20,6 +20,7 @@ import { champsModifies } from "../dbUtils";
 import { abonnementEstValide } from "./statutAbonnement";
 import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
+import { invaliderCompteurPublic } from "./compteur";
 
 async function assertGenerationSynchronisation(ctx: MutationCtx, generation: number | undefined) {
   if (generation === undefined) return;
@@ -70,6 +71,7 @@ export const upsertAbonnesScrapBatch = internalMutation({
     const maintenant = new Date().toISOString();
     let upsertees = 0;
     let sansLicence = 0;
+    let modifiees = 0;
     for (const l of args.lignes) {
       const licence = canoniserLicence(l.licence);
       if (!licence) {
@@ -104,12 +106,15 @@ export const upsertAbonnesScrapBatch = internalMutation({
         // vrai changement des données de l'abonné·e.
         if (champsModifies(existant, doc, ["last_scrap_at"])) {
           await ctx.db.patch(existant._id, doc);
+          modifiees++;
         }
       } else {
         await ctx.db.insert("abo_abonnes_scrap", doc);
+        modifiees++;
       }
       upsertees++;
     }
+    if (modifiees > 0) await invaliderCompteurPublic(ctx);
     return { upsertees, sansLicence };
   },
 });
@@ -149,6 +154,7 @@ export const supprimerAbonnesScrapAbsents = internalMutation({
         supprimees++;
       }
     }
+    if (supprimees > 0) await invaliderCompteurPublic(ctx);
     return supprimees;
   },
 });
@@ -317,6 +323,7 @@ export const matcherScrapPersonnes = internalMutation({
       }
     }
 
+    if (maj > 0) await invaliderCompteurPublic(ctx);
     return maj;
   },
 });

@@ -237,9 +237,16 @@ des compteurs (jamais cookies, credentials, HTML, noms ou licences).
 `convex/crons.ts` est volontairement vide. Les anciens crons périodiques ont été
 remplacés par des synchronisations déclenchées au chargement des pages utiles,
 avec un verrou anti-rejeu partagé côté serveur. Une même source n'est
-resynchronisée qu'une fois par fenêtre, environ 60 minutes par défaut et
+resynchronisée qu'une fois par fenêtre, quatre heures par défaut et
 configurable avec `SYNC_TTL_MINUTES`, sauf l'annuaire qui suit les créneaux
 quotidiens ci-dessous.
+
+Les statuts de synchronisation sont abonnés aux marqueurs réels, avec des
+arguments stables. Le navigateur calcule l'écoulement des délais et les
+créneaux de l'annuaire sans relire la base à chaque minute. Les actions
+recontrôlent toujours la disponibilité avec l'heure du serveur.
+Les boutons manuels conservent leur délai de cinq minutes (hors annuaire), et
+le test d'autonomie direct conserve son snapshot complet de moins de 15 minutes.
 
 | Déclencheur | Action | Sources |
 |---|---|---|
@@ -266,6 +273,13 @@ local `abo_abonnes_scrap`. Cela ne modifie jamais le site du club. Une liste
 vide, illisible ou en erreur n'entraîne aucune purge.
 Les dossiers déposés dans le portail sont conservés ; seules leurs confirmations
 issues du site sont retirées jusqu'à une nouvelle présence dans le snapshot.
+
+Le compteur public utilise un cache. Les mutations du snapshot abonnés et du
+rapprochement des personnes posent une invalidation durable uniquement en cas
+de changement réel. La fin du scrap ne recalcule le compteur que si ce marqueur
+est présent ou si le cache manque ; le recalcul efface le marqueur atomiquement.
+Ainsi, un essai interrompu entre deux lots reste à recalculer après reprise.
+Un import élèves identique ne programme plus de recalcul si le cache existe.
 
 L'annuaire FFCAM des licences suit le même principe de snapshot : une licence
 absente d'un export réussi et non vide est retirée du cache `abo_licences`, sans

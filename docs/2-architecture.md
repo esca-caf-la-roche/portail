@@ -157,7 +157,8 @@ lots conformément aux règles Convex du projet.
 Les synchronisations HelloAsso, site du club, annuaire des licences et élèves en
 cours sont déclenchées à la demande depuis les pages concernées. L'orchestrateur
 `convex/abo/sync.ts` utilise un verrou partagé côté serveur, avec une fenêtre
-d'environ une heure, pour éviter les appels et écritures répétés.
+de quatre heures par défaut, hors créneaux de l'annuaire, pour éviter les appels
+et écritures répétés.
 
 Après une réinitialisation Abonnements, les synchronisations de campagne de
 l'espace Abonnements (site club, annuaire et élèves utilisés par les vagues) ne
@@ -189,10 +190,14 @@ presse-papiers, puis les coller dans l'outil de son choix. Aucun contenu de mail
 n'est généré et aucun email n'est envoyé par Convex depuis cette page.
 
 Son actualisation traite le snapshot des élèves du site club comme source de
-vérité, avant l'annuaire des licences. La page affiche un délai d'une heure pour
+vérité, avant l'annuaire des licences. La page affiche un délai de quatre heures par défaut pour
 les élèves et les créneaux de 7 h et 9 h, heure de Paris, pour l'annuaire.
 L'annuaire est limité à une tentative par créneau, uniquement à la demande
 (voir [Synchronisations à la demande](5-module-abonnements.md#synchronisations-à-la-demande-convexabosyncts)).
+
+Les correspondances possibles avec l'annuaire se chargent uniquement avec le
+bouton « Afficher les correspondances possibles ». Le masquage arrête cet
+abonnement ; la liste des élèves et le suivi manuel restent disponibles.
 Le staff peut marquer temporairement une personne « traitée » après
 avoir saisi sa licence sur le site club ; elle reste visible mais sort des
 sélections de relance jusqu'à ce que la synchronisation confirme la licence. Ce
