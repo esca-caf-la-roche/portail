@@ -1,6 +1,8 @@
-import { createContext, useContext, useState, useEffect, useMemo } from "react";
+import { createContext, useContext, useMemo, useState } from "react";
 import { useQuery, useConvexAuth } from "convex/react";
+import { useLocation } from "react-router-dom";
 import { api } from "../../convex/_generated/api";
+import { moduleSaisonnier, saisonParDefaut } from "./seasonRouting";
 
 interface SeasonContextType {
   season: string;
@@ -10,41 +12,68 @@ interface SeasonContextType {
 
 const SeasonContext = createContext<SeasonContextType | undefined>(undefined);
 
-export const SeasonProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated } = useConvexAuth();
-  const dbSaisons = useQuery(api.saisons.get, isAuthenticated ? undefined : "skip");
-  const availableSeasons = useMemo(() => {
-    return dbSaisons ? dbSaisons.map(s => s.nom) : ["2025-26"];
-  }, [dbSaisons]);
-
-  const [season, setSeasonState] = useState<string>("");
-
-  useEffect(() => {
-    // Si la saison n'est pas encore définie et que les données Convex sont chargées
-    if (!season && dbSaisons) {
-      const stored = localStorage.getItem("escalade_season");
-      if (stored && availableSeasons.includes(stored)) {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setSeasonState(stored);
-      } else {
-        const defaultS = dbSaisons.find(s => s.isDefault);
-        const fallback = defaultS ? defaultS.nom : (dbSaisons.length > 0 ? dbSaisons[0].nom : "2025-26");
-         
-        setSeasonState(fallback);
-        localStorage.setItem("escalade_season", fallback);
-      }
-    }
-  }, [season, dbSaisons, availableSeasons]);
-
+function SeasonSelectionProvider({
+  children,
+  defaultSeason,
+  availableSeasons,
+}: {
+  children: React.ReactNode;
+  defaultSeason: string;
+  availableSeasons: string[];
+}) {
+  // Ce state vit uniquement tant que la racine du module ne change pas. Le
+  // choix manuel est donc conservé dans les sous-routes, jamais entre deux
+  // entrées dans une tuile ni entre deux chargements de l'application.
+  const [season, setSeasonState] = useState(defaultSeason);
   const setSeason = (newSeason: string) => {
-    setSeasonState(newSeason);
-    localStorage.setItem("escalade_season", newSeason);
+    if (availableSeasons.includes(newSeason)) setSeasonState(newSeason);
   };
 
   return (
-    <SeasonContext.Provider value={{ season: season || "2025-26", setSeason, availableSeasons }}>
+    <SeasonContext.Provider value={{ season, setSeason, availableSeasons }}>
       {children}
     </SeasonContext.Provider>
+  );
+}
+
+export const SeasonProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isAuthenticated } = useConvexAuth();
+  const location = useLocation();
+  const dbSaisons = useQuery(api.saisons.get, isAuthenticated ? undefined : "skip");
+  const availableSeasons = useMemo(
+    () => dbSaisons?.map((saison) => saison.nom) ?? [],
+    [dbSaisons],
+  );
+  const defaultSeason = saisonParDefaut(dbSaisons);
+  const moduleKey = moduleSaisonnier(location.pathname);
+
+  // Les écrans anonymes (login, compteur et formulaires OTP publics) restent
+  // disponibles. Une fois authentifié, aucun écran métier ne peut lancer une
+  // requête avec une saison provisoire pendant le chargement de Convex.
+  if (isAuthenticated && dbSaisons === undefined) {
+    return <div className="loading-screen" role="status">Chargement de la saison…</div>;
+  }
+
+  if (isAuthenticated && moduleKey && !defaultSeason) {
+    return (
+      <main className="loading-screen" role="alert">
+        Aucune saison par défaut n’est configurée. Un administrateur doit en définir une.
+      </main>
+    );
+  }
+
+  // Hors authentification, les composants qui consomment la saison ne sont
+  // pas encore rendus. La valeur vide n'est donc jamais envoyée au backend.
+  const initialSeason = defaultSeason ?? "";
+
+  return (
+    <SeasonSelectionProvider
+      key={`${moduleKey ?? "hors-module"}:${initialSeason}`}
+      defaultSeason={initialSeason}
+      availableSeasons={availableSeasons}
+    >
+      {children}
+    </SeasonSelectionProvider>
   );
 };
 

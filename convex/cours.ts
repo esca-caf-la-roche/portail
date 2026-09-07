@@ -1,7 +1,7 @@
 import { authenticatedQuery as query, authenticatedMutation as mutation } from "./customFunctions";
 import { internalMutation } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { previousSaison } from "./saisonUtils";
 import { requireTile } from "./access";
@@ -478,7 +478,7 @@ export const importPlanning = internalMutation({
     let saison = args.saison;
     if (!saison) {
       const def = (await ctx.db.query("saisons").collect()).find((s) => s.isDefault);
-      if (!def) throw new Error("Aucune saison par défaut définie.");
+      if (!def) throw new ConvexError("Aucune saison par défaut définie.");
       saison = def.nom;
     }
 

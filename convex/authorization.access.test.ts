@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import schema from "./schema";
 
@@ -145,6 +145,52 @@ describe("saisons et administration globale", () => {
     await expect(admin.mutation(api.users.updateDashboardConfiguration, configuration)).resolves.toBeDefined();
     await expect(admin.query(api.users.listUsers, {})).resolves.toBeDefined();
     await expect(admin.query(api.transactions.getStats, { saison: "2026-27" })).rejects.toThrow("Accès refusé");
+  });
+
+  test("maintient exactement une saison par défaut", async () => {
+    const t = convexTest(schema, modules);
+    const admin = t.withIdentity({
+      subject: await createUser(t, { tiles: [], role: "admin" }),
+    });
+
+    const premiereId = await admin.mutation(api.saisons.create, { nom: "2025-26" });
+    const secondeId = await admin.mutation(api.saisons.create, { nom: "2026-27" });
+    let saisons = await admin.query(api.saisons.get, {});
+    expect(saisons.filter((s) => s.isDefault)).toHaveLength(1);
+    expect(saisons.find((s) => s._id === premiereId)?.isDefault).toBe(true);
+
+    await expect(
+      admin.mutation(api.saisons.update, { id: premiereId, isDefault: false }),
+    ).rejects.toThrow("Impossible de retirer la saison par défaut");
+
+    await admin.mutation(api.saisons.update, { id: secondeId, isDefault: true });
+    saisons = await admin.query(api.saisons.get, {});
+    expect(saisons.filter((s) => s.isDefault)).toHaveLength(1);
+    expect(saisons.find((s) => s._id === secondeId)?.isDefault).toBe(true);
+  });
+
+  test("createNext répare un historique sans saison par défaut", async () => {
+    const t = convexTest(schema, modules);
+    const admin = t.withIdentity({
+      subject: await createUser(t, { tiles: [], role: "admin" }),
+    });
+    await t.run((ctx) =>
+      ctx.db.insert("saisons", { nom: "2025-26", isDefault: false }),
+    );
+
+    await expect(admin.mutation(api.saisons.createNext, {})).resolves.toMatchObject({
+      nom: "2026-27",
+    });
+    const saisons = await admin.query(api.saisons.get, {});
+    expect(saisons.filter((s) => s.isDefault)).toHaveLength(1);
+    expect(saisons.find((s) => s.nom === "2026-27")?.isDefault).toBe(true);
+  });
+
+  test("signale explicitement l'absence de saison par défaut à l'import des cours", async () => {
+    const t = convexTest(schema, modules);
+    await expect(
+      t.mutation(internal.cours.importPlanning, { replace: false, cours: [] }),
+    ).rejects.toThrow("Aucune saison par défaut définie");
   });
 
   test("réserve l'ajout, la modification et la suppression du staff aux admins", async () => {

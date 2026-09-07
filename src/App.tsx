@@ -84,8 +84,8 @@ const Placeholder = ({ title }: { title: string }) => (
 
 function App() {
   return (
-    <SeasonProvider>
-        <HashRouter>
+    <HashRouter>
+      <SeasonProvider>
           <Routes>
             <Route path="/login" element={<Login />} />
 
@@ -129,8 +129,8 @@ function App() {
               <Route path="/statistiques" element={<Placeholder title="Module Statistiques" />} />
             </Route>
           </Routes>
-        </HashRouter>
-    </SeasonProvider>
+      </SeasonProvider>
+    </HashRouter>
   );
 }
 

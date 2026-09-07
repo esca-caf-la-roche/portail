@@ -3,6 +3,7 @@ import { v, ConvexError } from "convex/values";
 import { nextSaison } from "./saisonUtils";
 import type { MutationCtx } from "./_generated/server";
 import { requireAdmin } from "./access";
+import { champsModifies } from "./dbUtils";
 
 export const get = query({
   args: {},
@@ -16,13 +17,15 @@ export const create = mutation({
   args: { nom: v.string(), isDefault: v.optional(v.boolean()) },
   handler: async (ctx, args) => {
     await requireAdmin(ctx, ctx.userId);
-    const isDefault = args.isDefault ?? false;
+    const all = await ctx.db.query("saisons").collect();
+    // Répare aussi un éventuel état historique sans saison par défaut : dès
+    // qu'aucun défaut n'existe, la saison créée devient le défaut.
+    const isDefault = args.isDefault === true || !all.some((s) => s.isDefault);
     
     if (isDefault) {
       // Retirer le default des autres
-      const all = await ctx.db.query("saisons").collect();
       for (const s of all) {
-        if (s.isDefault) {
+        if (champsModifies(s, { isDefault: false })) {
           await ctx.db.patch(s._id, { isDefault: false });
         }
       }
@@ -60,7 +63,10 @@ export const createNext = mutation({
       throw new ConvexError(`La saison ${suivante} existe déjà.`);
     }
 
-    const newId = await ctx.db.insert("saisons", { nom: suivante, isDefault: false });
+    const newId = await ctx.db.insert("saisons", {
+      nom: suivante,
+      isDefault: !all.some((s) => s.isDefault),
+    });
 
     // Reprise des paramètres de paie de la saison précédente.
     const prevParams = await ctx.db
@@ -106,15 +112,30 @@ export const update = mutation({
   args: { id: v.id("saisons"), isDefault: v.boolean() },
   handler: async (ctx, args) => {
     await requireAdmin(ctx, ctx.userId);
+    const saison = await ctx.db.get(args.id);
+    if (!saison) throw new ConvexError("Saison introuvable.");
+
+    if (!args.isDefault) {
+      if (saison.isDefault) {
+        throw new ConvexError(
+          "Impossible de retirer la saison par défaut sans en définir une autre.",
+        );
+      }
+      return null;
+    }
+
     if (args.isDefault) {
       const all = await ctx.db.query("saisons").collect();
       for (const s of all) {
-        if (s.isDefault && s._id !== args.id) {
+        if (s._id !== args.id && champsModifies(s, { isDefault: false })) {
           await ctx.db.patch(s._id, { isDefault: false });
         }
       }
     }
-    await ctx.db.patch(args.id, { isDefault: args.isDefault });
+    if (champsModifies(saison, { isDefault: true })) {
+      await ctx.db.patch(args.id, { isDefault: true });
+    }
+    return null;
   },
 });
 

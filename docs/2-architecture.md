@@ -113,10 +113,16 @@ endpoints.
 
 ## Données et saisonnalité
 
-La saison est un axe transverse du portail. Le frontend conserve la sélection
-courante dans `localStorage`, tandis que les fonctions métier reçoivent ou
-dérivent la saison servant à filtrer les données. Toute nouvelle tuile doit
-définir explicitement son comportement lors d'un changement de saison.
+La saison est un axe transverse du portail. À chaque entrée dans un module
+saisonnier, le frontend initialise synchroniquement la sélection avec la saison
+marquée `isDefault` dans Convex, avant de rendre les écrans métier. Un choix
+manuel est conservé uniquement pendant la navigation interne au même module
+(par exemple de `/budget` vers `/budget/parametres`) : il n'est ni partagé avec
+une autre tuile, ni persisté entre deux chargements de l'application. Les
+fonctions métier reçoivent la saison servant à filtrer les données. Toute
+nouvelle tuile doit définir explicitement son comportement lors d'un changement
+de saison et déclarer sa racine dans `src/contexts/seasonRouting.ts` lorsqu'elle
+est saisonnière.
 
 La tuile `contacts_cours` est hors saison : elle reflète le snapshot externe
 courant `abo_eleves_en_cours`, sans historique ni bascule par saison. Sa route
