@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as abo_apercu from "../abo/apercu.js";
 import type * as abo_auth from "../abo/auth.js";
 import type * as abo_compteur from "../abo/compteur.js";
 import type * as abo_config from "../abo/config.js";
@@ -96,6 +97,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  "abo/apercu": typeof abo_apercu;
   "abo/auth": typeof abo_auth;
   "abo/compteur": typeof abo_compteur;
   "abo/config": typeof abo_config;

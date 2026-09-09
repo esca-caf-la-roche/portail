@@ -89,6 +89,24 @@ deux populations, la saison, Google Calendar, les reprises et le rappel du lundi
    consultable après rechargement ; retirer ensuite la tuile à un compte staff
    et vérifier le refus de route et du compteur backend.
 
+### Scénario ciblé — Prévisualisation du suivi comme l'abonné
+
+1. avec un compte staff possédant la tuile `abonnements`, ouvrir un dossier puis
+   **Prévisualiser comme l'abonné** : un nouvel onglet doit afficher le suivi,
+   ses étapes, le rendez-vous éventuel et le fil sous un bandeau **lecture seule** ;
+2. contrôler qu'aucun OTP ou email n'est envoyé, qu'aucune session abonné n'est
+   créée et que les indicateurs `lu_par_user` des messages restent inchangés ;
+3. essayer les actions de finalisation, de messagerie, de personne et de test :
+   elles doivent rester visibles mais verrouillées, sans mutation ni appel
+   externe ;
+4. retirer la tuile `abonnements` au compte, puis appeler directement la route
+   et `api.abo.apercu.get` avec un identifiant connu ou inconnu : les deux accès
+   doivent être refusés sans révéler l'existence du dossier ;
+5. vérifier les bornes avec 10 puis 11 personnes, 100 puis 101 réservations pour
+   une personne, et 200 puis 201 messages : les deux premiers dépassements
+   refusent l'aperçu ; le fil conserve les 200 messages les plus récents et
+   annonce la troncature.
+
 ### Scénario ciblé — Règlements signés
 
 Ce scénario est hors saison et se joue avec un compte staff possédant la tuile

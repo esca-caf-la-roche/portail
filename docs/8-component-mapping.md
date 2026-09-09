@@ -69,6 +69,7 @@ La documentation fonctionnelle complète est dans
 | Demande et suivi | `src/abonnements/pages/` | `convex/abo/demandes.ts`, `convex/abo/config.ts` |
 | Messagerie | `src/abonnements/FilDiscussion.tsx` | `convex/abo/messages.ts`, `convex/abo/emails.ts` |
 | Administration | `src/abonnements/admin/` | `convex/abo/` |
+| Prévisualisation abonné en lecture seule `/gestion-abonnements/apercu/:dossierId` | `src/abonnements/admin/ApercuAbonne.tsx`, `src/abonnements/admin/apercuAbonne.logic.ts` | `convex/abo/apercu.ts` |
 | Paiements | `src/abonnements/admin/Paiements.tsx` | `convex/abo/paiements.ts`, `convex/helloasso.ts` |
 | Licences et conflits | `src/abonnements/admin/Licences.tsx`, `src/abonnements/admin/FusionDossiersModal.tsx` | `convex/abo/licences.ts`, `convex/abo/matching.ts`, `convex/abo/fusionsDossiers.ts` |
 | Tests d'autonomie | `src/abonnements/admin/Tests.tsx`, `src/abonnements/admin/SuiviTestsModal.tsx`, `src/abonnements/pages/Suivi.tsx`, `src/abonnements/pages/TestAutonomieDirectV2.tsx`, `src/abonnements/NotificationDisponibilitesTest.tsx` | `convex/abo/tests.ts`, `convex/abo/testNotifications.ts`, `convex/abo/testDocuments.ts`, `convex/abo/testDocumentsDrive.ts`, `convex/abo/testAutonomiePdf.ts` |

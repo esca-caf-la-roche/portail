@@ -21,6 +21,32 @@ tuiles compta ; le `Layout` le redirige vers `/abonnements`. Un staff qui dépos
 une demande conserve ses droits staff ; au reset, seules ses données publiques
 de campagne et son profil public sont purgés.
 
+### Prévisualiser le suivi d'un dossier abonné
+
+Depuis la liste des dossiers, **Prévisualiser comme l'abonné** ouvre dans un
+nouvel onglet `/#/gestion-abonnements/apercu/:dossierId`. Cette route reste dans
+le portail staff et exige la tuile `abonnements`, comme l'espace de gestion. La
+query `api.abo.apercu.get` applique aussi `requireAboAdmin` avant de rechercher
+le dossier : connaître son identifiant ne permet ni de confirmer son existence
+ni de lire ses données sans cette tuile.
+
+L'aperçu reconstitue le suivi du dossier à partir des données courantes, mais ne se
+connecte jamais à la place de l'abonné : aucun OTP ou email n'est envoyé,
+aucune session `abo-otp` n'est créée et aucune mutation n'est exposée. La lecture
+du fil ne marque pas les messages comme lus. Les actions de finalisation, la
+messagerie et le retrait d'une personne restent visibles pour faciliter le
+contrôle fonctionnel, mais sont explicitement verrouillés dans cet écran.
+L'ajout d'une personne n'apparaît qu'à partir de la vague 2, comme dans le vrai
+suivi. Le parcours « autre licence déjà inscrite » est seulement signalé et
+verrouillé : cet écran ne prétend pas reproduire tout le compte abonné.
+
+La lecture est bornée à **10 personnes par dossier**, **100 réservations de
+test par personne** et **200 messages**. Un dossier ou un historique de
+réservations incohérent avec ces limites refuse l'aperçu ; au-delà de 200
+messages, seuls les plus récents sont affichés avec un avertissement. Ces bornes
+protègent le budget de lecture sans transformer l'aperçu en nouvel outil
+d'administration.
+
 ### Résolution d'un conflit de licence entre deux dossiers
 
 Un conflit peut être détecté lors de l'association manuelle d'une licence ou

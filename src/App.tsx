@@ -22,6 +22,7 @@ const ApprobationsPaiements = lazy(() => import("./pages/Paiements/Approbations"
 const AttentePaiements = lazy(() => import("./pages/Paiements/Attente"));
 const AboApp = lazy(() => import("./abonnements/AboApp"));
 const AboAdmin = lazy(() => import("./abonnements/admin/AboAdmin"));
+const ApercuAbonne = lazy(() => import("./abonnements/admin/ApercuAbonne"));
 const SamedisApp = lazy(() => import("./samedis/SamedisApp"));
 const GestionSamedis = lazy(() => import("./pages/GestionSamedis"));
 const PlanningSalariesApp = lazy(() => import("./planningSalariesSamedis/PlanningSalariesApp"));
@@ -104,6 +105,7 @@ function App() {
             <Route element={<Layout />}>
               {/* Gestion des abonnements (staff), atteinte par la tuile */}
               <Route path="/gestion-abonnements" element={<RequireAccess tile="abonnements"><LazyRoute><AboAdmin /></LazyRoute></RequireAccess>} />
+              <Route path="/gestion-abonnements/apercu/:dossierId" element={<RequireAccess tile="abonnements"><LazyRoute><ApercuAbonne /></LazyRoute></RequireAccess>} />
               <Route path="/" element={<Dashboard />} />
               <Route path="/compta" element={<RequireAccess tile="compta"><LazyRoute><Compta /></LazyRoute></RequireAccess>} />
               <Route path="/budget" element={<RequireAccess tile="budget"><LazyRoute><MasseSalariale /></LazyRoute></RequireAccess>} />

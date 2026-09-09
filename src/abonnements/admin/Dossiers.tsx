@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
+import { Link } from "react-router-dom";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { aboError } from "../lib/errors";
@@ -236,6 +237,15 @@ export default function Dossiers({ onVoirTests }: { onVoirTests: (licence: strin
                   )}
                   <span className="abo-admin-meta">{d.email}</span>
                 </span>
+                <Link
+                  className="abo-admin-button abo-admin-button--secondary"
+                  to={`/gestion-abonnements/apercu/${d.id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={`Prévisualiser le suivi du dossier de ${d.email} dans un nouvel onglet`}
+                >
+                  Prévisualiser comme l’abonné ↗
+                </Link>
               </div>
               <p className="abo-admin-meta">
                 Dossier créé le{" "}

@@ -210,19 +210,21 @@ export const liensFinalisation = authenticatedQuery({
     test_autonomie: v.union(v.string(), v.null()),
     reglement: v.string(),
   }),
-  handler: async (ctx) => {
-    const inscription = await getConfigValeur(ctx, "inscription_lien");
-    return {
-      licence_nouvelle: await getConfigValeur(ctx, "licence_lien_nouvelle"),
-      licence_renouvellement: await getConfigValeur(ctx, "licence_lien_renouvellement"),
-      compte_activation: await getConfigValeur(ctx, "compte_activation_lien"),
-      inscription: lienInscriptionPublic(inscription),
-      helloasso: await getConfigValeur(ctx, "helloasso_lien"),
-      test_autonomie: await getConfigValeur(ctx, "test_autonomie_lien"),
-      reglement: REGLEMENT_DOCUSEAL_URL,
-    };
-  },
+  handler: async (ctx) => liensFinalisationVue(ctx),
 });
+
+export async function liensFinalisationVue(ctx: QueryCtx | MutationCtx) {
+  const inscription = await getConfigValeur(ctx, "inscription_lien");
+  return {
+    licence_nouvelle: await getConfigValeur(ctx, "licence_lien_nouvelle"),
+    licence_renouvellement: await getConfigValeur(ctx, "licence_lien_renouvellement"),
+    compte_activation: await getConfigValeur(ctx, "compte_activation_lien"),
+    inscription: lienInscriptionPublic(inscription),
+    helloasso: await getConfigValeur(ctx, "helloasso_lien"),
+    test_autonomie: await getConfigValeur(ctx, "test_autonomie_lien"),
+    reglement: REGLEMENT_DOCUSEAL_URL,
+  };
+}
 
 // ── Phase I : page admin Configuration + reset de saison ─────────────────
 

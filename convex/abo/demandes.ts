@@ -790,7 +790,7 @@ export const getMonDossier = authenticatedQuery({
 });
 
 // Projection d'une personne pour le front (id lisible + champs d'étapes).
-function personneVue(p: Doc<"abo_personnes">) {
+export function personneVue(p: Doc<"abo_personnes">) {
   return {
     id: p._id,
     nom: p.nom,
@@ -833,6 +833,70 @@ export const getMesSuppressions = authenticatedQuery({
 // ── monSuivi : vérifs LIVE des étapes de finalisation (owner) ────────
 // Recalculées à chaque affichage depuis abo_licences + abo_abonnes_scrap
 // (indépendamment du batch de matching). Matching licence-first, repli nom/prénom.
+export async function calculerSuiviPersonnes(
+  ctx: Parameters<typeof requireAboIdentity>[0],
+  personnes: Doc<"abo_personnes">[],
+) {
+  const out = [];
+  for (const p of personnes) {
+    // Ligne du scrap correspondante (licence d'abord, sinon nom/prénom).
+    let scrap: Doc<"abo_abonnes_scrap"> | null = null;
+    if (p.licence) {
+      scrap = await ctx.db
+        .query("abo_abonnes_scrap")
+        .withIndex("by_licence", (q) => q.eq("licence", p.licence))
+        .first();
+    }
+    if (!scrap && p.nom_prenom_normalise) {
+      scrap = await ctx.db
+        .query("abo_abonnes_scrap")
+        .withIndex("by_nom_prenom_normalise", (q) =>
+          q.eq("nom_prenom_normalise", p.nom_prenom_normalise),
+        )
+        .first();
+    }
+
+    // Étape 1 : licence dans l'annuaire (par n°) OU adhésion OK au scrap.
+    let licenceAnnuaire = false;
+    if (p.licence) {
+      const l = await ctx.db
+        .query("abo_licences")
+        .withIndex("by_licence", (q) => q.eq("licence", p.licence!))
+        .first();
+      licenceAnnuaire = l !== null;
+    }
+    const licence_ok = licenceAnnuaire || scrap?.adhesion === "OK";
+
+    // Le règlement n'est reconnu que par la licence exacte. Aucun repli nom
+    // / prénom n'est autorisé sur cette preuve validée manuellement.
+    const licenceReglement = p.licence;
+    const licenceConfirmee =
+      p.licence_statut === "annuaire_auto" ||
+      p.licence_statut === "annuaire_valide";
+    const reglementSigne = licenceConfirmee && licenceReglement
+      ? await ctx.db
+          .query("abo_reglements_signes")
+          .withIndex("by_version_reglement_and_licence", (q) =>
+            q
+              .eq("version_reglement", REGLEMENT_VERSION)
+              .eq("licence", licenceReglement),
+          )
+          .first()
+      : null;
+
+    out.push({
+      personne_id: p._id,
+      licence_ok,
+      inscription_ok: scrap !== null,
+      paiement_ok: scrap ? abonnementEstValide(scrap.abonnement_valide) : false,
+      test_autonomie: mapAutonomie(scrap?.autonomie),
+      reglement_signe: reglementSigne !== null,
+      age: scrap?.age ?? p.age ?? null,
+    });
+  }
+  return out;
+}
+
 export const monSuivi = authenticatedQuery({
   args: {},
   returns: v.array(v.object({
@@ -861,64 +925,7 @@ export const monSuivi = authenticatedQuery({
       .withIndex("by_dossier", (q) => q.eq("dossier_id", dossier._id))
       .collect();
 
-    const out = [];
-    for (const p of personnes) {
-      // Ligne du scrap correspondante (licence d'abord, sinon nom/prénom).
-      let scrap: Doc<"abo_abonnes_scrap"> | null = null;
-      if (p.licence) {
-        scrap = await ctx.db
-          .query("abo_abonnes_scrap")
-          .withIndex("by_licence", (q) => q.eq("licence", p.licence))
-          .first();
-      }
-      if (!scrap && p.nom_prenom_normalise) {
-        scrap = await ctx.db
-          .query("abo_abonnes_scrap")
-          .withIndex("by_nom_prenom_normalise", (q) =>
-            q.eq("nom_prenom_normalise", p.nom_prenom_normalise),
-          )
-          .first();
-      }
-
-      // Étape 1 : licence dans l'annuaire (par n°) OU adhésion OK au scrap.
-      let licenceAnnuaire = false;
-      if (p.licence) {
-        const l = await ctx.db
-          .query("abo_licences")
-          .withIndex("by_licence", (q) => q.eq("licence", p.licence!))
-          .first();
-        licenceAnnuaire = l !== null;
-      }
-      const licence_ok = licenceAnnuaire || scrap?.adhesion === "OK";
-
-      // Le règlement n'est reconnu que par la licence exacte. Aucun repli nom
-      // / prénom n'est autorisé sur cette preuve validée manuellement.
-      const licenceReglement = p.licence;
-      const licenceConfirmee =
-        p.licence_statut === "annuaire_auto" ||
-        p.licence_statut === "annuaire_valide";
-      const reglementSigne = licenceConfirmee && licenceReglement
-        ? await ctx.db
-            .query("abo_reglements_signes")
-            .withIndex("by_version_reglement_and_licence", (q) =>
-              q
-                .eq("version_reglement", REGLEMENT_VERSION)
-                .eq("licence", licenceReglement),
-            )
-            .first()
-        : null;
-
-      out.push({
-        personne_id: p._id,
-        licence_ok,
-        inscription_ok: scrap !== null,
-        paiement_ok: scrap ? abonnementEstValide(scrap.abonnement_valide) : false,
-        test_autonomie: mapAutonomie(scrap?.autonomie),
-        reglement_signe: reglementSigne !== null,
-        age: scrap?.age ?? p.age ?? null,
-      });
-    }
-    return out;
+    return await calculerSuiviPersonnes(ctx, personnes);
   },
 });
 
