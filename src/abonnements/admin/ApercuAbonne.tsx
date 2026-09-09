@@ -6,7 +6,10 @@ import type { Id } from "../../../convex/_generated/dataModel";
 import { aboError } from "../lib/errors";
 import { useMaintenantMinute } from "../lib/useMaintenantMinute";
 import { formatJour, formatTranche } from "../lib/tests";
-import { etatReservationApercu } from "./apercuAbonne.logic";
+import {
+  etatReservationApercu,
+  validationPendantCoursApercu,
+} from "./apercuAbonne.logic";
 import "../abo.css";
 
 type Apercu = NonNullable<ReturnType<typeof useQuery<typeof api.abo.apercu.get>>>;
@@ -164,13 +167,31 @@ function PersonneApercu({ personne, check, reservation, suiviDisponibilite, lien
 
   const c = check ?? { licence_ok: false, inscription_ok: false, reglement_signe: false, paiement_ok: false, test_autonomie: null, age: personne.age };
   const afficheTest = Boolean(reservation) || !(c.test_autonomie === "non_requis" || (c.age != null && c.age < 16));
+  const validationPendantCours = validationPendantCoursApercu({
+    testAutonomie: c.test_autonomie,
+    age: c.age,
+    vagueDepot: personne.vague_depot,
+  });
   const etapes = [
     { titre: "Licence CAF (obligatoire)", fait: c.licence_ok, attente: false, texte: "Adhérer au CAF La Roche Bonneville en ligne.", actions: [{ label: "Nouvelle adhésion", disponible: Boolean(liens.licence_nouvelle) }, { label: "Renouvellement", disponible: Boolean(liens.licence_renouvellement) }] },
     { titre: "Attente de la synchronisation (≈ 24 h)", fait: c.licence_ok || c.inscription_ok, attente: true, texte: "La synchronisation avec la fédération se fait une fois par jour. Cette étape se valide automatiquement.", actions: [] },
     { titre: "Inscription en ligne", fait: c.inscription_ok, attente: false, texte: "Activer son compte puis faire la demande officielle d’abonnement sur le site du club.", actions: [{ label: "Activer mon compte", disponible: Boolean(liens.compte_activation) }, { label: "Faire ma demande d’abonnement", disponible: Boolean(liens.inscription) }] },
     { titre: "Lire et signer le règlement intérieur", fait: c.reglement_signe, attente: false, texte: "Consultez le règlement puis signez-le en ligne sur DocuSeal.", actions: [{ label: "Lire et signer sur DocuSeal", disponible: Boolean(liens.reglement) }] },
     { titre: "Paiement", fait: c.paiement_ok, attente: false, texte: "Effectuer le règlement par carte bancaire.", actions: [{ label: "Payer en ligne via HelloAsso", disponible: Boolean(liens.helloasso) }] },
-    ...(afficheTest ? [{ titre: "Test d’autonomie (16 ans et plus)", fait: c.test_autonomie === "valide", attente: false, texte: "Lieu : gymnase de St Pierre en Faucigny.", actions: [{ label: "Télécharger le formulaire pré-rempli", disponible: true }, { label: "Formulaire vierge", disponible: Boolean(liens.test_autonomie) }] }] : []),
+    ...(afficheTest ? [{
+      titre: "Test d’autonomie (16 ans et plus)",
+      fait: c.test_autonomie === "valide",
+      attente: false,
+      texte: validationPendantCours
+        ? "Vous suivez un cours d’escalade : imprimez le formulaire puis faites-le valider par votre moniteur pendant votre cours habituel. Vous n’avez pas besoin de réserver un créneau de test."
+        : "Lieu : gymnase de St Pierre en Faucigny.",
+      actions: [{
+        label: validationPendantCours
+          ? "Télécharger et imprimer le formulaire pré-rempli"
+          : "Télécharger le formulaire pré-rempli",
+        disponible: true,
+      }, { label: "Formulaire vierge", disponible: Boolean(liens.test_autonomie) }],
+    }] : []),
   ];
 
   return (
@@ -203,6 +224,7 @@ function PersonneApercu({ personne, check, reservation, suiviDisponibilite, lien
                   suiviDisponibilite={suiviDisponibilite}
                   testAutonomie={c.test_autonomie}
                   age={c.age}
+                  vagueDepot={personne.vague_depot}
                 />
               )}
             </div>
@@ -214,11 +236,12 @@ function PersonneApercu({ personne, check, reservation, suiviDisponibilite, lien
   );
 }
 
-function ReservationApercu({ reservation, suiviDisponibilite, testAutonomie, age }: {
+function ReservationApercu({ reservation, suiviDisponibilite, testAutonomie, age, vagueDepot }: {
   reservation?: Reservation;
   suiviDisponibilite?: string;
   testAutonomie: string | null;
   age: number | null;
+  vagueDepot: Personne["vague_depot"];
 }) {
   const active = reservation?.active;
   const annulee = reservation?.annulee;
@@ -226,6 +249,7 @@ function ReservationApercu({ reservation, suiviDisponibilite, testAutonomie, age
     testAutonomie,
     age,
     reservationActive: Boolean(active),
+    vagueDepot,
   });
   if (etat === "reservation_active" && active) {
     return <div className="abo-admin-preview-reservation">
@@ -233,6 +257,9 @@ function ReservationApercu({ reservation, suiviDisponibilite, testAutonomie, age
       <p><strong>{active.etat_confirmation === "confirmee" ? "RDV confirmé" : "RDV provisoire"}</strong></p>
       <ActionBloquee label="Annuler ce RDV" compact />
     </div>;
+  }
+  if (etat === "validation_cours") {
+    return null;
   }
   return <div className="abo-admin-preview-reservation">
     {annulee && <p>Votre précédent RDV a été annulé{annulee.annulee_raison === "conditions_test_non_remplies" ? " après vérification des conditions" : ""}.</p>}
