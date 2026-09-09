@@ -12,6 +12,7 @@ type PersonneOptions = {
   age?: number | null;
   testAutonomie?: "non_requis" | "requis" | "valide";
   licence?: string;
+  vagueDepot?: "vague_2" | "vague_3" | "historique";
 };
 
 async function creerPersonne(
@@ -47,6 +48,7 @@ async function creerPersonne(
       etape_photo: false,
       etape_paiement: false,
       etape_abonnement_valide: false,
+      vague_depot: options.vagueDepot,
     });
     return { userId, personneId };
   });
@@ -636,6 +638,47 @@ describe("réservation de test d'autonomie", () => {
     })).resolves.toBeNull();
   });
 
+  test("refuse une personne de vague 2 même absente du snapshot des élèves en cours", async () => {
+    const t = convexTest(schema, modules);
+    const { userId, personneId } = await creerPersonne(t, {
+      licence: "L-VAGUE-2",
+      vagueDepot: "vague_2",
+    });
+    const caller = t.withIdentity({ subject: userId });
+    await creerCreneau(t, "2099-06-02");
+
+    await expect(caller.mutation(api.abo.tests.reserverTest, {
+      personneId,
+      tranche: await trancheDisponible(caller),
+    })).rejects.toThrow("demandez à votre moniteur");
+    await expect(t.run((ctx) =>
+      ctx.db
+        .query("abo_eleves_en_cours")
+        .withIndex("by_licence", (q) => q.eq("licence", "L-VAGUE-2"))
+        .first(),
+    )).resolves.toBeNull();
+  });
+
+  test("conserve le contrôle du snapshot pour les personnes de vague 3", async () => {
+    const t = convexTest(schema, modules);
+    const { userId, personneId } = await creerPersonne(t, {
+      licence: "L-VAGUE-3",
+      vagueDepot: "vague_3",
+    });
+    const caller = t.withIdentity({ subject: userId });
+    await creerCreneau(t, "2099-06-02");
+    await t.run((ctx) => ctx.db.insert("abo_eleves_en_cours", {
+      licence: "L-VAGUE-3",
+      nom_prenom_normalise: "candidate test",
+      imported_at: new Date().toISOString(),
+    }));
+
+    await expect(caller.mutation(api.abo.tests.reserverTest, {
+      personneId,
+      tranche: await trancheDisponible(caller),
+    })).rejects.toThrow("demandez à votre moniteur");
+  });
+
   test("confirme après un scrap par licence exact, avec autonomie requise et 16 ans", async () => {
     const t = convexTest(schema, modules);
     const { userId, personneId } = await creerPersonne(t, { age: null, licence: "L-123" });
@@ -782,6 +825,37 @@ describe("réservation de test d'autonomie", () => {
         .unique(),
     );
     expect(reservation?.candidat_licence).toBe("748012345678");
+  });
+
+  test("refuse une réservation directe si la licence a ensuite été liée à une personne de vague 2", async () => {
+    const t = convexTest(schema, modules);
+    rateLimiterTest.register(t);
+    const candidatUserId = await creerCandidatDirect(t);
+    const candidat = t.withIdentity({ subject: candidatUserId });
+    await creerCreneau(t, "2099-06-02");
+    const rattachement = await candidat.mutation(
+      api.abo.tests.verifierEtMemoriserCandidatDirect,
+      { licence: "748012345678" },
+    );
+    if (!rattachement.candidat || !("id" in rattachement.candidat)) {
+      throw new Error("Candidat non mémorisé");
+    }
+
+    await creerPersonne(t, {
+      licence: "748012345678",
+      vagueDepot: "vague_2",
+    });
+
+    await expect(candidat.mutation(api.abo.tests.reserverTestDirect, {
+      candidatId: rattachement.candidat.id,
+      tranche: await trancheDisponible(candidat),
+    })).rejects.toThrow("demandez à votre moniteur");
+    await expect(t.run((ctx) =>
+      ctx.db
+        .query("abo_eleves_en_cours")
+        .withIndex("by_licence", (q) => q.eq("licence", "748012345678"))
+        .first(),
+    )).resolves.toBeNull();
   });
 
   test("mémorise le licencié sur le compte et ouvre un seul lot d'alerte de 30 minutes", async () => {

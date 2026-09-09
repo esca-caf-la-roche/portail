@@ -208,13 +208,20 @@ function CarteFinalisation({
     c.test_autonomie !== "non_requis" &&
     c.test_autonomie !== "valide" &&
     !(c.age != null && c.age < 16);
-  const etapes = construireEtapes(c, liens, personne, peutAfficherTest, (
+  const suitCoursEscalade = personne.vague_depot === "vague_2";
+  const etapes = construireEtapes(
+    c,
+    liens,
+    personne,
+    peutAfficherTest,
+    suitCoursEscalade && peutReserverTest,
     <ReservationTest
       personneId={personne.id as Id<"abo_personnes">}
       reservation={reservation}
       peutReserver={peutReserverTest}
-    />
-  ));
+      suitCoursEscalade={suitCoursEscalade && peutReserverTest}
+    />,
+  );
   return (
     <section className="abo-carte">
       <h2>
@@ -276,6 +283,7 @@ function construireEtapes(
   liens: Liens,
   personne: PersonneVue,
   peutAfficherTest: boolean,
+  suitCoursEscalade: boolean,
   reservationWidget: React.ReactNode,
 ): Etape[] {
   const etapes: Etape[] = [
@@ -366,11 +374,22 @@ function construireEtapes(
       etatLabel: fait ? "Validé" : "À faire",
       corps: (
         <>
-          <p>
-            <strong>Où :</strong> gymnase de St Pierre en Faucigny.
-          </p>
+          {suitCoursEscalade ? (
+            <p className="abo-resa-information">
+              Vous suivez un cours d'escalade : imprimez le formulaire puis
+              faites-le valider par votre moniteur pendant votre cours habituel.
+              Vous n'avez pas besoin de réserver un créneau de test.
+            </p>
+          ) : (
+            <p>
+              <strong>Où :</strong> gymnase de St Pierre en Faucigny.
+            </p>
+          )}
           <p className="abo-fstep-liens">
-            <TelechargerFormulaireTest personne={personne} />
+            <TelechargerFormulaireTest
+              personne={personne}
+              impressionRequise={suitCoursEscalade}
+            />
             {liens?.test_autonomie && (
               <>
                 {" "}
@@ -387,7 +406,13 @@ function construireEtapes(
   return etapes;
 }
 
-function TelechargerFormulaireTest({ personne }: { personne: PersonneVue }) {
+function TelechargerFormulaireTest({
+  personne,
+  impressionRequise,
+}: {
+  personne: PersonneVue;
+  impressionRequise: boolean;
+}) {
   const [enCours, setEnCours] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
 
@@ -415,11 +440,19 @@ function TelechargerFormulaireTest({ personne }: { personne: PersonneVue }) {
     <span>
       <button
         type="button"
-        className="abo-fstep-lien abo-fstep-lien--button"
+        className={
+          impressionRequise
+            ? "abo-btn"
+            : "abo-fstep-lien abo-fstep-lien--button"
+        }
         onClick={telecharger}
         disabled={enCours}
       >
-        {enCours ? "Préparation du formulaire…" : "Télécharger le formulaire pré-rempli"}
+        {enCours
+          ? "Préparation du formulaire…"
+          : impressionRequise
+            ? "Télécharger et imprimer le formulaire pré-rempli"
+            : "Télécharger le formulaire pré-rempli"}
       </button>
       {erreur && <span className="abo-pdf-erreur" role="alert">{erreur}</span>}
     </span>
@@ -433,10 +466,12 @@ function ReservationTest({
   personneId,
   reservation,
   peutReserver,
+  suitCoursEscalade,
 }: {
   personneId: Id<"abo_personnes">;
   reservation?: ReservationPersonne;
   peutReserver: boolean;
+  suitCoursEscalade: boolean;
 }) {
   const annuler = useMutation(api.abo.tests.annulerMaReservation);
   const [ouvert, setOuvert] = useState(false);
@@ -490,7 +525,7 @@ function ReservationTest({
             Annuler ce RDV
           </button>
         </div>
-      ) : (
+      ) : suitCoursEscalade ? null : (
         <>
           {annulee && <AnnulationReservation reservation={annulee} />}
           {peutReserver ? (
@@ -510,7 +545,7 @@ function ReservationTest({
         </>
       )}
 
-      {ouvert && (
+      {ouvert && peutReserver && !suitCoursEscalade && (
         <ModalReservation
           personneId={personneId}
           onFermer={() => setOuvert(false)}

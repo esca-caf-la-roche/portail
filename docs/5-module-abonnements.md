@@ -406,7 +406,12 @@ peut être liée qu'une fois à cette version durant la campagne.
 Une personne dont la demande est **validée** peut réserver un créneau de test,
 même si sa licence, son âge ou le besoin de test ne sont pas encore connus. La
 réservation est alors un **RDV provisoire** : elle évite de retarder la prise de
-rendez-vous sur la seule attente des données du site du club.
+rendez-vous sur la seule attente des données du site du club. Exception : une
+personne déposée en **vague 2** parce qu'elle est déjà élève en cours n'a pas à
+réserver de créneau. Elle imprime le formulaire et le fait valider par son
+moniteur pendant son cours d'escalade. Le suivi explique directement cette
+démarche et le serveur refuse toute nouvelle réservation pour ce parcours ; les
+autres parcours conservent la réservation sous contrôle d'éligibilité serveur.
 
 Une personne déjà inscrite sur le site du club peut aussi réserver sans dossier
 portail. Au clic sur **Vérifier ma situation**, le portail canonise d'abord le
@@ -513,6 +518,12 @@ déploiement `npx.cmd convex dev` actif.
   provisoire ; réserver/annuler ; retirer un encadrant d'un créneau surbooké →
   délogement LIFO + email `test_annule`. Vérifier qu'un staff sans la tuile
   `abonnements` ne voit pas la liste et ne peut pas la rejoindre.
+- [ ] **Test d'autonomie — élève de vague 2** : déposer puis valider une demande
+  d'élève en cours pendant la vague 2 ; vérifier que le suivi demande d'imprimer
+  le formulaire et de le faire valider par le moniteur pendant le cours, sans
+  afficher de réservation de créneau. Tenter aussi la réservation directement
+  contre le backend : elle doit être refusée, tandis qu'un autre parcours
+  éligible conserve la réservation habituelle.
 - [ ] **Test d'autonomie sans dossier** : avec un compte `abo-otp`, saisir une
   licence venant d'être ajoutée ou remplacée sur le site du club. Vérifier que
   le clic actualise les abonnés puis les élèves avant la recherche, que le

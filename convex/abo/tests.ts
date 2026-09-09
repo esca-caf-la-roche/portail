@@ -47,6 +47,7 @@ import {
 const SLOT_MS = 20 * 60 * 1000; // slot de base = 20 min
 const MAX_CRENEAUX_STAFF = 200;
 const MAX_CANDIDATS_DIRECTS_PAR_COMPTE = 10;
+const MAX_PERSONNES_PAR_LICENCE = 50;
 const MAX_SUIVI_CANDIDATS_PAR_SOURCE = 1_000;
 const MAX_SUIVI_RESERVATIONS = 2_000;
 const rateLimiter = new RateLimiter(components.rateLimiter, {
@@ -568,6 +569,19 @@ export const reserverTestDirect = authenticatedMutation({
         : null;
     if (!candidat || candidat.user_id !== id.userId) throw new ConvexError({ code: "P0002", message: "Candidat introuvable." });
     const licence = candidat.licence;
+    const personnesLiees = await ctx.db
+      .query("abo_personnes")
+      .withIndex("by_licence", (q) => q.eq("licence", licence))
+      .take(MAX_PERSONNES_PAR_LICENCE + 1);
+    if (
+      personnesLiees.length > MAX_PERSONNES_PAR_LICENCE
+      || personnesLiees.some((personne) => personne.vague_depot === "vague_2")
+    ) {
+      throw new ConvexError({
+        code: "TEST_ELEVE_EN_COURS",
+        message: "Vous êtes inscrit·e à un cours : demandez à votre moniteur de vous faire passer le test pendant le cours.",
+      });
+    }
     const eligibilite = await eligibiliteDirecte(ctx, licence);
     if (!eligibilite.autorisee || !eligibilite.candidat) {
       await ctx.db.patch(candidat._id, { statut: "ineligible", motif_ineligibilite: eligibilite.message, reevalue_le: Date.now() });
@@ -626,6 +640,12 @@ export const reserverTest = authenticatedMutation({
       throw new ConvexError({
         code: "P0010",
         message: "La réservation du test est réservée aux demandes validées.",
+      });
+    }
+    if (personne.vague_depot === "vague_2") {
+      throw new ConvexError({
+        code: "TEST_ELEVE_EN_COURS",
+        message: "Vous êtes inscrit·e à un cours : demandez à votre moniteur de vous faire passer le test pendant le cours.",
       });
     }
     if (personne.licence) {
