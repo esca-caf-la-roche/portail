@@ -178,9 +178,10 @@ anciennes variantes équivalentes. La laisser aller à son terme — une relance
 reprend un lot interrompu — puis rejouer l'inspection : `a_normaliser` doit être
 à zéro avant la suite de la mise en production.
 
-Le compteur public lit un agrégat sans donnée nominative, recalculé après les
-opérations métier qui peuvent modifier la jauge. En l'absence initiale de cet
-agrégat, un calcul de transition borné permet de servir l'iframe.
+Le compteur public et les vues administratives **Compteur** et **Anomalies**
+lisent des projections matérialisées. Leur cycle de recalcul est décrit avec les
+synchronisations ci-dessous ; les écrans ne reparcourent pas les sources métier
+à chaque abonnement réactif.
 
 La page **Configuration** n'est accessible qu'avec la tuile `abonnements` et
 l'autorisation nominative `canManageAboConfiguration`, accordée dans
@@ -300,12 +301,18 @@ vide, illisible ou en erreur n'entraîne aucune purge.
 Les dossiers déposés dans le portail sont conservés ; seules leurs confirmations
 issues du site sont retirées jusqu'à une nouvelle présence dans le snapshot.
 
-Le compteur public utilise un cache. Les mutations du snapshot abonnés et du
-rapprochement des personnes posent une invalidation durable uniquement en cas
-de changement réel. La fin du scrap ne recalcule le compteur que si ce marqueur
-est présent ou si le cache manque ; le recalcul efface le marqueur atomiquement.
-Ainsi, un essai interrompu entre deux lots reste à recalculer après reprise.
-Un import élèves identique ne programme plus de recalcul si le cache existe.
+Le compteur public, le détail du compteur staff et la liste des anomalies sont
+des projections matérialisées. Les mutations des sources posent un marqueur
+d'invalidation durable uniquement lorsqu'une donnée métier change réellement.
+Les lots d'un import complet partagent ce marqueur : la fin de l'import ne
+programme qu'un seul recalcul, après les suppressions d'absents, puis le
+recalcul efface le marqueur dans la même transaction. Un import interrompu reste
+donc à recalculer après reprise, tandis qu'un import identique ne relit pas les
+sources si les caches existent.
+
+Le reset suit le même contrat, mais ses purges paginées progressent en parallèle.
+Chaque branche ne demande le recalcul qu'après sa dernière page ; la dernière à
+terminer garantit ainsi une projection postérieure à toutes les suppressions.
 
 L'annuaire FFCAM des licences suit le même principe de snapshot : une licence
 absente d'un export réussi et non vide est retirée du cache `abo_licences`, sans
@@ -356,13 +363,23 @@ inscription, une annulation ou un autre changement externe qui n'a pas encore
 été synchronisé. Avant une décision sensible, actualiser ce snapshot et vérifier
 que la synchronisation a abouti.
 
-Le compteur public est un agrégat événementiel : il est recalculé après les
-synchronisations et les mutations métier qui peuvent modifier la jauge, sans
-cron périodique. Lors du premier déploiement de cette table, exécuter une fois
-la fonction interne `abo/compteur:rafraichirCompteurPublic` après la migration,
-puis vérifier la présence du singleton `cle = "courant"` avant d'ouvrir
-l'iframe publique. Le calcul borné de transition ne doit pas devenir le régime
-normal.
+Ces projections sont événementielles : aucun cron périodique ne les reconstruit.
+Pendant le déploiement progressif, un ancien singleton public incomplet provoque
+un calcul borné de repli pour les vues staff. Le premier recalcul l'enrichit et
+matérialise les anomalies ; ce repli assure la continuité du rollout mais ne doit
+pas devenir le régime normal. Vérifier ensuite la présence du singleton complet
+`cle = "courant"` et du cache d'anomalies.
+
+Après déploiement et après 24 à 48 heures d'usage représentatif, mesurer DEV et
+PROD séparément avec :
+
+```bash
+npm run audit:convex-io
+```
+
+La validation attendue est une baisse de `abo/compteur.vCompteur`,
+`abo/compteur.vAnomalies` et `abo/compteur.rafraichirCompteurPublic`, sans hausse
+équivalente sur les mutations d'import.
 
 ## Règlements intérieurs signés
 

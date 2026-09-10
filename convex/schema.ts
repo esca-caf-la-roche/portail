@@ -1294,10 +1294,83 @@ export default defineSchema({
   abo_compteur_public_cache: defineTable({
     cle: v.literal("courant"),
     occupe: v.number(),
+    // Occupation utilisée pour le plafond de validation, distincte de
+    // `occupe`, qui conserve la valeur historique affichée publiquement.
+    occupe_transactionnel: v.optional(v.number()),
     places_max: v.number(),
     places_restantes: v.number(),
+    // WIDEN: détail administratif matérialisé progressivement. Ces champs
+    // restent optionnels pendant que PROD contient encore l'ancien singleton.
+    abonnes_scrap: v.optional(v.number()),
+    abonnements_site_valides: v.optional(v.number()),
+    abonnements_site_non_valides_a_suivre: v.optional(v.number()),
+    legit_scrap: v.optional(v.number()),
+    demandes_validees: v.optional(v.number()),
+    demandes_liste_attente: v.optional(v.number()),
+    demandes_refusees: v.optional(v.number()),
+    demandes_a_traiter: v.optional(v.number()),
+    validees_hors_legit: v.optional(v.number()),
+    bloquees: v.optional(v.number()),
+    anomalies: v.optional(v.number()),
+    anomalies_brutes: v.optional(v.number()),
+    acquittees: v.optional(v.number()),
+    total_affiche: v.optional(v.number()),
     calcule_le: v.string(),
   }).index("by_cle", ["cle"]),
+
+  // SAISON-EXEMPT: projection compacte des anomalies de la campagne
+  // Abonnements courante. Elle est entièrement reconstruite avec le compteur
+  // matérialisé et ne dépend pas du sélecteur de saison comptable.
+  abo_compteur_anomalies_cache: defineTable({
+    // Clé métier stable : `${scrap_id}:${code_anomalie}`. Son unicité est
+    // contrôlée en mutation via l'index `by_cle` et `.unique()`.
+    cle: v.string(),
+    scrap_id: v.id("abo_abonnes_scrap"),
+    licence: v.optional(v.string()),
+    nom: v.optional(v.string()),
+    prenom: v.optional(v.string()),
+    nom_prenom_normalise: v.string(),
+    abonnement_valide: v.union(
+      v.literal("oui"),
+      v.literal("non"),
+      v.literal("bloque"),
+      v.literal("inconnu"),
+    ),
+    code_anomalie: v.union(
+      v.literal("statut_inconnu"),
+      v.literal("n1_ambigu"),
+      v.literal("absence_demande"),
+      v.literal("demande_non_validee"),
+    ),
+    peut_etre_acquittee: v.boolean(),
+    statut: v.union(v.literal("a_traiter"), v.literal("acquittee")),
+    acquittement_id: v.optional(v.id("abo_anomalies_acquittements")),
+    acquittement_justification: v.optional(v.string()),
+    acquittement_le: v.optional(v.string()),
+    type: v.union(v.literal("non_validee"), v.literal("inconnue")),
+    abonne_n1: v.boolean(),
+    abonne_n1_ambigu: v.boolean(),
+    eleve_en_cours: v.boolean(),
+    demande_validee: v.boolean(),
+    statut_dossier: v.union(
+      v.literal("nouvelle_demande"),
+      v.literal("complete"),
+      v.literal("validee"),
+      v.literal("liste_attente"),
+      v.literal("refusee"),
+      v.literal("inconnu"),
+    ),
+    rapprochement: v.union(
+      v.literal("licence"),
+      v.literal("nom_prenom_unique"),
+      v.literal("aucun"),
+      v.literal("ambigu"),
+    ),
+    raison: v.string(),
+    calcule_le: v.string(),
+  })
+    .index("by_cle", ["cle"])
+    .index("by_scrap_id", ["scrap_id"]),
 
   // Configuration applicative clé/valeur (vagues, liens, places_max, helloasso).
   abo_app_config: defineTable({

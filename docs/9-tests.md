@@ -251,11 +251,12 @@ Les tests `convex/abo.syncStatus.test.ts` vérifient les disponibilités affich�
 `convex/abo.config.test.ts` couvre la conservation des marqueurs lors d'un reset.
 `convex/abo.syncCadence.test.ts` vérifie le blocage des imports automatiques
 pendant quatre heures. `convex/abo.compteur-io.test.ts` couvre le court-circuit
-des imports identiques, l'invalidation durable entre lots, les suppressions
-et la reconstruction d'un cache absent.
+des imports identiques, l'invalidation durable entre lots, le recalcul après la
+fin des purges du reset, les suppressions, le cache administratif matérialisé
+et le repli de rollout lorsqu'un ancien cache est incomplet.
 
 ```bash
-npm test -- convex/abo.annuaireSync.test.ts convex/abo.syncStatus.test.ts convex/abo.licencesSnapshot.test.ts convex/abo.config.test.ts
+npm test -- convex/abo.annuaireSync.test.ts convex/abo.syncStatus.test.ts convex/abo.licencesSnapshot.test.ts convex/abo.config.test.ts convex/abo.compteur-io.test.ts
 ```
 
 1. ouvrir `/licences-cours` un lundi et vérifier l'ordre : hors tolérance de

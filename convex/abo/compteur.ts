@@ -11,7 +11,6 @@
 
 import { v, ConvexError } from "convex/values";
 import { query, internalMutation } from "../_generated/server";
-import { internal } from "../_generated/api";
 import type { QueryCtx, MutationCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import { authenticatedQuery, authenticatedMutation } from "../customFunctions";
@@ -28,6 +27,12 @@ import {
   compterOccurrencesParNom,
   construireIdentiteLicenceCours,
 } from "./licencesCoursIdentite";
+import {
+  CLE_COMPTEUR_A_RECALCULER,
+  programmerRafraichissementCompteurPublic,
+} from "./compteurCache";
+
+export { invaliderCompteurPublic, programmerRafraichissementCompteurPublic } from "./compteurCache";
 
 const PLACES_MAX_DEFAUT = 350;
 const MAX_ELEVES_SNAPSHOT = 1_000;
@@ -305,30 +310,132 @@ const compteurPublicValidator = v.object({
   vague: v.number(),
 });
 
+function cacheCompteurComplet(
+  cache: Doc<"abo_compteur_public_cache"> | null,
+): cache is Doc<"abo_compteur_public_cache"> & CompteurData & {
+  anomalies_brutes: number;
+  acquittees: number;
+  places_max: number;
+  occupe_transactionnel: number;
+} {
+  return cache !== null && [
+    cache.abonnes_scrap,
+    cache.abonnements_site_valides,
+    cache.abonnements_site_non_valides_a_suivre,
+    cache.legit_scrap,
+    cache.demandes_validees,
+    cache.demandes_liste_attente,
+    cache.demandes_refusees,
+    cache.demandes_a_traiter,
+    cache.validees_hors_legit,
+    cache.bloquees,
+    cache.anomalies,
+    cache.anomalies_brutes,
+    cache.acquittees,
+    cache.total_affiche,
+    cache.occupe_transactionnel,
+  ].every((valeur) => typeof valeur === "number");
+}
+
+async function lireAcquittements(ctx: QueryCtx | MutationCtx) {
+  const acquittements = await ctx.db
+    .query("abo_anomalies_acquittements")
+    .take(MAX_LIGNES_COMPTEUR + 1);
+  if (acquittements.length > MAX_LIGNES_COMPTEUR) {
+    throw new ConvexError({
+      code: "ABO_ACQUITTEMENTS_VOLUME",
+      message: `Les acquittements dépassent la limite de sécurité de ${MAX_LIGNES_COMPTEUR} lignes.`,
+    });
+  }
+  return acquittements;
+}
+
+function construireAnomalies(
+  c: CompteurData,
+  acquittements: Awaited<ReturnType<typeof lireAcquittements>>,
+) {
+  const acquittementParCle = new Map(
+    acquittements.map((a) => [cleAcquittement(a.licence, a.code_anomalie), a] as const),
+  );
+  return c.classifications
+    .filter(estAnomalie)
+    .map((ligne) => {
+      const { scrap, categorie, statutSite, n1, demande, statutDossier, rapprochement } = ligne;
+      const code_anomalie = codeAnomalieDe(ligne);
+      const licence = canoniserLicence(scrap.licence);
+      const acquittement = licence
+        ? acquittementParCle.get(cleAcquittement(licence, code_anomalie)) ?? null
+        : null;
+      return {
+        id: scrap._id,
+        licence: scrap.licence ?? null,
+        nom: scrap.nom ?? null,
+        prenom: scrap.prenom ?? null,
+        nom_prenom_normalise: scrap.nom_prenom_normalise,
+        abonnement_valide: statutSite,
+        code_anomalie,
+        peutEtreAcquittee: licence !== null,
+        statut: acquittement ? "acquittee" as const : "a_traiter" as const,
+        acquittement: acquittement ? {
+          id: acquittement._id,
+          justification: acquittement.justification,
+          acquittee_le: acquittement.acquittee_le,
+        } : null,
+        type: categorie === "inconnue" ? "inconnue" as const : "non_validee" as const,
+        controles: {
+          abonneN1: n1 === "oui",
+          abonneN1Ambigu: n1 === "ambigu",
+          eleveEnCours: licence ? c.elevesLic.has(licence) : false,
+          demandeValidee: demande === "validee",
+          statutDossier,
+          rapprochement,
+        },
+        raison: categorie === "inconnue"
+          ? "Statut du site inconnu : cette ancienne valeur ne permet pas de distinguer Non de Bloqué. Synchronisez à nouveau le site."
+          : n1 === "ambigu"
+            ? "Correspondance N-1 ambiguë : plusieurs archives validées portent ce nom et prénom. Vérifiez manuellement avant décision."
+            : demande === "absente"
+              ? "Règle 1 non respectée : la personne n'était pas abonnée l'année dernière et aucune demande n'a été déposée sur le portail."
+              : "Règle 2 non respectée : la personne n'était pas abonnée l'année dernière et la demande portail n'est pas validée.",
+      };
+    })
+    .sort((a, b) => a.nom_prenom_normalise.localeCompare(b.nom_prenom_normalise, "fr"));
+}
+
 // ── vCompteur : compteur détaillé (admin) ────────────────────────────
 export const vCompteur = authenticatedQuery({
   args: {},
   returns: compteurDetailValidator,
   handler: async (ctx) => {
     await requireAboAdmin(ctx);
-    const [c, acquittements] = await Promise.all([
-      calculerCompteur(ctx, undefined),
-      ctx.db.query("abo_anomalies_acquittements").take(MAX_LIGNES_COMPTEUR + 1),
-    ]);
-    if (acquittements.length > MAX_LIGNES_COMPTEUR) {
-      throw new ConvexError({
-        code: "ABO_ACQUITTEMENTS_VOLUME",
-        message: `Les acquittements dépassent la limite de sécurité de ${MAX_LIGNES_COMPTEUR} lignes.`,
-      });
+    const cache = await ctx.db.query("abo_compteur_public_cache")
+      .withIndex("by_cle", (q) => q.eq("cle", "courant")).first();
+    if (cacheCompteurComplet(cache)) {
+      return {
+        abonnes_scrap: cache.abonnes_scrap,
+        abonnements_site_valides: cache.abonnements_site_valides,
+        abonnements_site_non_valides_a_suivre: cache.abonnements_site_non_valides_a_suivre,
+        legit_scrap: cache.legit_scrap,
+        demandes_validees: cache.demandes_validees,
+        demandes_liste_attente: cache.demandes_liste_attente,
+        demandes_refusees: cache.demandes_refusees,
+        demandes_a_traiter: cache.demandes_a_traiter,
+        validees_hors_legit: cache.validees_hors_legit,
+        bloquees: cache.bloquees,
+        anomalies: cache.anomalies,
+        anomalies_brutes: cache.anomalies_brutes,
+        acquittees: cache.acquittees,
+        total_affiche: cache.total_affiche,
+        occupe: cache.occupe_transactionnel,
+        places_max: cache.places_max,
+      };
     }
-    const clesAcquittees = new Set(
-      acquittements.map((a) => cleAcquittement(a.licence, a.code_anomalie)),
-    );
-    const anomaliesAcquittees = c.classifications.filter((ligne) => {
-      if (!estAnomalie(ligne)) return false;
-      const licence = canoniserLicence(ligne.scrap.licence);
-      return licence !== null && clesAcquittees.has(cleAcquittement(licence, codeAnomalieDe(ligne)));
-    }).length;
+    // Rollout : l'ancien singleton PROD ne porte pas encore le détail.
+    const [c, acquittements] = await Promise.all([
+      calculerCompteur(ctx, undefined), lireAcquittements(ctx),
+    ]);
+    const anomaliesAcquittees = construireAnomalies(c, acquittements)
+      .filter((ligne) => ligne.statut === "acquittee").length;
     const places_max = await lirePlacesMax(ctx);
     return {
       abonnes_scrap: c.abonnes_scrap,
@@ -394,64 +501,46 @@ export const vAnomalies = authenticatedQuery({
   })),
   handler: async (ctx) => {
     await requireAboAdmin(ctx);
-    const [c, acquittements] = await Promise.all([
-      calculerCompteur(ctx, undefined, true),
-      ctx.db.query("abo_anomalies_acquittements").take(MAX_LIGNES_COMPTEUR + 1),
-    ]);
-    if (acquittements.length > MAX_LIGNES_COMPTEUR) {
-      throw new ConvexError({
-        code: "ABO_ACQUITTEMENTS_VOLUME",
-        message: `Les acquittements dépassent la limite de sécurité de ${MAX_LIGNES_COMPTEUR} lignes.`,
-      });
+    const cacheCompteur = await ctx.db.query("abo_compteur_public_cache")
+      .withIndex("by_cle", (q) => q.eq("cle", "courant")).first();
+    if (cacheCompteurComplet(cacheCompteur)) {
+      const lignes = await ctx.db.query("abo_compteur_anomalies_cache")
+        .take(MAX_LIGNES_COMPTEUR + 1);
+      if (lignes.length > MAX_LIGNES_COMPTEUR) {
+        throw new ConvexError({ code: "ABO_ANOMALIES_VOLUME", message: "Le cache des anomalies dépasse sa limite de sécurité." });
+      }
+      return lignes.map((ligne) => ({
+        id: ligne.scrap_id,
+        licence: ligne.licence ?? null,
+        nom: ligne.nom ?? null,
+        prenom: ligne.prenom ?? null,
+        nom_prenom_normalise: ligne.nom_prenom_normalise,
+        abonnement_valide: ligne.abonnement_valide,
+        code_anomalie: ligne.code_anomalie,
+        peutEtreAcquittee: ligne.peut_etre_acquittee,
+        statut: ligne.statut,
+        acquittement: ligne.acquittement_id ? {
+          id: ligne.acquittement_id,
+          justification: ligne.acquittement_justification ?? "",
+          acquittee_le: ligne.acquittement_le ?? "",
+        } : null,
+        type: ligne.type,
+        controles: {
+          abonneN1: ligne.abonne_n1,
+          abonneN1Ambigu: ligne.abonne_n1_ambigu,
+          eleveEnCours: ligne.eleve_en_cours,
+          demandeValidee: ligne.demande_validee,
+          statutDossier: ligne.statut_dossier,
+          rapprochement: ligne.rapprochement,
+        },
+        raison: ligne.raison,
+      })).sort((a, b) => a.nom_prenom_normalise.localeCompare(b.nom_prenom_normalise, "fr"));
     }
-    const acquittementParCle = new Map(
-      acquittements.map((a) => [cleAcquittement(a.licence, a.code_anomalie), a] as const),
-    );
-    return c.classifications
-      .filter(estAnomalie)
-      .map((ligne) => {
-        const { scrap, categorie, statutSite, n1, demande, statutDossier, rapprochement } = ligne;
-        const code_anomalie = codeAnomalieDe(ligne);
-        const licence = canoniserLicence(scrap.licence);
-        const acquittement = licence
-          ? acquittementParCle.get(cleAcquittement(licence, code_anomalie)) ?? null
-          : null;
-        return {
-          id: scrap._id,
-          licence: scrap.licence ?? null,
-          nom: scrap.nom ?? null,
-          prenom: scrap.prenom ?? null,
-          nom_prenom_normalise: scrap.nom_prenom_normalise,
-        // Valeur brute du champ du site : l'interface doit pouvoir afficher
-        // distinctement Oui, Non et Bloqué, sans en déduire un booléen.
-          abonnement_valide: statutSite,
-          code_anomalie,
-          peutEtreAcquittee: licence !== null,
-          statut: acquittement ? "acquittee" as const : "a_traiter" as const,
-          acquittement: acquittement ? {
-            id: acquittement._id,
-            justification: acquittement.justification,
-            acquittee_le: acquittement.acquittee_le,
-          } : null,
-          type: categorie === "inconnue" ? "inconnue" as const : "non_validee" as const,
-          controles: {
-            abonneN1: n1 === "oui",
-            abonneN1Ambigu: n1 === "ambigu",
-            eleveEnCours: licence ? c.elevesLic.has(licence) : false,
-            demandeValidee: demande === "validee",
-            statutDossier,
-            rapprochement,
-          },
-          raison: categorie === "inconnue"
-            ? "Statut du site inconnu : cette ancienne valeur ne permet pas de distinguer Non de Bloqué. Synchronisez à nouveau le site."
-            : n1 === "ambigu"
-              ? "Correspondance N-1 ambiguë : plusieurs archives validées portent ce nom et prénom. Vérifiez manuellement avant décision."
-              : demande === "absente"
-                ? "Règle 1 non respectée : la personne n'était pas abonnée l'année dernière et aucune demande n'a été déposée sur le portail."
-                : "Règle 2 non respectée : la personne n'était pas abonnée l'année dernière et la demande portail n'est pas validée.",
-        };
-      })
-      .sort((a, b) => a.nom_prenom_normalise.localeCompare(b.nom_prenom_normalise, "fr"));
+    // Rollout : tant que le singleton détaillé n'a pas été initialisé.
+    const [c, acquittements] = await Promise.all([
+      calculerCompteur(ctx, undefined, true), lireAcquittements(ctx),
+    ]);
+    return construireAnomalies(c, acquittements);
   },
 });
 
@@ -472,15 +561,38 @@ export const acquitterAnomalie = authenticatedMutation({
       });
     }
 
-    const c = await calculerCompteur(ctx, undefined, true);
-    const ligne = c.classifications.find(({ scrap }) => scrap._id === args.scrapId);
-    if (!ligne || !estAnomalie(ligne) || codeAnomalieDe(ligne) !== args.code_anomalie) {
-      throw new ConvexError({
-        code: "ABO_ANOMALIE_OBSOLETE",
-        message: "Cette anomalie a changé ou n'existe plus. Actualisez la liste avant de recommencer.",
-      });
+    const [cache, marqueur, anomaliesCache] = await Promise.all([
+      ctx.db.query("abo_compteur_public_cache")
+        .withIndex("by_cle", (q) => q.eq("cle", "courant")).first(),
+      ctx.db.query("abo_app_config")
+        .withIndex("by_cle", (q) => q.eq("cle", CLE_COMPTEUR_A_RECALCULER)).first(),
+      ctx.db.query("abo_compteur_anomalies_cache")
+        .withIndex("by_scrap_id", (q) => q.eq("scrap_id", args.scrapId)).take(5),
+    ]);
+    let licence: string | null;
+    if (cacheCompteurComplet(cache) && !marqueur) {
+      const ligneCache = anomaliesCache.find(
+        (ligne) => ligne.code_anomalie === args.code_anomalie,
+      );
+      licence = canoniserLicence(ligneCache?.licence);
+      if (!ligneCache) {
+        throw new ConvexError({
+          code: "ABO_ANOMALIE_OBSOLETE",
+          message: "Cette anomalie a changé ou n'existe plus. Actualisez la liste avant de recommencer.",
+        });
+      }
+    } else {
+      // Fallback de rollout ou cache dirty : conserver une validation fraîche.
+      const c = await calculerCompteur(ctx, undefined, true);
+      const ligne = c.classifications.find(({ scrap }) => scrap._id === args.scrapId);
+      if (!ligne || !estAnomalie(ligne) || codeAnomalieDe(ligne) !== args.code_anomalie) {
+        throw new ConvexError({
+          code: "ABO_ANOMALIE_OBSOLETE",
+          message: "Cette anomalie a changé ou n'existe plus. Actualisez la liste avant de recommencer.",
+        });
+      }
+      licence = canoniserLicence(ligne.scrap.licence);
     }
-    const licence = canoniserLicence(ligne.scrap.licence);
     if (!licence) {
       throw new ConvexError({
         code: "ABO_ANOMALIE_SANS_LICENCE",
@@ -514,6 +626,7 @@ export const acquitterAnomalie = authenticatedMutation({
       date_action: maintenant,
       auteur_id: admin.userId,
     });
+    await programmerRafraichissementCompteurPublic(ctx);
     return id;
   },
 });
@@ -540,6 +653,7 @@ export const reactiverAnomalie = authenticatedMutation({
       date_action: maintenant,
       auteur_id: admin.userId,
     });
+    await programmerRafraichissementCompteurPublic(ctx);
     return null;
   },
 });
@@ -580,18 +694,6 @@ export const compteurPublic = query({
 
 // Invalidation durable : un scrap interrompu entre deux lots ne doit pas perdre
 // son besoin de recalcul au prochain essai, même si ce dernier est identique.
-// SAISON-EXEMPT: marqueur technique du cache courant ; tout recalcul, y compris
-// celui du reset de campagne, le supprime dans la même transaction.
-const CLE_COMPTEUR_A_RECALCULER = "compteur_public_a_recalculer";
-
-export async function invaliderCompteurPublic(ctx: MutationCtx): Promise<void> {
-  const marqueur = await ctx.db.query("abo_app_config")
-    .withIndex("by_cle", (q) => q.eq("cle", CLE_COMPTEUR_A_RECALCULER)).first();
-  if (!marqueur) {
-    await ctx.db.insert("abo_app_config", { cle: CLE_COMPTEUR_A_RECALCULER, valeur: "true" });
-  }
-}
-
 export const rafraichirCompteurPublic = internalMutation({
   args: { siNecessaire: v.optional(v.boolean()) },
   returns: v.null(),
@@ -602,31 +704,92 @@ export const rafraichirCompteurPublic = internalMutation({
       .first();
     const marqueur = await ctx.db.query("abo_app_config")
       .withIndex("by_cle", (q) => q.eq("cle", CLE_COMPTEUR_A_RECALCULER)).first();
-    if (args.siNecessaire && cache && !marqueur) return null;
-    const c = await calculerCompteur(ctx, undefined);
+    // Un ancien singleton PROD ne contient que les valeurs publiques. Il doit
+    // être enrichi même sans changement métier lors du premier déploiement.
+    if (args.siNecessaire && cacheCompteurComplet(cache) && !marqueur) return null;
+    const [c, acquittements] = await Promise.all([
+      calculerCompteur(ctx, undefined, true),
+      lireAcquittements(ctx),
+    ]);
+    const anomalies = construireAnomalies(c, acquittements);
+    const acquittees = anomalies.filter((ligne) => ligne.statut === "acquittee").length;
     const places_max = await lirePlacesMax(ctx);
+    const calcule_le = new Date().toISOString();
     const doc = {
       cle: "courant" as const,
       occupe: c.total_affiche,
       places_max,
       places_restantes: places_max - c.total_affiche,
-      calcule_le: new Date().toISOString(),
+      abonnes_scrap: c.abonnes_scrap,
+      abonnements_site_valides: c.abonnements_site_valides,
+      abonnements_site_non_valides_a_suivre: c.abonnements_site_non_valides_a_suivre,
+      legit_scrap: c.legit_scrap,
+      demandes_validees: c.demandes_validees,
+      demandes_liste_attente: c.demandes_liste_attente,
+      demandes_refusees: c.demandes_refusees,
+      demandes_a_traiter: c.demandes_a_traiter,
+      validees_hors_legit: c.validees_hors_legit,
+      bloquees: c.bloquees,
+      anomalies: anomalies.length - acquittees,
+      anomalies_brutes: anomalies.length,
+      acquittees,
+      total_affiche: c.total_affiche,
+      occupe_transactionnel: c.occupe,
+      calcule_le,
     };
     if (cache) {
       if (champsModifies(cache, doc, ["calcule_le"])) await ctx.db.patch(cache._id, doc);
     } else {
       await ctx.db.insert("abo_compteur_public_cache", doc);
     }
+
+    const existantes = await ctx.db.query("abo_compteur_anomalies_cache")
+      .take(MAX_LIGNES_COMPTEUR + 1);
+    if (existantes.length > MAX_LIGNES_COMPTEUR) {
+      throw new ConvexError({ code: "ABO_ANOMALIES_VOLUME", message: "Le cache des anomalies dépasse sa limite de sécurité." });
+    }
+    const parCle = new Map(existantes.map((ligne) => [ligne.cle, ligne] as const));
+    for (const ligne of anomalies) {
+      const cle = `${ligne.id}:${ligne.code_anomalie}`;
+      const projection = {
+        cle,
+        scrap_id: ligne.id,
+        licence: ligne.licence ?? undefined,
+        nom: ligne.nom ?? undefined,
+        prenom: ligne.prenom ?? undefined,
+        nom_prenom_normalise: ligne.nom_prenom_normalise,
+        abonnement_valide: ligne.abonnement_valide,
+        code_anomalie: ligne.code_anomalie,
+        peut_etre_acquittee: ligne.peutEtreAcquittee,
+        statut: ligne.statut,
+        acquittement_id: ligne.acquittement?.id,
+        acquittement_justification: ligne.acquittement?.justification,
+        acquittement_le: ligne.acquittement?.acquittee_le,
+        type: ligne.type,
+        abonne_n1: ligne.controles.abonneN1,
+        abonne_n1_ambigu: ligne.controles.abonneN1Ambigu,
+        eleve_en_cours: ligne.controles.eleveEnCours,
+        demande_validee: ligne.controles.demandeValidee,
+        statut_dossier: ligne.controles.statutDossier,
+        rapprochement: ligne.controles.rapprochement,
+        raison: ligne.raison,
+        calcule_le,
+      };
+      const existante = parCle.get(cle);
+      if (existante) {
+        if (champsModifies(existante, projection, ["calcule_le"])) {
+          await ctx.db.patch(existante._id, projection);
+        }
+        parCle.delete(cle);
+      } else {
+        await ctx.db.insert("abo_compteur_anomalies_cache", projection);
+      }
+    }
+    for (const obsolete of parCle.values()) await ctx.db.delete(obsolete._id);
     if (marqueur) await ctx.db.delete(marqueur._id);
     return null;
   },
 });
-
-export async function programmerRafraichissementCompteurPublic(
-  ctx: MutationCtx,
-): Promise<void> {
-  await ctx.scheduler.runAfter(0, internal.abo.compteur.rafraichirCompteurPublic, {});
-}
 
 // ── getElevesEnCours : élèves en cours (admin) pour les badges ───────
 // Renvoie une liste plate (licence / nom_prenom_normalise / horaire) ; le front

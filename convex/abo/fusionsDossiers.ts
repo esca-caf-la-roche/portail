@@ -8,6 +8,7 @@ import { canoniserEmailUnique } from "../emailValidation";
 import { champsModifies } from "../dbUtils";
 import { requireAboAdmin } from "./auth";
 import { champsPersonneDepuisScrap } from "./matching";
+import { programmerRafraichissementCompteurPublic } from "./compteur";
 
 const MAX_PERSONNES = 30;
 const MAX_MESSAGES = 100;
@@ -447,7 +448,7 @@ export const resoudreConflitDossiers = authenticatedMutation({
       if (!sourceSettings) await supprimerComptePublic(ctx, dossierSupprime.owner_id);
     }
 
-    await ctx.scheduler.runAfter(0, internal.abo.compteur.rafraichirCompteurPublic, {});
+    await programmerRafraichissementCompteurPublic(ctx);
     return {
       resolutionId,
       mode: args.mode,

@@ -14,6 +14,10 @@ import { authenticatedQuery, authenticatedMutation } from "../customFunctions";
 import { internalMutation, internalQuery } from "../_generated/server";
 import type { QueryCtx, MutationCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
+import {
+  invaliderCompteurPublic,
+  programmerRafraichissementCompteurPublic,
+} from "./compteurCache";
 import { peutGererConfigurationAbo, requireAboConfigurationManager } from "./auth";
 import { parseHa, poserLienAbo, trouverLienAbo } from "./paiements";
 import { REGLEMENT_DOCUSEAL_URL } from "./reglementsConstants";
@@ -541,6 +545,7 @@ export const resetSaison = authenticatedMutation({
     // synchronisation reste explicitement en pause jusqu'au feu vert staff.
     await setConfigValeur(ctx, CLE_SYNCHRONISATION_EXTERNE_ACTIVE, "false");
     await setConfigValeur(ctx, CLE_PURGE_SUIVI_CAMPAGNE_ACTIVE, "true");
+    await invaliderCompteurPublic(ctx);
     const generation = Number(await getConfigValeur(ctx, CLE_SYNCHRONISATION_EXTERNE_GENERATION)) || 0;
     await setConfigValeur(ctx, CLE_SYNCHRONISATION_EXTERNE_GENERATION, String(generation + 1));
 
@@ -551,7 +556,6 @@ export const resetSaison = authenticatedMutation({
       etape: "envois_notifications_tests",
     });
     await ctx.scheduler.runAfter(0, internal.abo.config.purgerComptesPublics, {});
-    await ctx.scheduler.runAfter(0, internal.abo.compteur.rafraichirCompteurPublic, {});
 
     return nbArchive;
   },
@@ -735,6 +739,7 @@ export const purgerSuiviCampagne = internalMutation({
       });
     } else {
       await setConfigValeur(ctx, CLE_PURGE_SUIVI_CAMPAGNE_ACTIVE, null);
+      await programmerRafraichissementCompteurPublic(ctx);
     }
     return traites;
   },
@@ -836,9 +841,11 @@ export const purgerComptesPublics = internalMutation({
       await ctx.scheduler.runAfter(0, internal.abo.config.purgerComptesPublics, {
         cursor: page.continueCursor,
       });
-    }
-    if (traites > 0) {
-      await ctx.scheduler.runAfter(0, internal.abo.compteur.rafraichirCompteurPublic, {});
+    } else {
+      // Les deux branches du reset progressent en parallèle. Chacune publie à
+      // sa fin : la dernière terminée garantit ainsi un cache construit après
+      // toutes les suppressions, quel que soit leur ordre d'achèvement.
+      await programmerRafraichissementCompteurPublic(ctx);
     }
     return traites;
   },

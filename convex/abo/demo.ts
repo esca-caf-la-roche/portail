@@ -3,10 +3,10 @@
 
 import { ConvexError, v } from "convex/values";
 import { internalMutation } from "../_generated/server";
-import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { normaliserNomPrenom } from "./lib";
+import { programmerRafraichissementCompteurPublic } from "./compteur";
 
 const MANIFEST_KEY = "demo_abonnements_2026";
 const DEMO_NOW = "2026-08-07T10:00:00.000Z";
@@ -203,7 +203,7 @@ export const seed = internalMutation({
       valeur: JSON.stringify({ dossiers, personnes, scrap, archive, eleves, ownerId, configAvant }),
       updated_at: DEMO_NOW,
     });
-    await ctx.scheduler.runAfter(0, internal.abo.compteur.rafraichirCompteurPublic, {});
+    await programmerRafraichissementCompteurPublic(ctx);
     return { dossiers: dossiers.length, personnes: personnes.length, inscriptionsSite: scrap.length };
   },
 });
@@ -214,7 +214,7 @@ export const clear = internalMutation({
   handler: async (ctx) => {
     exigerDemoAutorisee();
     const supprimees = await effacerDemo(ctx);
-    await ctx.scheduler.runAfter(0, internal.abo.compteur.rafraichirCompteurPublic, {});
+    await programmerRafraichissementCompteurPublic(ctx);
     return { supprimees };
   },
 });

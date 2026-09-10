@@ -99,12 +99,40 @@ describe("recalcul du compteur après les imports", () => {
     expect(await cache(t)).toMatchObject({ cle: "courant", occupe: 0 });
   });
 
+  test("enrichit l'ancien singleton même sans nouvelle invalidation", async () => {
+    const t = creerTest();
+    await t.run(async (ctx) => await ctx.db.insert("abo_compteur_public_cache", {
+      cle: "courant",
+      occupe: 42,
+      places_max: 250,
+      places_restantes: 208,
+      calcule_le: "2026-09-01T00:00:00.000Z",
+    }));
+    await t.mutation(internal.abo.compteur.rafraichirCompteurPublic, {
+      siNecessaire: true,
+    });
+    expect(await cache(t)).toMatchObject({
+      occupe: 0,
+      occupe_transactionnel: 0,
+      abonnes_scrap: 0,
+      anomalies_brutes: 0,
+    });
+  });
+
   test("sans invalidation le mode conditionnel ne recalcule pas les sources", async () => {
     const t = creerTest();
     // Une valeur sentinelle permet de distinguer un recalcul sans écriture
     // d'un vrai court-circuit : un calcul sur les sources vides donnerait zéro.
     await t.run(async (ctx) => await ctx.db.insert("abo_compteur_public_cache", {
-      cle: "courant", occupe: 42, places_max: 250, places_restantes: 208, calcule_le: "2026-09-01T00:00:00.000Z",
+      cle: "courant", occupe: 42, occupe_transactionnel: 42,
+      places_max: 250, places_restantes: 208,
+      abonnes_scrap: 42, abonnements_site_valides: 42,
+      abonnements_site_non_valides_a_suivre: 0, legit_scrap: 42,
+      demandes_validees: 0, demandes_liste_attente: 0,
+      demandes_refusees: 0, demandes_a_traiter: 0,
+      validees_hors_legit: 0, bloquees: 0, anomalies: 0,
+      anomalies_brutes: 0, acquittees: 0, total_affiche: 42,
+      calcule_le: "2026-09-01T00:00:00.000Z",
     }));
     await t.mutation(internal.abo.compteur.rafraichirCompteurPublic, { siNecessaire: true });
     expect(await cache(t)).toMatchObject({ occupe: 42 });
@@ -143,5 +171,63 @@ describe("recalcul du compteur après les imports", () => {
     expect(await t.run(async (ctx) => await ctx.db.system.query("_scheduled_functions").collect())).toHaveLength(1);
     await t.finishAllScheduledFunctions(vi.runAllTimers);
     expect(await cache(t)).not.toBeNull();
+  });
+
+  test("les queries admin servent le compteur et les anomalies matérialisés sans changer leur contrat", async () => {
+    const t = creerTest();
+    const adminId = await t.run(async (ctx) => {
+      const id = await ctx.db.insert("users", { email: "admin-cache@example.test" });
+      await ctx.db.insert("userSettings", { userId: id, allowedTiles: ["abonnements"], role: "admin" });
+      return id;
+    });
+    const admin = t.withIdentity({ subject: adminId });
+    await t.mutation(internal.abo.matching.upsertAbonnesScrapBatch, {
+      lignes: [{ ...ligne, abonnement_valide: "non" }],
+    });
+
+    // Avant initialisation, le fallback de rollout reste la source de vérité.
+    const compteurAvant = await admin.query(api.abo.compteur.vCompteur, {});
+    const anomaliesAvant = await admin.query(api.abo.compteur.vAnomalies, {});
+    await t.mutation(internal.abo.compteur.rafraichirCompteurPublic, { siNecessaire: true });
+
+    expect(await admin.query(api.abo.compteur.vCompteur, {})).toEqual(compteurAvant);
+    expect(await admin.query(api.abo.compteur.vAnomalies, {})).toEqual(anomaliesAvant);
+    expect(await t.run(async (ctx) => ctx.db.query("abo_compteur_anomalies_cache").collect()))
+      .toHaveLength(1);
+  });
+
+  test("acquitter puis réactiver une anomalie invalide et remet à jour les deux caches", async () => {
+    vi.useFakeTimers();
+    const t = creerTest();
+    const adminId = await t.run(async (ctx) => {
+      const id = await ctx.db.insert("users", { email: "admin-acquittement@example.test" });
+      await ctx.db.insert("userSettings", { userId: id, allowedTiles: ["abonnements"], role: "admin" });
+      return id;
+    });
+    const admin = t.withIdentity({ subject: adminId });
+    await t.mutation(internal.abo.matching.upsertAbonnesScrapBatch, {
+      lignes: [{ ...ligne, abonnement_valide: "non" }],
+    });
+    await t.mutation(internal.abo.compteur.rafraichirCompteurPublic, { siNecessaire: true });
+    const anomalie = (await admin.query(api.abo.compteur.vAnomalies, {}))[0];
+
+    const acquittementId = await admin.mutation(api.abo.compteur.acquitterAnomalie, {
+      scrapId: anomalie.id,
+      code_anomalie: anomalie.code_anomalie,
+      justification: "Contrôle manuel effectué",
+    });
+    expect(await invalidation(t)).not.toBeNull();
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect(await admin.query(api.abo.compteur.vCompteur, {})).toMatchObject({
+      anomalies: 0, anomalies_brutes: 1, acquittees: 1,
+    });
+    expect((await admin.query(api.abo.compteur.vAnomalies, {}))[0]).toMatchObject({ statut: "acquittee" });
+
+    await admin.mutation(api.abo.compteur.reactiverAnomalie, { acquittementId });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect(await admin.query(api.abo.compteur.vCompteur, {})).toMatchObject({
+      anomalies: 1, anomalies_brutes: 1, acquittees: 0,
+    });
+    expect((await admin.query(api.abo.compteur.vAnomalies, {}))[0]).toMatchObject({ statut: "a_traiter" });
   });
 });
