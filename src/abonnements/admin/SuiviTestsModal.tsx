@@ -7,7 +7,7 @@ export type CandidatSuiviTest = {
   prenom: string;
   licence: string | null;
   estEleveEnCours: boolean;
-  statut: "en_attente" | "reserve" | "passe";
+  statut: "en_attente" | "reserve" | "avec_moniteur" | "passe";
   trancheDebut: string | null;
   trancheFin: string | null;
 };
@@ -15,6 +15,7 @@ export type CandidatSuiviTest = {
 const LIBELLES_STATUT: Record<CandidatSuiviTest["statut"], string> = {
   en_attente: "En attente de créneau",
   reserve: "Créneau réservé",
+  avec_moniteur: "Élève en cours — test avec son moniteur",
   passe: "Test passé",
 };
 
@@ -144,7 +145,7 @@ export default function SuiviTestsModal({
                   <span className="abo-admin-meta">
                     {candidat.licence ? `Licence ${candidat.licence}` : "Licence non renseignée"}
                   </span>
-                  {candidat.estEleveEnCours && (
+                  {candidat.estEleveEnCours && candidat.statut !== "avec_moniteur" && (
                     <span className="abo-admin-tests-followup-course-badge">
                       Élève en cours — test avec son moniteur
                     </span>

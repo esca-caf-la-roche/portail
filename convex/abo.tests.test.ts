@@ -280,6 +280,13 @@ describe("réservation de test d'autonomie", () => {
         nom_prenom_normalise: "candidate test",
         imported_at: "2099-01-01T00:00:00.000Z",
       });
+      await ctx.db.insert("abo_eleves_en_cours", {
+        licence: "748000000002",
+        nom: "Candidate",
+        prenom: "Test",
+        nom_prenom_normalise: "candidate test",
+        imported_at: "2099-01-01T00:00:00.000Z",
+      });
       await ctx.db.insert("abo_test_candidats_directs", {
         user_id: attente.userId,
         licence: "748000000001",
@@ -327,7 +334,7 @@ describe("réservation de test d'autonomie", () => {
 
     expect(suivi).toMatchObject({
       total: 4,
-      aPlanifier: 2,
+      aPlanifier: 1,
       reserves: 1,
       passes: 2,
     });
@@ -335,13 +342,13 @@ describe("réservation de test d'autonomie", () => {
       expect.objectContaining({
         licence: "748000000001",
         estEleveEnCours: true,
-        statut: "en_attente",
+        statut: "avec_moniteur",
         trancheDebut: null,
         trancheFin: null,
       }),
       expect.objectContaining({
         licence: "748000000002",
-        estEleveEnCours: false,
+        estEleveEnCours: true,
         statut: "reserve",
         trancheDebut: "2099-06-02T08:00:00.000Z",
         trancheFin: "2099-06-02T08:40:00.000Z",

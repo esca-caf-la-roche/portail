@@ -1177,6 +1177,7 @@ const suiviCandidatValidator = v.object({
   statut: v.union(
     v.literal("en_attente"),
     v.literal("reserve"),
+    v.literal("avec_moniteur"),
     v.literal("passe"),
   ),
   trancheDebut: v.union(v.string(), v.null()),
@@ -1407,25 +1408,33 @@ export const suiviCandidatsAdmin = authenticatedQuery({
       if (eleve) licencesElevesEnCours.add(licence);
     }
 
-    const ordreStatut = { en_attente: 0, reserve: 1, passe: 2 } as const;
+    const ordreStatut = {
+      en_attente: 0,
+      reserve: 1,
+      avec_moniteur: 2,
+      passe: 3,
+    } as const;
     const liste = [...candidats.values()]
       .map((candidat) => {
         const estPasse = candidat.archive || candidat.reservationPassee !== null;
         const reservation = estPasse
           ? candidat.reservationPassee
           : candidat.reservationFuture;
+        const estEleveEnCours =
+          candidat.licence !== null && licencesElevesEnCours.has(candidat.licence);
         return {
           cle: candidat.cle,
           nom: candidat.nom,
           prenom: candidat.prenom,
           licence: candidat.licence,
-          estEleveEnCours:
-            candidat.licence !== null && licencesElevesEnCours.has(candidat.licence),
+          estEleveEnCours,
           statut: estPasse
             ? ("passe" as const)
             : candidat.reservationFuture
               ? ("reserve" as const)
-              : ("en_attente" as const),
+              : estEleveEnCours
+                ? ("avec_moniteur" as const)
+                : ("en_attente" as const),
           trancheDebut: reservation?.tranche ?? null,
           trancheFin: reservation?.tranche_fin ?? null,
         };
@@ -1440,9 +1449,12 @@ export const suiviCandidatsAdmin = authenticatedQuery({
 
     const reserves = liste.filter((candidat) => candidat.statut === "reserve").length;
     const passes = liste.filter((candidat) => candidat.statut === "passe").length;
+    const aPlanifier = liste.filter(
+      (candidat) => candidat.statut === "en_attente" || candidat.statut === "reserve",
+    ).length;
     return {
       total: liste.length,
-      aPlanifier: liste.length - passes,
+      aPlanifier,
       reserves,
       passes,
       candidats: liste,

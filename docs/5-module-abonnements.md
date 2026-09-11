@@ -438,6 +438,9 @@ autres parcours conservent la réservation sous contrôle d'éligibilité serveu
 Dans le modal staff « Suivi des tests d'autonomie », ces personnes restent
 visibles avec le badge « Élève en cours — test avec son moniteur », afin que les
 bénévoles sachent qu'elles n'ont pas besoin d'un test organisé sur un créneau.
+Elles ne sont pas comptées parmi les personnes en attente de créneau. Une
+réservation active éventuelle reste néanmoins visible pour ne pas masquer une
+place déjà occupée.
 
 Une personne déjà inscrite sur le site du club peut aussi réserver sans dossier
 portail. Au clic sur **Vérifier ma situation**, le portail canonise d'abord le

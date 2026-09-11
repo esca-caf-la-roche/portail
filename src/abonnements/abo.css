@@ -964,6 +964,7 @@ textarea.abo-input {
 .abo-admin-tests-followup-badge { display: inline-block; padding: 0.25rem 0.45rem; border: 2px solid var(--border-color); font-size: 0.72rem; font-weight: 900; text-transform: uppercase; }
 .abo-admin-tests-followup-badge--en_attente { background: var(--warning); }
 .abo-admin-tests-followup-badge--reserve { background: var(--info); }
+.abo-admin-tests-followup-badge--avec_moniteur { background: var(--success); }
 .abo-admin-tests-followup-badge--passe { background: var(--success); }
 .abo-admin-tests-followup-slot { font-size: 0.78rem; font-weight: 800; }
 .abo-admin-staff-slots { grid-template-columns: repeat(auto-fit, minmax(min(100%, 21rem), 1fr)); }
