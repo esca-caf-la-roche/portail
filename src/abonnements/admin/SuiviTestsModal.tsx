@@ -6,6 +6,7 @@ export type CandidatSuiviTest = {
   nom: string;
   prenom: string;
   licence: string | null;
+  estEleveEnCours: boolean;
   statut: "en_attente" | "reserve" | "passe";
   trancheDebut: string | null;
   trancheFin: string | null;
@@ -143,6 +144,11 @@ export default function SuiviTestsModal({
                   <span className="abo-admin-meta">
                     {candidat.licence ? `Licence ${candidat.licence}` : "Licence non renseignée"}
                   </span>
+                  {candidat.estEleveEnCours && (
+                    <span className="abo-admin-tests-followup-course-badge">
+                      Élève en cours — test avec son moniteur
+                    </span>
+                  )}
                 </div>
                 <div className="abo-admin-tests-followup-state">
                   <span className={`abo-admin-tests-followup-badge abo-admin-tests-followup-badge--${candidat.statut}`}>

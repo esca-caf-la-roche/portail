@@ -959,6 +959,7 @@ textarea.abo-input {
 .abo-admin-tests-followup-identity,
 .abo-admin-tests-followup-state { display: grid; min-width: 0; gap: 0.25rem; }
 .abo-admin-tests-followup-identity strong { overflow-wrap: anywhere; }
+.abo-admin-tests-followup-course-badge { width: fit-content; padding: 0.25rem 0.45rem; border: 2px solid var(--border-color); background: var(--success); font-size: 0.72rem; font-weight: 900; text-transform: uppercase; }
 .abo-admin-tests-followup-state { justify-items: end; text-align: right; }
 .abo-admin-tests-followup-badge { display: inline-block; padding: 0.25rem 0.45rem; border: 2px solid var(--border-color); font-size: 0.72rem; font-weight: 900; text-transform: uppercase; }
 .abo-admin-tests-followup-badge--en_attente { background: var(--warning); }

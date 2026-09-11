@@ -273,6 +273,13 @@ describe("réservation de test d'autonomie", () => {
     const passe = await creerPersonne(t, { licence: "748000000003" });
 
     await t.run(async (ctx) => {
+      await ctx.db.insert("abo_eleves_en_cours", {
+        licence: "748000000001",
+        nom: "Candidate",
+        prenom: "Test",
+        nom_prenom_normalise: "candidate test",
+        imported_at: "2099-01-01T00:00:00.000Z",
+      });
       await ctx.db.insert("abo_test_candidats_directs", {
         user_id: attente.userId,
         licence: "748000000001",
@@ -327,12 +334,14 @@ describe("réservation de test d'autonomie", () => {
     expect(suivi.candidats).toEqual(expect.arrayContaining([
       expect.objectContaining({
         licence: "748000000001",
+        estEleveEnCours: true,
         statut: "en_attente",
         trancheDebut: null,
         trancheFin: null,
       }),
       expect.objectContaining({
         licence: "748000000002",
+        estEleveEnCours: false,
         statut: "reserve",
         trancheDebut: "2099-06-02T08:00:00.000Z",
         trancheFin: "2099-06-02T08:40:00.000Z",

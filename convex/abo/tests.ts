@@ -1173,6 +1173,7 @@ const suiviCandidatValidator = v.object({
   nom: v.string(),
   prenom: v.string(),
   licence: v.union(v.string(), v.null()),
+  estEleveEnCours: v.boolean(),
   statut: v.union(
     v.literal("en_attente"),
     v.literal("reserve"),
@@ -1393,6 +1394,19 @@ export const suiviCandidatsAdmin = authenticatedQuery({
       candidat.archive = true;
     }
 
+    const licencesElevesEnCours = new Set<string>();
+    for (const licence of new Set(
+      [...candidats.values()]
+        .map((candidat) => candidat.licence)
+        .filter((licence): licence is string => licence !== null),
+    )) {
+      const eleve = await ctx.db
+        .query("abo_eleves_en_cours")
+        .withIndex("by_licence", (q) => q.eq("licence", licence))
+        .first();
+      if (eleve) licencesElevesEnCours.add(licence);
+    }
+
     const ordreStatut = { en_attente: 0, reserve: 1, passe: 2 } as const;
     const liste = [...candidats.values()]
       .map((candidat) => {
@@ -1405,6 +1419,8 @@ export const suiviCandidatsAdmin = authenticatedQuery({
           nom: candidat.nom,
           prenom: candidat.prenom,
           licence: candidat.licence,
+          estEleveEnCours:
+            candidat.licence !== null && licencesElevesEnCours.has(candidat.licence),
           statut: estPasse
             ? ("passe" as const)
             : candidat.reservationFuture

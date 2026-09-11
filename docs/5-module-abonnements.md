@@ -435,6 +435,9 @@ réserver de créneau. Elle imprime le formulaire et le fait valider par son
 moniteur pendant son cours d'escalade. Le suivi explique directement cette
 démarche et le serveur refuse toute nouvelle réservation pour ce parcours ; les
 autres parcours conservent la réservation sous contrôle d'éligibilité serveur.
+Dans le modal staff « Suivi des tests d'autonomie », ces personnes restent
+visibles avec le badge « Élève en cours — test avec son moniteur », afin que les
+bénévoles sachent qu'elles n'ont pas besoin d'un test organisé sur un créneau.
 
 Une personne déjà inscrite sur le site du club peut aussi réserver sans dossier
 portail. Au clic sur **Vérifier ma situation**, le portail canonise d'abord le
