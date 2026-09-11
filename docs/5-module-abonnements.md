@@ -340,6 +340,12 @@ immédiate.
 
 ## Plafond d'admissions et décisions de dossier
 
+Dans l'administration **Dossiers**, le bouton **Validés à inscrire** affiche
+les dossiers validés qui contiennent au moins une personne validée dont
+l'inscription à l'espace adhérent n'a pas encore été détectée. La liste repose
+sur la dernière synchronisation du site du club et reste cumulable avec la
+recherche par nom ou e-mail.
+
 Le plafond de la campagne est une garde appliquée **dans la transaction serveur**
 qui traite la décision. Une validation normale reste possible tant que son effet
 ne fait pas dépasser le plafond : la dernière place peut donc porter l'occupation

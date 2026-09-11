@@ -91,6 +91,7 @@ export default function Dossiers({ onVoirTests }: { onVoirTests: (licence: strin
   }
 
   const [statut, setStatut] = useState("nouvelle_demande");
+  const [afficherValidesAInscrire, setAfficherValidesAInscrire] = useState(false);
   const [q, setQ] = useState("");
   const [detail, setDetail] = useState<{ dossier: Dossier; personne: Personne } | null>(
     null,
@@ -103,6 +104,14 @@ export default function Dossiers({ onVoirTests }: { onVoirTests: (licence: strin
   const filtres = useMemo(() => {
     const texte = q.trim().toLowerCase();
     const dossiersFiltres = (dossiers ?? []).filter((d) => {
+      if (
+        afficherValidesAInscrire &&
+        !d.personnes.some(
+          (p) => p.etape_validation === "validee" && !p.etape_inscription_site,
+        )
+      ) {
+        return false;
+      }
       if (statut !== "tous" && d.statut_dossier !== statut) return false;
       if (!texte) return true;
       const foin = [d.email, ...d.personnes.flatMap((p) => [p.nom, p.prenom])]
@@ -120,7 +129,26 @@ export default function Dossiers({ onVoirTests }: { onVoirTests: (licence: strin
       });
     }
     return dossiersFiltres;
-  }, [dossiers, statut, q]);
+  }, [dossiers, statut, q, afficherValidesAInscrire]);
+
+  const nombreValidesAInscrire = useMemo(
+    () =>
+      (dossiers ?? []).filter(
+        (d) =>
+          d.statut_dossier === "validee" &&
+          d.personnes.some(
+            (p) => p.etape_validation === "validee" && !p.etape_inscription_site,
+          ),
+      ).length,
+    [dossiers],
+  );
+
+  function basculerValidesAInscrire() {
+    setAfficherValidesAInscrire((actif) => {
+      if (!actif) setStatut("validee");
+      return !actif;
+    });
+  }
 
   async function decider(
     personne: Personne,
@@ -193,7 +221,10 @@ export default function Dossiers({ onVoirTests }: { onVoirTests: (licence: strin
           <select
             className="abo-admin-input abo-admin-select"
             value={statut}
-            onChange={(e) => setStatut(e.target.value)}
+            onChange={(e) => {
+              setStatut(e.target.value);
+              setAfficherValidesAInscrire(false);
+            }}
           >
             <option value="tous">Tous</option>
             {Object.entries(STATUTS).map(([v, l]) => (
@@ -203,6 +234,14 @@ export default function Dossiers({ onVoirTests }: { onVoirTests: (licence: strin
             ))}
           </select>
         </label>
+        <button
+          type="button"
+          className="abo-admin-button abo-admin-button--secondary"
+          aria-pressed={afficherValidesAInscrire}
+          onClick={basculerValidesAInscrire}
+        >
+          Validés à inscrire ({nombreValidesAInscrire})
+        </button>
         <label className="abo-admin-filter-field">
           <span>Recherche</span>
           <input
