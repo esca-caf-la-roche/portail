@@ -5,8 +5,7 @@
 //   - Passe 2 SECOURS nom+prénom : personnes SANS licence ↔ scrap par
 //     nom_prenom_normalise, uniquement les noms NON ambigus (1 seule ligne scrap).
 //     Cette passe RÉSOUT aussi leur licence (statut annuaire_auto).
-//   - etape_paiement : NON piloté par le scrap (la migration licence-first l'a
-//     retiré) mais par HelloAsso — matching payeur/inscrit du formulaire abo.
+//   - etape_paiement : piloté par la colonne Paiement du site club.
 //
 // Réservé aux appels internes (scrap Phase H) : internalMutation, pas d'API
 // publique. Volume borné par la taille du club (scrap ≈ places, personnes = saison).
@@ -15,7 +14,6 @@ import { v } from "convex/values";
 import { internalMutation } from "../_generated/server";
 import type { MutationCtx } from "../_generated/server";
 import { canoniserLicence, normaliserNomPrenom } from "./lib";
-import { trouverLienAbo, estRemboursement } from "./paiements";
 import { champsModifies } from "../dbUtils";
 import { abonnementEstValide } from "./statutAbonnement";
 import { internal } from "../_generated/api";
@@ -177,22 +175,20 @@ function testAutonomieDepuisScrap(
 }
 
 // Projection unique du snapshot local du site vers les champs matérialisés
-// d'une personne. `etape_paiement` reste pilotée par HelloAsso et n'est donc
-// incluse que lorsque l'appelant a effectué ce rapprochement séparément.
+// d'une personne. Le site club est la source officielle de toutes ces étapes,
+// y compris du paiement.
 export function champsPersonneDepuisScrap(
   scrap: Doc<"abo_abonnes_scrap">,
-  etapePaiement?: boolean,
 ): Record<string, unknown> {
-  const patch: Record<string, unknown> = {
+  return {
     age: scrap.age,
     etape_licence: scrap.adhesion === "OK",
     etape_inscription_site: true,
     etape_photo: scrap.photo === "OK",
+    etape_paiement: scrap.paiement === "OK",
     etape_abonnement_valide: abonnementEstValide(scrap.abonnement_valide),
     etape_test_autonomie: testAutonomieDepuisScrap(scrap.autonomie),
   };
-  if (etapePaiement !== undefined) patch.etape_paiement = etapePaiement;
-  return patch;
 }
 
 // ── matcherScrapPersonnes : met à jour les etape_* des personnes ─────────
@@ -220,32 +216,6 @@ export const matcherScrapPersonnes = internalMutation({
       if (clé && compteNom.get(clé) === 1) parNomUnique.set(clé, s);
     }
 
-    // Identités « payées » (HelloAsso, formulaire abo) : nom_prenom_normalise
-    // de l'inscrit ET du payeur, hors commandes intégralement remboursées.
-    const payes = new Set<string>();
-    const cible = await trouverLienAbo(ctx);
-    if (cible?.link) {
-      const dossiers = await ctx.db
-        .query("dossiers")
-        .withIndex("by_link", (q) => q.eq("helloasso_link_id", cible.link!._id))
-        .collect();
-      for (const d of dossiers) {
-        const txs = await ctx.db
-          .query("helloasso_transactions")
-          .withIndex("by_dossier", (q) => q.eq("dossier_id", d.dossier_id))
-          .collect();
-        const principales = txs.filter((t) => !estRemboursement(t));
-        const totalRemb = txs
-          .filter(estRemboursement)
-          .reduce((s, t) => s + Math.abs(t.amount), 0);
-        const totalPaye = principales.reduce((s, t) => s + t.amount, 0);
-        // Payé si au moins une transaction non-remboursée subsiste (net > 0).
-        if (principales.length === 0 || totalPaye - totalRemb <= 0) continue;
-        payes.add(normaliserNomPrenom(d.last_name, d.first_name));
-        payes.add(normaliserNomPrenom(d.payer_last_name, d.payer_first_name));
-      }
-    }
-
     let maj = 0;
     for (const p of personnes) {
       // Passe 1 (licence) puis passe 2 (nom/prénom unique, personnes sans licence).
@@ -258,19 +228,17 @@ export const matcherScrapPersonnes = internalMutation({
         if (s?.licence) licenceResolue = s.licence;
       }
 
-      const etapePaiement = payes.has(p.nom_prenom_normalise);
       if (!s) {
         // La ligne était auparavant matérialisée depuis le site du club mais
         // elle n'est plus présente dans le snapshot complet : on conserve la
         // demande du portail, tout en retirant ses confirmations site. Le
-        // paiement reste une source HelloAsso indépendante du scrap.
         const patchSansScrap = {
           age: undefined,
           etape_licence: false,
           etape_test_autonomie: undefined,
           etape_inscription_site: false,
           etape_photo: false,
-          etape_paiement: etapePaiement,
+          etape_paiement: false,
           etape_abonnement_valide: false,
         };
         if (champsModifies(p, patchSansScrap)) {
@@ -280,7 +248,7 @@ export const matcherScrapPersonnes = internalMutation({
         continue;
       }
 
-      const patch = champsPersonneDepuisScrap(s, etapePaiement);
+      const patch = champsPersonneDepuisScrap(s);
       if (licenceResolue) {
         patch.licence = licenceResolue;
         patch.licence_statut = "annuaire_auto";

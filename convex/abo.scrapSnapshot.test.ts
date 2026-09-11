@@ -17,6 +17,37 @@ async function ajouterSnapshot(t: ReturnType<typeof convexTest>, licence: string
 }
 
 describe("snapshot des abonnés du site club", () => {
+  test("pilote l'étape paiement depuis la colonne Paiement du site club", async () => {
+    const t = convexTest(schema, modules);
+    const { personneId, scrapId } = await t.run(async (ctx) => {
+      const ownerId = await ctx.db.insert("users", { email: "paiement@example.test" });
+      const dossierId = await ctx.db.insert("abo_dossiers", {
+        email: "paiement@example.test", owner_id: ownerId,
+        statut_dossier: "validee", date_soumission: "2026-09-11T00:00:00.000Z",
+      });
+      const personneId = await ctx.db.insert("abo_personnes", {
+        dossier_id: dossierId, nom: "DUPONT", prenom: "Camille", nom_prenom_normalise: "DUPONT CAMILLE",
+        licence: "123456789012", licence_statut: "saisie",
+        etape_demande: true, etape_validation: "validee", etape_licence: false,
+        etape_inscription_site: false, etape_photo: false, etape_paiement: false,
+        etape_abonnement_valide: false,
+      });
+      const scrapId = await ctx.db.insert("abo_abonnes_scrap", {
+        licence: "123456789012", nom: "DUPONT", prenom: "Camille",
+        nom_prenom_normalise: "DUPONT CAMILLE", paiement: "OK",
+        abonnement_valide: "non",
+      });
+      return { personneId, scrapId };
+    });
+
+    await t.mutation(internal.abo.matching.matcherScrapPersonnes, {});
+    expect(await t.run(async (ctx) => (await ctx.db.get(personneId))?.etape_paiement)).toBe(true);
+
+    await t.run(async (ctx) => await ctx.db.patch(scrapId, { paiement: "" }));
+    await t.mutation(internal.abo.matching.matcherScrapPersonnes, {});
+    expect(await t.run(async (ctx) => (await ctx.db.get(personneId))?.etape_paiement)).toBe(false);
+  });
+
   test("retire du cache les abonnés absents d'un scrape complet", async () => {
     const t = convexTest(schema, modules);
     const conserve = await ajouterSnapshot(t, "123456789012");

@@ -7,10 +7,9 @@
 // resynchronisée qu'au plus une fois par fenêtre (TTL), tous onglets/admins
 // confondus, grâce à un marqueur horodaté dans abo_app_config.
 //
-// ORDRE DES DÉPENDANCES : HelloAsso AVANT le scrap — le matching des personnes
-// (scraperAbonnes → matcherScrapPersonnes) calcule etape_paiement depuis les
-// transactions HelloAsso. Les autres sources (annuaire licences, élèves en
-// cours) sont indépendantes et peuvent suivre dans n'importe quel ordre.
+// Le matching des personnes (scraperAbonnes → matcherScrapPersonnes) calcule
+// etape_paiement depuis la colonne Paiement du site club. Les autres sources
+// (HelloAsso, annuaire licences, élèves en cours) sont indépendantes.
 //
 // Les boutons « Synchroniser maintenant » restent câblés sur des actions
 // directes. Le site club conserve son délai manuel de 5 min, tandis que
@@ -445,7 +444,7 @@ export const syncPourPaiements = authenticatedAction({
 });
 
 // ── syncPourAbo : espace admin abonnements (compteur, anomalies, dossiers…) ──
-// HelloAsso d'abord (etape_paiement), puis scrap(+matching), annuaire, élèves.
+// HelloAsso, puis site club (+ matching), annuaire et élèves.
 export const syncPourAbo = authenticatedAction({
   args: {},
   returns: v.object({
