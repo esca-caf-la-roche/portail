@@ -301,8 +301,12 @@ vide, illisible ou en erreur n'entraîne aucune purge.
 Les dossiers déposés dans le portail sont conservés ; seules leurs confirmations
 issues du site sont retirées jusqu'à une nouvelle présence dans le snapshot.
 
-Le compteur public, le détail du compteur staff et la liste des anomalies sont
-des projections matérialisées. Les mutations des sources posent un marqueur
+Le compteur public, le détail du compteur staff, la liste des anomalies et les
+trois indicateurs de l'accueil (cours, abonnement, intersection) sont des
+projections matérialisées. Les indicateurs dédupliquent par licence puis par nom
+normalisé ; ils excluent des cours les horaires « Pas d'Horaire » et « Liste
+d'attente ». Les abonnements suivent le contrat du compteur du site : statuts
+`Oui` et `Non`, hors `Bloqué` et `Inconnu`. Les mutations des sources posent un marqueur
 d'invalidation durable uniquement lorsqu'une donnée métier change réellement.
 Les lots d'un import complet partagent ce marqueur : la fin de l'import ne
 programme qu'un seul recalcul, après les suppressions d'absents, puis le

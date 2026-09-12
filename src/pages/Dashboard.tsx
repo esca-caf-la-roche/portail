@@ -36,6 +36,7 @@ const TILE_DETAILS: Record<TileId, { icon: LucideIcon; to: string }> = {
 export default function Dashboard() {
   const userSettings = useQuery(api.users.getCurrentUserSettings);
   const configuration = useQuery(api.users.getDashboardConfiguration);
+  const repartition = useQuery(api.abo.compteur.repartitionGrimpeursAccueil);
   const tiles = resolveDashboardTiles(
     configuration?.tiles as DashboardTileInput[] | undefined,
   );
@@ -61,6 +62,27 @@ export default function Dashboard() {
           </Link>
         )}
       </header>
+
+      <section className="dashboard-climber-stats" aria-labelledby="dashboard-climber-stats-title">
+        <div>
+          <h2 id="dashboard-climber-stats-title">Grimpeurs actuellement inscrits</h2>
+          <p>Cours sans « Pas d’Horaire » ni « Liste d’attente ».</p>
+        </div>
+        <dl>
+          <div>
+            <dt>En cours</dt>
+            <dd>{repartition?.grimpeurs_cours ?? "—"}</dd>
+          </div>
+          <div>
+            <dt>En abonnement</dt>
+            <dd>{repartition?.grimpeurs_abonnement ?? "—"}</dd>
+          </div>
+          <div>
+            <dt>Cours et abonnement</dt>
+            <dd>{repartition?.grimpeurs_cours_et_abonnement ?? "—"}</dd>
+          </div>
+        </dl>
+      </section>
 
       {userSettings === undefined || configuration === undefined ? (
         <div style={{ textAlign: "center", padding: "2rem" }}>

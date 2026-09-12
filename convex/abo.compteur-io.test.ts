@@ -132,6 +132,8 @@ describe("recalcul du compteur après les imports", () => {
       demandes_refusees: 0, demandes_a_traiter: 0,
       validees_hors_legit: 0, bloquees: 0, anomalies: 0,
       anomalies_brutes: 0, acquittees: 0, total_affiche: 42,
+      grimpeurs_cours: 12, grimpeurs_abonnement: 42,
+      grimpeurs_cours_et_abonnement: 8,
       calcule_le: "2026-09-01T00:00:00.000Z",
     }));
     await t.mutation(internal.abo.compteur.rafraichirCompteurPublic, { siNecessaire: true });
@@ -171,6 +173,56 @@ describe("recalcul du compteur après les imports", () => {
     expect(await t.run(async (ctx) => await ctx.db.system.query("_scheduled_functions").collect())).toHaveLength(1);
     await t.finishAllScheduledFunctions(vi.runAllTimers);
     expect(await cache(t)).not.toBeNull();
+  });
+
+  test("matérialise les grimpeurs uniques et exclut les horaires non actifs", async () => {
+    const t = creerTest();
+    const userId = await t.run(async (ctx) => {
+      const id = await ctx.db.insert("users", { email: "accueil@example.test" });
+      for (const [licence, nom, prenom] of [
+        ["123456789001", "DUPONT", "Alice"],
+        ["123456789002", "MARTIN", "Bob"],
+        ["123456789003", "HOMONYME", "Camille"],
+        ["123456789004", "HOMONYME", "Camille"],
+        ["123456789008", "CONTRADICTOIRE", "Charlie"],
+      ]) {
+        await ctx.db.insert("abo_abonnes_scrap", {
+          licence,
+          nom,
+          prenom,
+          nom_prenom_normalise: `${nom} ${prenom}`.toUpperCase(),
+          abonnement_valide: "oui",
+        });
+      }
+      await ctx.db.insert("abo_abonnes_scrap", {
+        licence: "123456789009", nom: "BLOQUE", prenom: "Basile",
+        nom_prenom_normalise: "BLOQUE BASILE", abonnement_valide: "bloque",
+      });
+      return id;
+    });
+    const accueil = t.withIdentity({ subject: userId });
+    expect(await accueil.query(api.abo.compteur.repartitionGrimpeursAccueil, {})).toBeNull();
+
+    await t.mutation(internal.abo.compteur.remplacerElevesEnCours, {
+      saison: "2026-2027",
+      lignes: [
+        { licence: "123456789001", nom: "DUPONT", prenom: "Alice", cours: "Adultes", horaire: "Lundi 18h" },
+        { licence: "123456789001", nom: "DUPONT", prenom: "Alice", cours: "Perfectionnement", horaire: "Jeudi 19h" },
+        { nom: "MARTIN", prenom: "Bob", cours: "Adultes", horaire: "Mardi 18h" },
+        { nom: "HOMONYME", prenom: "Camille", cours: "Adultes", horaire: "Mercredi 18h" },
+        { licence: "123456789005", nom: "ATTENTE", prenom: "Lise", cours: "Jeunes", horaire: "  LISTE D’ATTENTE  " },
+        { licence: "123456789006", nom: "SANS", prenom: "Horaire", cours: "Jeunes", horaire: "Pas d'Horaire" },
+        { licence: "123456789007", nom: "SEUL", prenom: "Noa", cours: "Jeunes", horaire: "Samedi 10h" },
+        { licence: "123456789010", nom: "CONTRADICTOIRE", prenom: "Charlie", cours: "Jeunes", horaire: "Samedi 11h" },
+      ],
+    });
+    await t.mutation(internal.abo.compteur.rafraichirCompteurPublic, {});
+
+    expect(await accueil.query(api.abo.compteur.repartitionGrimpeursAccueil, {})).toMatchObject({
+      grimpeurs_cours: 5,
+      grimpeurs_abonnement: 5,
+      grimpeurs_cours_et_abonnement: 2,
+    });
   });
 
   test("les queries admin servent le compteur et les anomalies matérialisés sans changer leur contrat", async () => {

@@ -1315,6 +1315,11 @@ export default defineSchema({
     anomalies_brutes: v.optional(v.number()),
     acquittees: v.optional(v.number()),
     total_affiche: v.optional(v.number()),
+    // Répartition dédupliquée affichée sur le tableau de bord staff. Elle est
+    // recalculée avec les snapshots cours et abonnements, jamais à l'ouverture.
+    grimpeurs_cours: v.optional(v.number()),
+    grimpeurs_abonnement: v.optional(v.number()),
+    grimpeurs_cours_et_abonnement: v.optional(v.number()),
     calcule_le: v.string(),
   }).index("by_cle", ["cle"]),
 

@@ -58,6 +58,7 @@ interface CompteurData {
   // ne l'occupent pas automatiquement.
   occupe: number;
   elevesLic: Set<string>;
+  repartitionGrimpeurs: RepartitionGrimpeurs;
   classifications: Array<{
     scrap: Doc<"abo_abonnes_scrap">;
     categorie: "validee" | "non_validee" | "bloquee" | "inconnue";
@@ -69,6 +70,96 @@ interface CompteurData {
     personneId: Id<"abo_personnes"> | null;
     dossierId: Id<"abo_dossiers"> | null;
   }>;
+}
+
+interface RepartitionGrimpeurs {
+  grimpeurs_cours: number;
+  grimpeurs_abonnement: number;
+  grimpeurs_cours_et_abonnement: number;
+}
+
+function horaireExcluDuCompteur(horaire: string | undefined): boolean {
+  const normalise = (horaire ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[’‘`]/g, "'")
+    .trim()
+    .toLocaleLowerCase("fr");
+  return normalise === "pas d'horaire" || normalise === "liste d'attente";
+}
+
+function calculerRepartitionGrimpeurs(
+  scrap: readonly Doc<"abo_abonnes_scrap">[],
+  eleves: readonly Doc<"abo_eleves_en_cours">[],
+): RepartitionGrimpeurs {
+  const construirePersonnes = (
+    lignes: ReadonlyArray<{ licence?: string; nom_prenom_normalise: string }>,
+  ) => {
+    const parCle = new Map<string, { licence: string | null; nom: string }>();
+    const licencesParNom = new Map<string, Set<string>>();
+    for (const ligne of lignes) {
+      const licence = canoniserLicence(ligne.licence);
+      if (!licence || !ligne.nom_prenom_normalise) continue;
+      const licences = licencesParNom.get(ligne.nom_prenom_normalise) ?? new Set<string>();
+      licences.add(licence);
+      licencesParNom.set(ligne.nom_prenom_normalise, licences);
+      parCle.set(`licence:${licence}`, { licence, nom: ligne.nom_prenom_normalise });
+    }
+    for (const ligne of lignes) {
+      const licence = canoniserLicence(ligne.licence);
+      const nom = ligne.nom_prenom_normalise;
+      if (licence || !nom || licencesParNom.get(nom)?.size === 1) continue;
+      parCle.set(`nom:${nom}`, { licence: null, nom });
+    }
+    // Sans identifiant source ni licence, deux lignes de même nom sont
+    // indiscernables d'une personne inscrite à plusieurs cours : on les
+    // fusionne volontairement pour ne pas gonfler le nombre de grimpeurs.
+    return [...parCle.entries()].map(([cle, personne]) => ({ cle, ...personne }));
+  };
+
+  const abonnements = construirePersonnes(scrap);
+  const cours = construirePersonnes(
+    eleves.filter((eleve) => !horaireExcluDuCompteur(eleve.horaire)),
+  );
+  const licencesAbonnement = new Set(
+    abonnements.flatMap((personne) => personne.licence ? [personne.licence] : []),
+  );
+  const occurrencesAbonnementParNom = new Map<string, number>();
+  const occurrencesCoursParNom = new Map<string, number>();
+  for (const personne of abonnements) {
+    occurrencesAbonnementParNom.set(
+      personne.nom,
+      (occurrencesAbonnementParNom.get(personne.nom) ?? 0) + 1,
+    );
+  }
+  for (const personne of cours) {
+    occurrencesCoursParNom.set(
+      personne.nom,
+      (occurrencesCoursParNom.get(personne.nom) ?? 0) + 1,
+    );
+  }
+  const abonnementUniqueParNom = new Map(
+    abonnements
+      .filter((personne) => occurrencesAbonnementParNom.get(personne.nom) === 1)
+      .map((personne) => [personne.nom, personne] as const),
+  );
+  const coursEtAbonnement = cours.filter((personne) =>
+    (personne.licence !== null && licencesAbonnement.has(personne.licence)) ||
+    (
+      occurrencesCoursParNom.get(personne.nom) === 1 &&
+      occurrencesAbonnementParNom.get(personne.nom) === 1 &&
+      (
+        personne.licence === null ||
+        abonnementUniqueParNom.get(personne.nom)?.licence === null
+      )
+    ),
+  );
+
+  return {
+    grimpeurs_cours: cours.length,
+    grimpeurs_abonnement: abonnements.length,
+    grimpeurs_cours_et_abonnement: coursEtAbonnement.length,
+  };
 }
 
 const codeAnomalieValidator = v.union(
@@ -273,6 +364,10 @@ export async function calculerCompteur(
     total_affiche: siteCompte.length + validees_hors_legit,
     occupe: legit_scrap + validees_hors_legit,
     elevesLic,
+    repartitionGrimpeurs: calculerRepartitionGrimpeurs(
+      siteCompte.map((ligne) => ligne.scrap),
+      eleves,
+    ),
     classifications,
   };
 }
@@ -310,6 +405,13 @@ const compteurPublicValidator = v.object({
   vague: v.number(),
 });
 
+const repartitionGrimpeursValidator = v.object({
+  grimpeurs_cours: v.number(),
+  grimpeurs_abonnement: v.number(),
+  grimpeurs_cours_et_abonnement: v.number(),
+  calcule_le: v.string(),
+});
+
 function cacheCompteurComplet(
   cache: Doc<"abo_compteur_public_cache"> | null,
 ): cache is Doc<"abo_compteur_public_cache"> & CompteurData & {
@@ -334,6 +436,9 @@ function cacheCompteurComplet(
     cache.acquittees,
     cache.total_affiche,
     cache.occupe_transactionnel,
+    cache.grimpeurs_cours,
+    cache.grimpeurs_abonnement,
+    cache.grimpeurs_cours_et_abonnement,
   ].every((valeur) => typeof valeur === "number");
 }
 
@@ -692,6 +797,31 @@ export const compteurPublic = query({
   },
 });
 
+// Une seule lecture du singleton matérialisé : l'accueil ne scanne jamais les
+// snapshots nominatifs et ne reçoit que trois agrégats anonymes.
+export const repartitionGrimpeursAccueil = authenticatedQuery({
+  args: {},
+  returns: v.union(v.null(), repartitionGrimpeursValidator),
+  handler: async (ctx) => {
+    const cache = await ctx.db
+      .query("abo_compteur_public_cache")
+      .withIndex("by_cle", (q) => q.eq("cle", "courant"))
+      .first();
+    if (
+      !cache ||
+      typeof cache.grimpeurs_cours !== "number" ||
+      typeof cache.grimpeurs_abonnement !== "number" ||
+      typeof cache.grimpeurs_cours_et_abonnement !== "number"
+    ) return null;
+    return {
+      grimpeurs_cours: cache.grimpeurs_cours,
+      grimpeurs_abonnement: cache.grimpeurs_abonnement,
+      grimpeurs_cours_et_abonnement: cache.grimpeurs_cours_et_abonnement,
+      calcule_le: cache.calcule_le,
+    };
+  },
+});
+
 // Invalidation durable : un scrap interrompu entre deux lots ne doit pas perdre
 // son besoin de recalcul au prochain essai, même si ce dernier est identique.
 export const rafraichirCompteurPublic = internalMutation({
@@ -735,6 +865,7 @@ export const rafraichirCompteurPublic = internalMutation({
       acquittees,
       total_affiche: c.total_affiche,
       occupe_transactionnel: c.occupe,
+      ...c.repartitionGrimpeurs,
       calcule_le,
     };
     if (cache) {

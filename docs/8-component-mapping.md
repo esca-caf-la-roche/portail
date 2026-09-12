@@ -21,7 +21,7 @@ le détail métier de chaque module.
 
 | Module et routes | Pages principales | Backend |
 |---|---|---|
-| Tableau de bord `/` | `src/pages/Dashboard.tsx`, `src/config/tiles.ts` | `convex/users.ts` |
+| Tableau de bord `/` | `src/pages/Dashboard.tsx`, `src/config/tiles.ts` | `convex/users.ts`, `convex/abo/compteur.ts` (répartition cours/abonnements matérialisée) |
 | Comptabilité `/compta` | `src/pages/Compta.tsx` | `convex/transactions.ts`, `convex/tiers.ts`, `convex/analytiques.ts`, `convex/typesDocuments.ts` |
 | Paiements `/paiements/*` | `src/pages/Paiements/` | `convex/paiements.ts`, `convex/helloasso.ts`, `convex/drive.ts` |
 | Budget `/budget/*` | `src/pages/Budget/` | `convex/paie.ts`, `convex/cours.ts`, `convex/previsionnels.ts`, `convex/effectifs.ts` |
