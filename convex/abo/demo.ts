@@ -7,6 +7,10 @@ import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { normaliserNomPrenom } from "./lib";
 import { programmerRafraichissementCompteurPublic } from "./compteur";
+import {
+  supprimerProjectionEleveEnCours,
+  upsertProjectionEleveEnCours,
+} from "./compteurCache";
 
 const MANIFEST_KEY = "demo_abonnements_2026";
 const DEMO_NOW = "2026-08-07T10:00:00.000Z";
@@ -68,7 +72,10 @@ async function effacerDemo(ctx: MutationCtx) {
   const { row, manifest } = contenu;
   for (const id of manifest.scrap) await ctx.db.delete(id);
   for (const id of manifest.archive) await ctx.db.delete(id);
-  for (const id of manifest.eleves) await ctx.db.delete(id);
+  for (const id of manifest.eleves) {
+    await supprimerProjectionEleveEnCours(ctx, id);
+    await ctx.db.delete(id);
+  }
   for (const id of manifest.personnes) await ctx.db.delete(id);
   for (const id of manifest.dossiers) await ctx.db.delete(id);
   if (manifest.ownerId) await ctx.db.delete(manifest.ownerId);
@@ -163,10 +170,13 @@ export const seed = internalMutation({
       ["Emma", "Vague2", "999000000006", "Jeudi 19 h"],
       ["Eleve", "SansDemande", "999000000007", "Lundi 17 h"],
     ] as const) {
-      eleves.push(await ctx.db.insert("abo_eleves_en_cours", {
+      const eleve = {
         prenom, nom, licence, horaire, nom_prenom_normalise: normaliserNomPrenom(nom, prenom),
         imported_at: DEMO_NOW, saison: "DEMO-2026",
-      }));
+      };
+      const eleveId = await ctx.db.insert("abo_eleves_en_cours", eleve);
+      await upsertProjectionEleveEnCours(ctx, { _id: eleveId, ...eleve });
+      eleves.push(eleveId);
     }
 
     archive.push(await ctx.db.insert("abo_abonnes_archive", {

@@ -508,7 +508,8 @@ export default defineSchema({
     updated_at: v.optional(v.string()), // ISO format
   })
     .index("by_dossier_id", ["dossier_id"])
-    .index("by_link", ["helloasso_link_id"]),
+    .index("by_link", ["helloasso_link_id"])
+    .index("by_local_status", ["local_status"]),
 
   // SAISON-EXEMPT: suivi opérationnel d'une commande du formulaire
   // Abonnements. Il est indépendant de la saison comptable et ne partage
@@ -1117,6 +1118,25 @@ export default defineSchema({
   })
     .index("by_licence", ["licence"])
     .index("by_nom_prenom_normalise", ["nom_prenom_normalise"]),
+
+  // SAISON-EXEMPT: projection technique du snapshot courant des élèves,
+  // purgée avec lui lors du reset de campagne Abonnements.
+  // Projection compacte commune aux listes, badges et calculs Abonnements.
+  // Elle évite de relire les 18 colonnes du snapshot source lorsque seules les
+  // informations d'identité, de cours et de contact effectif sont nécessaires.
+  // `source_eleve_id` reste l'identifiant fonctionnel transmis au frontend.
+  abo_eleves_en_cours_lecture: defineTable({
+    source_eleve_id: v.id("abo_eleves_en_cours"),
+    licence: v.optional(v.string()),
+    nom: v.optional(v.string()),
+    prenom: v.optional(v.string()),
+    nom_prenom_normalise: v.string(),
+    horaire: v.optional(v.string()),
+    cours: v.optional(v.string()),
+    saison_precedente: v.optional(v.string()),
+    email_eleve: v.optional(v.string()),
+    email_gestion: v.optional(v.string()),
+  }).index("by_source_eleve_id", ["source_eleve_id"]),
 
   // SAISON-EXEMPT: suivi manuel lié au snapshot courant des élèves en cours,
   // indépendant des saisons comptables et purgé avec ce snapshot opérationnel.

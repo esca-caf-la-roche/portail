@@ -1,7 +1,9 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "convex/react";
+import { useOutletContext } from "react-router-dom";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
+import type { PaiementsDossiersContextValue } from "./Layout";
 
 type CsvStudent = { first_name: string; last_name: string; email: string };
 type WaitingStudents = NonNullable<
@@ -11,7 +13,7 @@ type WaitingStudent = WaitingStudents[number];
 
 export default function AttentePaiements() {
   const waitingStudents = useQuery(api.paiements.getWaitingStudents);
-  const dossiers = useQuery(api.paiements.getDossiers);
+  const { dossiersTraites: dossiers } = useOutletContext<PaiementsDossiersContextValue>();
 
   const addStudent = useMutation(api.paiements.addWaitingStudent);
   const addBulk = useMutation(api.paiements.addWaitingStudentsBulk);
@@ -418,7 +420,6 @@ export default function AttentePaiements() {
               {!isLoading &&
                 filtered.map((student) => {
                   const isProcessed = (dossiers ?? []).some((d) => {
-                    if (d.local_status !== "Traité") return false;
                     const se = student.email.toLowerCase();
                     return (
                       d.payer_email.toLowerCase() === se ||

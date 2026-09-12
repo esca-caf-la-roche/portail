@@ -2,9 +2,11 @@
    Les dossiers / transactions / groupes exposés par api.paiements.getDossiers
    proviennent de payloads HelloAsso non typés : on les manipule en `any` de
    façon délibérée et bornée dans cette page (comme dans convex/helloasso.ts). */
-import { useState, useEffect, useMemo, useCallback } from "react";
-import { useQuery, useMutation, useAction } from "convex/react";
+import { useState, useMemo, useCallback } from "react";
+import { useQuery, useMutation } from "convex/react";
+import { useOutletContext } from "react-router-dom";
 import { api } from "../../../convex/_generated/api";
+import type { PaiementsDossiersContextValue } from "./Layout";
 
 const STATUS_OPTIONS = [
   { value: "Traité", cls: "on-traite" },
@@ -547,17 +549,14 @@ function DossierCard({
 export default function ValidationPaiements() {
   const currentUser = useQuery(api.users.current);
   const settings = useQuery(api.users.getCurrentUserSettings);
-  const dossiers = useQuery(api.paiements.getDossiers);
+  const { dossiers, syncing, synchroniserMaintenant } =
+    useOutletContext<PaiementsDossiersContextValue>();
   const responsibles = useQuery(api.paiements.getResponsibles);
   const approvedStudents = useQuery(api.paiements.getApprovedStudents);
   const waitingStudents = useQuery(api.paiements.getWaitingStudents);
 
   const setDossierStatus = useMutation(api.paiements.setDossierStatus);
   const resetDossierStatus = useMutation(api.paiements.resetDossierStatus);
-  const syncHelloAsso = useAction(api.helloasso.syncHelloAsso);
-  const syncPourPaiements = useAction(api.abo.sync.syncPourPaiements);
-
-  const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [syncResult, setSyncResult] = useState<{ synced_count: number; errors: string[] } | null>(null);
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
@@ -574,10 +573,9 @@ export default function ValidationPaiements() {
   const effectiveResponsible = filterResponsible ?? currentUser?._id ?? "";
 
   const runSync = useCallback(async () => {
-    setSyncing(true);
     setSyncError(null);
     try {
-      const result = await syncHelloAsso({});
+      const result = await synchroniserMaintenant();
       setSyncResult(result);
       setLastSyncAt(new Date().toISOString());
       if (result.errors.length > 0) {
@@ -585,21 +583,8 @@ export default function ValidationPaiements() {
       }
     } catch (e) {
       setSyncError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setSyncing(false);
     }
-  }, [syncHelloAsso]);
-
-  // Synchro HelloAsso THROTTLÉE (verrou serveur ~1 h, api.abo.sync) au montage :
-  // non-bloquante, elle évite de refetch l'API HelloAsso + relire
-  // dossiers/transactions à chaque ouverture de page. Le bouton « Sync » ci-dessous
-  // force une synchro immédiate hors verrou. Pas de setState ici : la liste se
-  // rafraîchit toute seule via les useQuery.
-  useEffect(() => {
-    void syncPourPaiements({}).catch((e) => {
-      console.warn("[sync] synchro throttlée paiements échouée:", e);
-    });
-  }, [syncPourPaiements]);
+  }, [synchroniserMaintenant]);
 
   const allDossiers = useMemo(() => dossiers ?? [], [dossiers]);
 

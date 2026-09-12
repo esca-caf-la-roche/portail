@@ -15,6 +15,7 @@ import { internalMutation, internalQuery } from "../_generated/server";
 import type { QueryCtx, MutationCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import {
+  CLE_PROJECTION_ELEVES_COMPLETE,
   invaliderCompteurPublic,
   programmerRafraichissementCompteurPublic,
 } from "./compteurCache";
@@ -480,6 +481,9 @@ export const resetSaison = authenticatedMutation({
     for (const e of await ctx.db.query("abo_eleves_en_cours").collect()) {
       await ctx.db.delete(e._id);
     }
+    for (const projection of await ctx.db.query("abo_eleves_en_cours_lecture").collect()) {
+      await ctx.db.delete(projection._id);
+    }
     // IO-BOUNDED: le suivi opérationnel ne peut pas dépasser les 1 000
     // personnes du snapshot élèves et doit disparaître avec celui-ci.
     const traitementsLicencesCours = await ctx.db
@@ -540,7 +544,10 @@ export const resetSaison = authenticatedMutation({
     // Les snapshots de campagne viennent d'être vidés : leurs réussites et
     // verrous manuels ne doivent pas retarder la première synchro de la saison.
     // L'annuaire des licences, transversal, est volontairement conservé.
-    await supprimerConfigValeurs(ctx, RESET_CAMPAIGN_SYNC_KEYS);
+    await supprimerConfigValeurs(ctx, [
+      ...RESET_CAMPAIGN_SYNC_KEYS,
+      CLE_PROJECTION_ELEVES_COMPLETE,
+    ]);
     // Le site club et l'annuaire peuvent encore porter la campagne N-1 : leur
     // synchronisation reste explicitement en pause jusqu'au feu vert staff.
     await setConfigValeur(ctx, CLE_SYNCHRONISATION_EXTERNE_ACTIVE, "false");

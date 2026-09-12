@@ -23,6 +23,7 @@ import {
   compterOccurrencesParNom,
   construireIdentiteLicenceCours,
 } from "./licencesCoursIdentite";
+import { lireElevesEnCoursCompacts } from "./compteurCache";
 
 // Seuil relevé par rapport au défaut pg_trgm (0.3) : à 0.3 la liste remonte
 // beaucoup de candidats peu pertinents, peu utiles pour le suivi manuel.
@@ -152,7 +153,7 @@ export const getElevesLicenceInvalide = authenticatedQuery({
     // IO-BOUNDED: les snapshots externes sont plafonnés par leurs imports
     // (1 000 élèves et 5 000 licences). Les traitements sont purgés au
     // remplacement du snapshot et ne peuvent donc pas dépasser 1 000 lignes.
-    const tous = await ctx.db.query("abo_eleves_en_cours").take(MAX_ELEVES_EN_COURS + 1);
+    const tous = await lireElevesEnCoursCompacts(ctx, MAX_ELEVES_EN_COURS + 1);
     if (tous.length > MAX_ELEVES_EN_COURS) {
       throw new ConvexError({
         code: "54000",
@@ -190,7 +191,7 @@ export const getElevesLicenceInvalide = authenticatedQuery({
           : "licence_absente_hors_fenetre";
 
       return {
-        eleve_id: e._id,
+        eleve_id: e.source_eleve_id,
         nom: e.nom ?? null,
         prenom: e.prenom ?? null,
         cours: e.cours ?? null,
@@ -252,9 +253,7 @@ export const getCandidatsLicences = authenticatedQuery({
     // IO-BOUNDED: rapprochement de deux snapshots complets plafonnés à
     // 1 000 élèves et 5 000 licences. La query est isolée pour préserver son
     // cache lors des écritures dans la table de suivi manuel.
-    const tous = await ctx.db
-      .query("abo_eleves_en_cours")
-      .take(MAX_ELEVES_EN_COURS + 1);
+    const tous = await lireElevesEnCoursCompacts(ctx, MAX_ELEVES_EN_COURS + 1);
     if (tous.length > MAX_ELEVES_EN_COURS) {
       throw new ConvexError({
         code: "54000",
@@ -298,7 +297,7 @@ export const getCandidatsLicences = authenticatedQuery({
             prenom: licence.prenom ?? null,
             score,
           }));
-        return { eleveId: eleve._id, candidats };
+        return { eleveId: eleve.source_eleve_id, candidats };
     });
   },
 });

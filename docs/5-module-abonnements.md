@@ -183,6 +183,13 @@ lisent des projections matérialisées. Leur cycle de recalcul est décrit avec 
 synchronisations ci-dessous ; les écrans ne reparcourent pas les sources métier
 à chaque abonnement réactif.
 
+Les listes et contrôles qui n'utilisent que l'identité, le cours, l'horaire ou
+le contact effectif d'un élève lisent la projection compacte
+`abo_eleves_en_cours_lecture`. Le snapshot complet reste la source de vérité et
+la projection est maintenue dans la même mutation. Lors d'un déploiement, les
+lectures conservent automatiquement le repli sur le snapshot historique tant
+que le backfill n'a pas vérifié l'égalité exacte des identifiants.
+
 La page **Configuration** n'est accessible qu'avec la tuile `abonnements` et
 l'autorisation nominative `canManageAboConfiguration`, accordée dans
 *Configurations > Utilisateurs et Accès*. Un administrateur général peut
@@ -274,6 +281,12 @@ créneaux de l'annuaire sans relire la base à chaque minute. Les actions
 recontrôlent toujours la disponibilité avec l'heure du serveur.
 Les boutons manuels conservent leur délai de cinq minutes (hors annuaire), et
 le test d'autonomie direct conserve son snapshot complet de moins de 15 minutes.
+
+Dans la tuile Paiements, la liste détaillée est partagée entre les sous-routes.
+Elle est temporairement désabonnée pendant les écritures par lots HelloAsso,
+tout en conservant le dernier résultat visible, puis relue une seule fois à la
+fin. Les écrans Attente et Approbations partagent une projection distincte des
+seuls dossiers traités et ne lisent jamais les transactions.
 
 | Déclencheur | Action | Sources |
 |---|---|---|
@@ -387,8 +400,10 @@ PROD séparément avec :
 npm run audit:convex-io
 ```
 
-La validation attendue est une baisse de `abo/compteur.vCompteur`,
-`abo/compteur.vAnomalies` et `abo/compteur.rafraichirCompteurPublic`, sans hausse
+La validation attendue est une baisse de
+`abo/compteur.getElevesEnCours`,
+`abo/licencesEnCours.getElevesLicenceInvalide`,
+`abo/compteur.rafraichirCompteurPublic` et `paiements.getDossiers`, sans hausse
 équivalente sur les mutations d'import.
 
 ## Règlements intérieurs signés

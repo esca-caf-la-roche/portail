@@ -257,6 +257,7 @@ et le repli de rollout lorsqu'un ancien cache est incomplet.
 
 ```bash
 npm test -- convex/abo.annuaireSync.test.ts convex/abo.syncStatus.test.ts convex/abo.licencesSnapshot.test.ts convex/abo.config.test.ts convex/abo.compteur-io.test.ts
+npm test -- convex/abo.elevesProjection.test.ts convex/paiements.test.ts
 ```
 
 1. ouvrir `/licences-cours` un lundi et vérifier l'ordre : hors tolérance de

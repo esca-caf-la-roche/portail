@@ -10,6 +10,7 @@
 // club (scrap ≈ places, annuaire/personnes = volume d'une saison).
 
 import { v, ConvexError } from "convex/values";
+import { paginationOptsValidator } from "convex/server";
 import { query, internalMutation } from "../_generated/server";
 import type { QueryCtx, MutationCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
@@ -29,7 +30,12 @@ import {
 } from "./licencesCoursIdentite";
 import {
   CLE_COMPTEUR_A_RECALCULER,
+  CLE_PROJECTION_ELEVES_COMPLETE,
+  lireElevesEnCoursCompacts,
+  projectionElevesComplete,
   programmerRafraichissementCompteurPublic,
+  supprimerProjectionEleveEnCours,
+  upsertProjectionEleveEnCours,
 } from "./compteurCache";
 
 export { invaliderCompteurPublic, programmerRafraichissementCompteurPublic } from "./compteurCache";
@@ -90,7 +96,11 @@ function horaireExcluDuCompteur(horaire: string | undefined): boolean {
 
 function calculerRepartitionGrimpeurs(
   scrap: readonly Doc<"abo_abonnes_scrap">[],
-  eleves: readonly Doc<"abo_eleves_en_cours">[],
+  eleves: ReadonlyArray<{
+    licence?: string;
+    nom_prenom_normalise: string;
+    horaire?: string;
+  }>,
 ): RepartitionGrimpeurs {
   const construirePersonnes = (
     lignes: ReadonlyArray<{ licence?: string; nom_prenom_normalise: string }>,
@@ -206,7 +216,7 @@ export async function calculerCompteur(
   const [scrap, archive, eleves, personnes] = await Promise.all([
     ctx.db.query("abo_abonnes_scrap").take(MAX_LIGNES_COMPTEUR + 1),
     ctx.db.query("abo_abonnes_archive").take(MAX_LIGNES_COMPTEUR + 1),
-    ctx.db.query("abo_eleves_en_cours").take(MAX_LIGNES_COMPTEUR + 1),
+    lireElevesEnCoursCompacts(ctx, MAX_LIGNES_COMPTEUR + 1),
     ctx.db.query("abo_personnes").take(MAX_LIGNES_COMPTEUR + 1),
   ]);
   if ([scrap, archive, eleves, personnes].some((lignes) => lignes.length > MAX_LIGNES_COMPTEUR)) {
@@ -934,7 +944,13 @@ export const getElevesEnCours = authenticatedQuery({
   })),
   handler: async (ctx) => {
     await requireAboAdmin(ctx);
-    const eleves = await ctx.db.query("abo_eleves_en_cours").collect();
+    const eleves = await lireElevesEnCoursCompacts(ctx, MAX_ELEVES_SNAPSHOT + 1);
+    if (eleves.length > MAX_ELEVES_SNAPSHOT) {
+      throw new ConvexError({
+        code: "54000",
+        message: `Le snapshot élèves dépasse la limite de ${MAX_ELEVES_SNAPSHOT} lignes.`,
+      });
+    }
     return eleves.map((e) => ({
       licence: e.licence ?? null,
       nom_prenom_normalise: e.nom_prenom_normalise,
@@ -1080,6 +1096,7 @@ export const remplacerElevesEnCours = internalMutation({
     let avecLicence = 0;
     let sansLicence = 0;
     let snapshotModifie = false;
+    const projectionComplete = await projectionElevesComplete(ctx);
     for (const l of args.lignes) {
       const licence = canoniserLicence(l.licence) ?? undefined;
       const nouveau = doc(l, licence);
@@ -1092,10 +1109,14 @@ export const remplacerElevesEnCours = internalMutation({
       if (existant) {
         if (champsModifies(existant, nouveau, ["imported_at"])) {
           await ctx.db.patch(existant._id, nouveau);
+          await upsertProjectionEleveEnCours(ctx, { ...existant, ...nouveau });
           snapshotModifie = true;
+        } else if (!projectionComplete) {
+          await upsertProjectionEleveEnCours(ctx, existant);
         }
       } else {
-        await ctx.db.insert("abo_eleves_en_cours", nouveau);
+        const id = await ctx.db.insert("abo_eleves_en_cours", nouveau);
+        await upsertProjectionEleveEnCours(ctx, { _id: id, ...nouveau });
         snapshotModifie = true;
       }
     }
@@ -1104,6 +1125,7 @@ export const remplacerElevesEnCours = internalMutation({
     // licence ou sa saison historique.
     for (const restants of existantsParIdentite.values()) {
       for (const e of restants) {
+        await supprimerProjectionEleveEnCours(ctx, e._id);
         await ctx.db.delete(e._id);
         snapshotModifie = true;
       }
@@ -1148,5 +1170,60 @@ export const remplacerElevesEnCours = internalMutation({
       .withIndex("by_cle", (q) => q.eq("cle", "courant")).first();
     if (snapshotModifie || !cache) await programmerRafraichissementCompteurPublic(ctx);
     return { avecLicence, sansLicence };
+  },
+});
+
+// Migration progressive invocable en PROD :
+// `npx convex run abo/compteur:backfillProjectionElevesEnCours
+// '{"paginationOpts":{"cursor":null,"numItems":100}}' --prod`
+// Répéter avec `continueCursor` jusqu'à `isDone: true`. Les lectures restent sur
+// la table historique tant que la dernière page n'a pas posé le marqueur.
+export const backfillProjectionElevesEnCours = internalMutation({
+  args: { paginationOpts: paginationOptsValidator },
+  returns: v.object({
+    traites: v.number(),
+    continueCursor: v.string(),
+    isDone: v.boolean(),
+  }),
+  handler: async (ctx, args) => {
+    const page = await ctx.db.query("abo_eleves_en_cours")
+      .paginate(args.paginationOpts);
+    for (const eleve of page.page) {
+      await upsertProjectionEleveEnCours(ctx, eleve);
+    }
+    if (page.isDone) {
+      const [sources, projections] = await Promise.all([
+        ctx.db.query("abo_eleves_en_cours").take(MAX_ELEVES_SNAPSHOT + 1),
+        ctx.db.query("abo_eleves_en_cours_lecture").take(MAX_ELEVES_SNAPSHOT + 1),
+      ]);
+      if (
+        sources.length > MAX_ELEVES_SNAPSHOT ||
+        projections.length > MAX_ELEVES_SNAPSHOT ||
+        sources.length !== projections.length ||
+        !sources.every((source) =>
+          projections.some((projection) => projection.source_eleve_id === source._id)
+        )
+      ) {
+        throw new ConvexError({
+          code: "ABO_PROJECTION_ELEVES_INCOMPLETE",
+          message: "La projection compacte des élèves est incomplète ; la bascule est annulée.",
+        });
+      }
+      const marqueur = await ctx.db.query("abo_app_config")
+        .withIndex("by_cle", (q) => q.eq("cle", CLE_PROJECTION_ELEVES_COMPLETE))
+        .unique();
+      if (!marqueur) {
+        await ctx.db.insert("abo_app_config", {
+          cle: CLE_PROJECTION_ELEVES_COMPLETE,
+          valeur: "true",
+          updated_at: new Date().toISOString(),
+        });
+      }
+    }
+    return {
+      traites: page.page.length,
+      continueCursor: page.continueCursor,
+      isDone: page.isDone,
+    };
   },
 });

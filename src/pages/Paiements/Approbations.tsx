@@ -1,7 +1,9 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "convex/react";
+import { useOutletContext } from "react-router-dom";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
+import type { PaiementsDossiersContextValue } from "./Layout";
 
 type ApprovedStudents = NonNullable<
   ReturnType<typeof useQuery<typeof api.paiements.getApprovedStudents>>
@@ -19,7 +21,7 @@ function normalise(s: string): string {
 export default function ApprobationsPaiements() {
   const approvedStudents = useQuery(api.paiements.getApprovedStudents);
   const groups = useQuery(api.paiements.getGroups);
-  const dossiers = useQuery(api.paiements.getDossiers);
+  const { dossiersTraites: dossiers } = useOutletContext<PaiementsDossiersContextValue>();
 
   const addStudent = useMutation(api.paiements.addApprovedStudent);
   const updateStudent = useMutation(api.paiements.updateApprovedStudent);
@@ -234,8 +236,7 @@ export default function ApprobationsPaiements() {
                     ) : (
                       groupStudents.map((student) => {
                         const isProcessed = (dossiers ?? []).some((d) => {
-                          if (d.local_status !== "Traité") return false;
-                          if (!d.groups.some((g) => g.id === student.group_id))
+                          if (!d.group_ids.includes(student.group_id))
                             return false;
                           if (student.email) {
                             const se = student.email.toLowerCase();

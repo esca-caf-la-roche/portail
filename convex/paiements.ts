@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { authenticatedMutation, authenticatedQuery } from "./customFunctions";
 import type { QueryCtx, MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
@@ -362,6 +362,56 @@ export const getDossiers = authenticatedQuery({
       a.first_payment_date.localeCompare(b.first_payment_date)
     );
     return result;
+  },
+});
+
+// Projection compacte partagée par les écrans Approbations et Attente. Ces
+// écrans n'ont pas besoin de la timeline complète des transactions.
+export const getDossiersTraitesIndex = authenticatedQuery({
+  args: {},
+  returns: v.array(v.object({
+    payer_email: v.string(),
+    email: v.union(v.string(), v.null()),
+    first_name: v.string(),
+    last_name: v.string(),
+    group_ids: v.array(v.id("groups")),
+  })),
+  handler: async (ctx) => {
+    await requireTile(ctx, ctx.userId, "paiements");
+    const aboIds = await getAboLinkIds(ctx);
+    const dossiers = await ctx.db
+      .query("dossiers")
+      .withIndex("by_local_status", (q) => q.eq("local_status", "Traité"))
+      .take(5_001);
+    if (dossiers.length > 5_000) {
+      throw new ConvexError({
+        code: "54000",
+        message: "Le nombre de dossiers traités dépasse la limite de sécurité.",
+      });
+    }
+    const groupLinks = await ctx.db.query("group_links").take(1_001);
+    if (groupLinks.length > 1_000) {
+      throw new ConvexError({
+        code: "54000",
+        message: "Le nombre de liaisons de groupes dépasse la limite de sécurité.",
+      });
+    }
+    const groupesParLien = new Map<Id<"helloasso_links">, Id<"groups">[]>();
+    for (const relation of groupLinks) {
+      const groupes = groupesParLien.get(relation.link_id) ?? [];
+      groupes.push(relation.group_id);
+      groupesParLien.set(relation.link_id, groupes);
+    }
+
+    return dossiers
+      .filter((dossier) => !aboIds.has(dossier.helloasso_link_id))
+      .map((dossier) => ({
+        payer_email: dossier.payer_email,
+        email: dossier.email ?? null,
+        first_name: dossier.first_name,
+        last_name: dossier.last_name,
+        group_ids: groupesParLien.get(dossier.helloasso_link_id) ?? [],
+      }));
   },
 });
 

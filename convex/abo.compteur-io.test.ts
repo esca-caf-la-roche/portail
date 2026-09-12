@@ -150,7 +150,7 @@ describe("recalcul du compteur après les imports", () => {
     expect(await invalidation(t)).not.toBeNull();
   });
 
-  test("les élèves inchangés n'ordonnancent rien, les insertions, modifications et suppressions oui", async () => {
+  test("regroupe les insertions, modifications et suppressions dans un seul recalcul en attente", async () => {
     vi.useFakeTimers();
     const t = creerTest();
     await t.mutation(internal.abo.compteur.rafraichirCompteurPublic, {});
@@ -160,9 +160,9 @@ describe("recalcul du compteur après les imports", () => {
     await t.mutation(internal.abo.compteur.remplacerElevesEnCours, eleves);
     expect(await planifies()).toBe(1);
     await t.mutation(internal.abo.compteur.remplacerElevesEnCours, { ...eleves, lignes: [{ ...eleves.lignes[0], nom: "MARTIN" }] });
-    expect(await planifies()).toBe(2);
+    expect(await planifies()).toBe(1);
     await t.mutation(internal.abo.compteur.remplacerElevesEnCours, { ...eleves, lignes: [] });
-    expect(await planifies()).toBe(3);
+    expect(await planifies()).toBe(1);
     await t.finishAllScheduledFunctions(vi.runAllTimers);
   });
 
