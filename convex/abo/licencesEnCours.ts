@@ -1,12 +1,11 @@
 // Vérification des licences FFCAM des élèves EN COURS (portail staff, tuile
 // "licences_cours" — distinct du portail Abonnements qui gère les demandes).
 //
-// Règle de validité (saison sportive démarrant début septembre) :
+// Règle de validité :
 //   - horaire === "Liste d'attente" → élève pas en cours, hors périmètre.
 //   - licence renseignée → toujours valide.
-//   - licence vide → valide UNIQUEMENT en septembre ET si saison_precedente
-//     est renseignée (élève déjà en cours l'an dernier, tolérance d'un mois
-//     pour re-fournir son numéro). Sinon → non valide.
+//   - licence vide → toujours à afficher. Les nouveaux élèves sont prioritaires,
+//     puis viennent ceux déjà présents la saison précédente, y compris en septembre.
 // abo_eleves_en_cours est régénérée à chaque scrape du site club. Le suivi
 // manuel est donc conservé à part, avec une identité métier stable et prudente.
 
@@ -15,7 +14,6 @@ import { authenticatedMutation, authenticatedQuery } from "../customFunctions";
 import { requireTile } from "../access";
 import {
   normaliserNomPrenom,
-  estSeptembreParis,
   trigrammes,
   similariteTrigrammes,
 } from "./lib";
@@ -104,15 +102,12 @@ function cleJourParis(nowMs: number): string {
   return `${valeurs.year}-${valeurs.month}-${valeurs.day}`;
 }
 
-type Raison = "licence_absente_hors_fenetre" | "nouvel_eleve_sans_licence";
+type Raison = "ancien_eleve_sans_licence" | "nouvel_eleve_sans_licence";
 
 function licenceValide(
-  eleve: { licence?: string; saison_precedente?: string },
-  nowMs: number,
+  eleve: { licence?: string },
 ): boolean {
-  if ((eleve.licence ?? "").trim() !== "") return true;
-  const saisonPrecedente = (eleve.saison_precedente ?? "").trim();
-  return estSeptembreParis(nowMs) && saisonPrecedente !== "";
+  return (eleve.licence ?? "").trim() !== "";
 }
 
 export const getElevesLicenceInvalide = authenticatedQuery({
@@ -131,7 +126,7 @@ export const getElevesLicenceInvalide = authenticatedQuery({
       traiteAt: v.union(v.string(), v.null()),
       traitementPossible: v.boolean(),
       raison: v.union(
-        v.literal("licence_absente_hors_fenetre"),
+        v.literal("ancien_eleve_sans_licence"),
         v.literal("nouvel_eleve_sans_licence"),
       ),
     })),
@@ -162,7 +157,7 @@ export const getElevesLicenceInvalide = authenticatedQuery({
     }
     const enCours = tous.filter((e) => e.horaire !== "Liste d'attente");
 
-    const invalides = enCours.filter((e) => !licenceValide(e, now));
+    const invalides = enCours.filter((e) => !licenceValide(e));
     if (invalides.length === 0) return { total: 0, eleves: [] };
 
     const traitements = await ctx.db
@@ -186,9 +181,9 @@ export const getElevesLicenceInvalide = authenticatedQuery({
 
     const eleves = invalidesAvecTraitement.map(({ eleve: e, identite, traitement }) => {
       const raison: Raison =
-        estSeptembreParis(now) && (e.saison_precedente ?? "").trim() === ""
+        (e.saison_precedente ?? "").trim() === ""
           ? "nouvel_eleve_sans_licence"
-          : "licence_absente_hors_fenetre";
+          : "ancien_eleve_sans_licence";
 
       return {
         eleve_id: e.source_eleve_id,
@@ -206,8 +201,8 @@ export const getElevesLicenceInvalide = authenticatedQuery({
 
     const jourCourant = jourCourantParis(now);
     eleves.sort((a, b) => {
-      const prioriteA = a.raison === "licence_absente_hors_fenetre" ? 0 : 1;
-      const prioriteB = b.raison === "licence_absente_hors_fenetre" ? 0 : 1;
+      const prioriteA = a.raison === "nouvel_eleve_sans_licence" ? 0 : 1;
+      const prioriteB = b.raison === "nouvel_eleve_sans_licence" ? 0 : 1;
       if (prioriteA !== prioriteB) return prioriteA - prioriteB;
 
       const jourA = jourDansHoraire(a.horaire);
@@ -261,7 +256,7 @@ export const getCandidatsLicences = authenticatedQuery({
       });
     }
     const invalides = tous.filter(
-      (eleve) => eleve.horaire !== "Liste d'attente" && !licenceValide(eleve, now),
+      (eleve) => eleve.horaire !== "Liste d'attente" && !licenceValide(eleve),
     );
     if (invalides.length === 0) return [];
 
@@ -318,7 +313,7 @@ export const definirTraite = authenticatedMutation({
     if (!eleve) {
       throw new ConvexError({ code: "02000", message: "Cet élève n'est plus dans le snapshot courant." });
     }
-    if (licenceValide(eleve, Date.now())) {
+    if (licenceValide(eleve)) {
       throw new ConvexError({
         code: "22023",
         message: "Cet élève possède désormais une licence : la synchronisation est prioritaire.",

@@ -188,7 +188,9 @@ le contact effectif d'un élève lisent la projection compacte
 `abo_eleves_en_cours_lecture`. Le snapshot complet reste la source de vérité et
 la projection est maintenue dans la même mutation. Lors d'un déploiement, les
 lectures conservent automatiquement le repli sur le snapshot historique tant
-que le backfill n'a pas vérifié l'égalité exacte des identifiants.
+que le backfill versionné n'a pas vérifié l'égalité exacte des identifiants. La
+projection conserve notamment la date de naissance utilisée par l'identité
+stable du suivi « traité » de la tuile Licences des cours.
 
 La page **Configuration** n'est accessible qu'avec la tuile `abonnements` et
 l'autorisation nominative `canManageAboConfiguration`, accordée dans

@@ -6,7 +6,9 @@ import { champsModifies } from "../dbUtils";
 // SAISON-EXEMPT: marqueur technique du cache courant, indépendant de la saison
 // comptable. Il rend les recalculs planifiés idempotents et récupérables.
 export const CLE_COMPTEUR_A_RECALCULER = "compteur_public_a_recalculer";
-export const CLE_PROJECTION_ELEVES_COMPLETE = "projection_eleves_en_cours_complete";
+// La version fait retomber automatiquement les lectures sur la source pendant
+// l'enrichissement d'une projection déjà remplie par une version antérieure.
+export const CLE_PROJECTION_ELEVES_COMPLETE = "projection_eleves_en_cours_complete_v2";
 const DELAI_REPRISE_PLANIFICATION_MS = 60_000;
 const DELAI_REGROUPEMENT_COMPTEUR_MS = 5_000;
 
@@ -15,6 +17,7 @@ export type EleveEnCoursLecture = {
   licence?: string;
   nom?: string;
   prenom?: string;
+  date_naissance?: string;
   nom_prenom_normalise: string;
   horaire?: string;
   cours?: string;
@@ -30,6 +33,7 @@ export function projeterEleveEnCours(
     | "licence"
     | "nom"
     | "prenom"
+    | "date_naissance"
     | "nom_prenom_normalise"
     | "horaire"
     | "cours"
@@ -43,6 +47,7 @@ export function projeterEleveEnCours(
     licence: eleve.licence,
     nom: eleve.nom,
     prenom: eleve.prenom,
+    date_naissance: eleve.date_naissance,
     nom_prenom_normalise: eleve.nom_prenom_normalise,
     horaire: eleve.horaire,
     cours: eleve.cours,

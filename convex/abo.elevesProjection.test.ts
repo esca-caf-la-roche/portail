@@ -49,6 +49,7 @@ const lignes = [
   {
     nom: "MARTIN",
     prenom: "Jeanne",
+    date_naissance: "2011-02-03",
     horaire: "Mardi 19h",
     cours: "Adultes",
     saison_precedente: "",
@@ -81,7 +82,7 @@ describe("projection compacte des élèves en cours", () => {
     );
     expect(premiere.isDone).toBe(false);
     expect(await t.run(async (ctx) => ctx.db.query("abo_app_config")
-      .withIndex("by_cle", (q) => q.eq("cle", "projection_eleves_en_cours_complete"))
+      .withIndex("by_cle", (q) => q.eq("cle", "projection_eleves_en_cours_complete_v2"))
       .first())).toBeNull();
     expect(await admin.query(api.abo.compteur.getElevesEnCours, {})).toEqual(avant);
 
@@ -102,6 +103,7 @@ describe("projection compacte des élèves en cours", () => {
     expect(projections).toHaveLength(2);
     expect(projections[0]).not.toHaveProperty("paiements_dossier");
     expect(projections[0]).not.toHaveProperty("encadrants");
+    expect(projections[1]).toMatchObject({ date_naissance: "2011-02-03" });
   });
 
   test("le remplacement maintient insertions, modifications et suppressions atomiquement", async () => {

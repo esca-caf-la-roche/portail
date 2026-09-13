@@ -260,8 +260,9 @@ npm test -- convex/abo.annuaireSync.test.ts convex/abo.syncStatus.test.ts convex
 npm test -- convex/abo.elevesProjection.test.ts convex/paiements.test.ts
 ```
 
-1. ouvrir `/licences-cours` un lundi et vérifier l'ordre : hors tolérance de
-   septembre en premier, puis lundi, mardi, etc., puis cours et élèves ;
+1. ouvrir `/licences-cours` et vérifier l'ordre : nouveaux élèves sans licence,
+   puis élèves sans licence déjà en cours l'année précédente, y compris en
+   septembre ; dans chaque groupe, vérifier ensuite jour, cours et élève ;
 2. cliquer sur l'action d'un élève et vérifier que son adresse unique est copiée
    dans le presse-papiers, sans ouverture de Gmail ;
 3. vérifier que l'action affiche brièvement « Adresse copiée » et qu'un refus
@@ -276,6 +277,8 @@ npm test -- convex/abo.elevesProjection.test.ts convex/paiements.test.ts
 7. laisser le panneau de synchronisation ouvert et vérifier que les délais
    évoluent sans nouvel appel de statut chaque minute, puis qu'une vraie
    synchronisation met bien à jour la dernière réussite affichée.
+8. marquer un élève « Traité », vérifier le passage immédiat en attente de
+   confirmation, puis utiliser « Remettre à traiter » et vérifier le retour.
 
 ### Scénarios ciblés — Remboursements élèves
 

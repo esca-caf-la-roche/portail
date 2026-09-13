@@ -1130,6 +1130,7 @@ export default defineSchema({
     licence: v.optional(v.string()),
     nom: v.optional(v.string()),
     prenom: v.optional(v.string()),
+    date_naissance: v.optional(v.string()),
     nom_prenom_normalise: v.string(),
     horaire: v.optional(v.string()),
     cours: v.optional(v.string()),

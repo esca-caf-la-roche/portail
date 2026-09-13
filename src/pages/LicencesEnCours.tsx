@@ -24,14 +24,14 @@ function errMessage(err: unknown, fallback: string): string {
 // Vérification des licences FFCAM des élèves EN COURS (abo_eleves_en_cours) :
 // - Liste d'attente exclue (pas en cours).
 // - Licence renseignée → toujours valide.
-// - Licence vide → tolérance en septembre si l'élève était déjà en cours la
-//   saison précédente (saison_precedente non vide), invalide sinon.
+// - Licence vide → toujours affichée : nouveaux élèves d'abord, puis élèves
+//   déjà présents la saison précédente, y compris en septembre.
 // SAISON-EXEMPT: cette page reflète les snapshots courants du site club et de
 // l'annuaire FFCAM. Le suivi "traité" est temporaire et doit céder devant la
 // prochaine synchronisation des élèves.
 
 const RAISON_LABEL: Record<string, string> = {
-  licence_absente_hors_fenetre: "Licence absente (hors tolérance de septembre)",
+  ancien_eleve_sans_licence: "Élève de l'année précédente sans licence saisie",
   nouvel_eleve_sans_licence: "Nouvel élève sans licence saisie",
 };
 
@@ -84,9 +84,9 @@ function regrouperParJourEtCours(eleves: EleveLicence[]): GroupeJour[] {
 
   for (const eleve of eleves) {
     const jour = trouverJour(eleve.horaire);
-    const horsTolerance = eleve.raison === "licence_absente_hors_fenetre";
-    const priorite = horsTolerance ? "Hors tolérance de septembre" : "Nouvelle licence";
-    const cleJour = `${horsTolerance ? "0" : "1"}\u0000${jour.libelle}`;
+    const nouveau = eleve.raison === "nouvel_eleve_sans_licence";
+    const priorite = nouveau ? "Nouveaux" : "Déjà en cours l'année dernière";
+    const cleJour = `${nouveau ? "0" : "1"}\u0000${jour.libelle}`;
     const cours = eleve.cours?.trim() || "Cours non renseigné";
     const cleCours = `${cours}\u0000${eleve.horaire?.trim() || ""}`;
     if (!jours.has(cleJour)) {

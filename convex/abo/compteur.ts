@@ -1200,9 +1200,13 @@ export const backfillProjectionElevesEnCours = internalMutation({
         sources.length > MAX_ELEVES_SNAPSHOT ||
         projections.length > MAX_ELEVES_SNAPSHOT ||
         sources.length !== projections.length ||
-        !sources.every((source) =>
-          projections.some((projection) => projection.source_eleve_id === source._id)
-        )
+        !sources.every((source) => {
+          const projection = projections.find(
+            (candidate) => candidate.source_eleve_id === source._id,
+          );
+          return projection !== undefined &&
+            projection.date_naissance === source.date_naissance;
+        })
       ) {
         throw new ConvexError({
           code: "ABO_PROJECTION_ELEVES_INCOMPLETE",
