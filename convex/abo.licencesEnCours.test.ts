@@ -37,6 +37,7 @@ async function ajouterEleve(
   suffixe: string,
   options: {
     licence?: string;
+    licenceSaison?: string;
     dateNaissance?: string;
     email?: string;
     saisonPrecedente?: string;
@@ -44,6 +45,7 @@ async function ajouterEleve(
 ) {
   return await t.run(async (ctx) => await ctx.db.insert("abo_eleves_en_cours", {
     licence: options.licence,
+    licence_saison: options.licenceSaison,
     nom: "DUPONT",
     prenom: suffixe,
     nom_prenom_normalise: `DUPONT ${suffixe}`,
@@ -62,6 +64,8 @@ describe("suivi des licences des élèves en cours", () => {
     const t = convexTest(schema, modules);
     const { staff } = await creerStaff(t);
     await ajouterEleve(t, "ANCIENNE", {
+      licence: "123456789012",
+      licenceSaison: "Pas de licence",
       dateNaissance: "2012-04-03",
       saisonPrecedente: "2025 / 2026",
     });
@@ -82,6 +86,8 @@ describe("suivi des licences des élèves en cours", () => {
     const { staff } = await creerStaff(t);
     const [eleveId, homonymeId] = await t.run(async (ctx) => {
       const commun = {
+        licence: "123456789012",
+        licence_saison: "Pas de licence",
         nom: "DUPONT",
         prenom: "CAMILLE",
         nom_prenom_normalise: "DUPONT CAMILLE",
@@ -216,6 +222,7 @@ describe("suivi des licences des élèves en cours", () => {
       saison: "2026 / 2027",
       lignes: [{
         licence: "123456789012",
+        licence_saison: "OK",
         nom: "DUPONT",
         prenom: "LINA",
         date_naissance: "2013-05-07",

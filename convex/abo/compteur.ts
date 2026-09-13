@@ -1205,7 +1205,8 @@ export const backfillProjectionElevesEnCours = internalMutation({
             (candidate) => candidate.source_eleve_id === source._id,
           );
           return projection !== undefined &&
-            projection.date_naissance === source.date_naissance;
+            projection.date_naissance === source.date_naissance &&
+            projection.licence_saison === source.licence_saison;
         })
       ) {
         throw new ConvexError({

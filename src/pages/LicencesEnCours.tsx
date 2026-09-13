@@ -23,8 +23,8 @@ function errMessage(err: unknown, fallback: string): string {
 
 // Vérification des licences FFCAM des élèves EN COURS (abo_eleves_en_cours) :
 // - Liste d'attente exclue (pas en cours).
-// - Licence renseignée → toujours valide.
-// - Licence vide → toujours affichée : nouveaux élèves d'abord, puis élèves
+// - Statut de licence de la saison courante « OK » → licence valide.
+// - Sinon → toujours affiché : nouveaux élèves d'abord, puis élèves
 //   déjà présents la saison précédente, y compris en septembre.
 // SAISON-EXEMPT: cette page reflète les snapshots courants du site club et de
 // l'annuaire FFCAM. Le suivi "traité" est temporaire et doit céder devant la

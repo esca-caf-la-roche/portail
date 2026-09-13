@@ -190,7 +190,9 @@ la projection est maintenue dans la même mutation. Lors d'un déploiement, les
 lectures conservent automatiquement le repli sur le snapshot historique tant
 que le backfill versionné n'a pas vérifié l'égalité exacte des identifiants. La
 projection conserve notamment la date de naissance utilisée par l'identité
-stable du suivi « traité » de la tuile Licences des cours.
+stable du suivi « traité » et le statut de licence de la saison courante utilisé
+par la tuile Licences des cours. Le numéro `licence` peut appartenir à une
+saison précédente : seule la valeur `OK` de `licence_saison` masque une ligne.
 
 La page **Configuration** n'est accessible qu'avec la tuile `abonnements` et
 l'autorisation nominative `canManageAboConfiguration`, accordée dans

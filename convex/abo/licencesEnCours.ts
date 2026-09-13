@@ -3,8 +3,8 @@
 //
 // Règle de validité :
 //   - horaire === "Liste d'attente" → élève pas en cours, hors périmètre.
-//   - licence renseignée → toujours valide.
-//   - licence vide → toujours à afficher. Les nouveaux élèves sont prioritaires,
+//   - licence_saison === "OK" → licence valide pour la saison courante.
+//   - sinon → toujours à afficher. Les nouveaux élèves sont prioritaires,
 //     puis viennent ceux déjà présents la saison précédente, y compris en septembre.
 // abo_eleves_en_cours est régénérée à chaque scrape du site club. Le suivi
 // manuel est donc conservé à part, avec une identité métier stable et prudente.
@@ -105,9 +105,9 @@ function cleJourParis(nowMs: number): string {
 type Raison = "ancien_eleve_sans_licence" | "nouvel_eleve_sans_licence";
 
 function licenceValide(
-  eleve: { licence?: string },
+  eleve: { licence_saison?: string },
 ): boolean {
-  return (eleve.licence ?? "").trim() !== "";
+  return (eleve.licence_saison ?? "").trim().toLocaleLowerCase("fr") === "ok";
 }
 
 export const getElevesLicenceInvalide = authenticatedQuery({

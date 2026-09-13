@@ -8,7 +8,7 @@ import { champsModifies } from "../dbUtils";
 export const CLE_COMPTEUR_A_RECALCULER = "compteur_public_a_recalculer";
 // La version fait retomber automatiquement les lectures sur la source pendant
 // l'enrichissement d'une projection déjà remplie par une version antérieure.
-export const CLE_PROJECTION_ELEVES_COMPLETE = "projection_eleves_en_cours_complete_v2";
+export const CLE_PROJECTION_ELEVES_COMPLETE = "projection_eleves_en_cours_complete_v3";
 const DELAI_REPRISE_PLANIFICATION_MS = 60_000;
 const DELAI_REGROUPEMENT_COMPTEUR_MS = 5_000;
 
@@ -18,6 +18,7 @@ export type EleveEnCoursLecture = {
   nom?: string;
   prenom?: string;
   date_naissance?: string;
+  licence_saison?: string;
   nom_prenom_normalise: string;
   horaire?: string;
   cours?: string;
@@ -34,6 +35,7 @@ export function projeterEleveEnCours(
     | "nom"
     | "prenom"
     | "date_naissance"
+    | "licence_saison"
     | "nom_prenom_normalise"
     | "horaire"
     | "cours"
@@ -48,6 +50,7 @@ export function projeterEleveEnCours(
     nom: eleve.nom,
     prenom: eleve.prenom,
     date_naissance: eleve.date_naissance,
+    licence_saison: eleve.licence_saison,
     nom_prenom_normalise: eleve.nom_prenom_normalise,
     horaire: eleve.horaire,
     cours: eleve.cours,
