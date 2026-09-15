@@ -11,7 +11,7 @@ function formatRetryAt(value: string | null): string {
 // Bouton admin « Synchroniser le site club » (Phase H). Déclenche à la demande le
 // scrap des abonnés (+ matching) puis l'import des élèves en cours — les mêmes
 // tâches que les crons horaires. Réservé aux admins (garde côté serveur).
-export default function SyncClub() {
+export default function SyncClub({ onTerminee }: { onTerminee?: () => void }) {
   const synchroniser = useAction(api.abo.scrap.synchroniserClub);
   const [enCours, setEnCours] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -23,6 +23,7 @@ export default function SyncClub() {
     setErreur(null);
     try {
       const r = await synchroniser({});
+      onTerminee?.();
       setMessage(
         r.statut === "desactive"
           ? "Aucun import Abonnements n'a été effectué : les imports externes sont bloqués pour la nouvelle saison. Réactivez-les dans Configuration lorsque les données du site club sont prêtes."

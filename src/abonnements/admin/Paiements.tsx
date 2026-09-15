@@ -1,8 +1,10 @@
 import { useMemo, useState } from "react";
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useAction, useMutation } from "convex/react";
+import type { FunctionReturnType } from "convex/server";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { aboError } from "../lib/errors";
+import { SANS_ARGUMENTS, useQueryPonctuelle } from "../../hooks/useQueryPonctuelle";
 
 function formatRetryAt(value: string | null): string {
   if (!value) return "dans quelques minutes";
@@ -15,7 +17,7 @@ function formatRetryAt(value: string | null): string {
 // interne ↔ HelloAsso). Portage de admin-paiements.js. Le statut interne est un
 // suivi ; il n'affecte pas les étapes (le paiement « officiel » vient du scrap).
 
-type Reponse = NonNullable<ReturnType<typeof useQuery<typeof api.abo.paiements.getPaiementsAbo>>>;
+type Reponse = FunctionReturnType<typeof api.abo.paiements.getPaiementsAbo>;
 type Paiement = Reponse["paiements"][number];
 
 const STATUTS: Record<string, string> = {
@@ -40,8 +42,16 @@ function messageProbleme(p: Paiement): string {
     : "⚠ Remboursé sur HelloAsso mais pas marqué « Remboursé » ici";
 }
 
-export default function Paiements() {
-  const reponse = useQuery(api.abo.paiements.getPaiementsAbo);
+export default function Paiements({ versionSources = 0 }: { versionSources?: number }) {
+  const {
+    data: reponse,
+    erreur: erreurChargement,
+    recharger,
+  } = useQueryPonctuelle(
+    api.abo.paiements.getPaiementsAbo,
+    SANS_ARGUMENTS,
+    versionSources,
+  );
   const setStatut = useMutation(api.abo.paiements.setStatutPaiementAbo);
   const enregistrerLien = useMutation(api.abo.paiements.enregistrerLienAbo);
   const synchroniser = useAction(api.abo.paiements.synchroniserPaiementsAbo);
@@ -75,6 +85,7 @@ export default function Paiements() {
     setSync("Synchronisation…");
     try {
       const r = await synchroniser({});
+      await recharger();
       setSync(
         r.statut === "skipped"
           ? `Synchronisation déjà lancée récemment. Réessayez à partir de ${formatRetryAt(r.retryAt)}.`
@@ -87,9 +98,24 @@ export default function Paiements() {
     }
   }
 
-  if (reponse === undefined) return <p>Chargement…</p>;
+  if (reponse === undefined) {
+    return <p>{erreurChargement ? "Impossible de charger les paiements." : "Chargement…"}</p>;
+  }
   if (!reponse.configured) {
-    return <ConfigLien enregistrer={enregistrerLien} />;
+    return (
+      <>
+        <ConfigLien enregistrer={async (args) => {
+          const resultat = await enregistrerLien(args);
+          await recharger();
+          return resultat;
+        }} />
+        {erreurChargement !== null && (
+          <p className="abo-admin-status abo-admin-status--error" role="alert">
+            Le lien est enregistré, mais l'actualisation a échoué. Rechargez l'affichage.
+          </p>
+        )}
+      </>
+    );
   }
 
   const compter = (s: string) => paiements.filter((p) => p.statut_local === s).length;
@@ -105,8 +131,17 @@ export default function Paiements() {
         <button type="button" className="abo-admin-button abo-admin-button--secondary" onClick={lancerSync}>
           🔄 Synchroniser maintenant
         </button>
+        <button type="button" className="abo-admin-button" onClick={() => void recharger()}>
+          Actualiser l'affichage
+        </button>
         {sync && <span className="abo-admin-status">{sync}</span>}
       </div>
+
+      {erreurChargement !== null && (
+        <p className="abo-admin-status abo-admin-status--error" role="alert">
+          L'actualisation des paiements a échoué. Les données affichées peuvent être anciennes.
+        </p>
+      )}
 
       {nbProblemes > 0 && (
         <p className="abo-admin-status abo-admin-status--warning">
@@ -163,7 +198,13 @@ export default function Paiements() {
           <p className="abo-admin-empty">Aucun paiement ne correspond.</p>
         ) : (
           filtres.map((p) => (
-            <Card key={p.id} p={p} adminUrl={reponse.adminUrl} setStatut={setStatut} />
+            <Card
+              key={p.id}
+              p={p}
+              adminUrl={reponse.adminUrl}
+              setStatut={setStatut}
+              onMisAJour={recharger}
+            />
           ))
         )}
       </div>
@@ -176,10 +217,12 @@ function Card({
   p,
   adminUrl,
   setStatut,
+  onMisAJour,
 }: {
   p: Paiement;
   adminUrl: string | null;
   setStatut: ReturnType<typeof useMutation<typeof api.abo.paiements.setStatutPaiementAbo>>;
+  onMisAJour: () => Promise<Reponse | undefined>;
 }) {
   const [pending, setPending] = useState<string | null>(null);
   const [comment, setComment] = useState(p.commentaire ?? "");
@@ -199,6 +242,7 @@ function Card({
         statut: s as "a_traiter" | "traite" | "rembourse" | "en_attente",
         commentaire: c,
       });
+      await onMisAJour();
       setPending(null);
     } catch (e) {
       setErr(aboError(e).message);
@@ -339,7 +383,7 @@ function Card({
 function ConfigLien({
   enregistrer,
 }: {
-  enregistrer: ReturnType<typeof useMutation<typeof api.abo.paiements.enregistrerLienAbo>>;
+  enregistrer: (args: { url: string }) => Promise<unknown>;
 }) {
   const [url, setUrl] = useState("");
   const [msg, setMsg] = useState<string | null>(null);

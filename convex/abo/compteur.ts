@@ -1165,10 +1165,17 @@ export const remplacerElevesEnCours = internalMutation({
       }
     }
 
-    const cache = snapshotModifie ? null : await ctx.db
-      .query("abo_compteur_public_cache")
-      .withIndex("by_cle", (q) => q.eq("cle", "courant")).first();
-    if (snapshotModifie || !cache) await programmerRafraichissementCompteurPublic(ctx);
+    const [cache, marqueur] = snapshotModifie
+      ? [null, null]
+      : await Promise.all([
+          ctx.db.query("abo_compteur_public_cache")
+            .withIndex("by_cle", (q) => q.eq("cle", "courant")).first(),
+          ctx.db.query("abo_app_config")
+            .withIndex("by_cle", (q) => q.eq("cle", CLE_COMPTEUR_A_RECALCULER)).first(),
+        ]);
+    if (snapshotModifie || !cache || marqueur) {
+      await programmerRafraichissementCompteurPublic(ctx);
+    }
     return { avecLicence, sansLicence };
   },
 });
