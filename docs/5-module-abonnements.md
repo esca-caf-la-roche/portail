@@ -292,6 +292,18 @@ tout en conservant le dernier résultat visible, puis relue une seule fois à la
 fin. Les écrans Attente et Approbations partagent une projection distincte des
 seuls dossiers traités et ne lisent jamais les transactions.
 
+Les vues volumineuses qui déclenchent elles-mêmes une synchronisation
+(`getDossiersAdmin`, `getPaiementsAbo`, `getElevesEnCours` et
+`getElevesLicenceInvalide`) utilisent un chargement ponctuel. Elles sont
+rechargées une seule fois après une synchronisation réellement exécutée
+(`done`) ou une décision manuelle ; un verrou qui répond `skipped` ne provoque
+aucune relecture. Ainsi,
+elles ne restent pas abonnées pendant les écritures par lots. Les petits états
+de synchronisation et les compteurs matérialisés restent réactifs. Un bouton
+permet aussi une actualisation explicite ; au retour au premier plan, une vue
+âgée d'au moins cinq minutes se recharge une fois pour intégrer les décisions
+d'un autre gestionnaire sans maintenir un abonnement coûteux.
+
 | Déclencheur | Action | Sources |
 |---|---|---|
 | Validation des paiements des cours | `api.abo.sync.syncPourPaiements` | HelloAsso |
@@ -326,8 +338,11 @@ d'attente ». Les abonnements suivent le contrat du compteur du site : statuts
 `Oui` et `Non`, hors `Bloqué` et `Inconnu`. Les mutations des sources posent un marqueur
 d'invalidation durable uniquement lorsqu'une donnée métier change réellement.
 Les lots d'un import complet partagent ce marqueur : la fin de l'import ne
-programme qu'un seul recalcul, après les suppressions d'absents, puis le
-recalcul efface le marqueur dans la même transaction. Un import interrompu reste
+programme qu'un seul recalcul, regroupé sur une fenêtre de cinq secondes après
+les suppressions d'absents, puis le recalcul efface le marqueur dans la même
+transaction. Le marqueur conserve l'identifiant de la fonction planifiée : une
+planification encore active est réutilisée, tandis qu'une tâche terminée,
+annulée ou en échec est replanifiée au prochain passage pertinent. Un import interrompu reste
 donc à recalculer après reprise, tandis qu'un import identique ne relit pas les
 sources si les caches existent.
 

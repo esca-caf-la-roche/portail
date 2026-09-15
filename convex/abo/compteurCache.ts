@@ -9,8 +9,8 @@ export const CLE_COMPTEUR_A_RECALCULER = "compteur_public_a_recalculer";
 // La version fait retomber automatiquement les lectures sur la source pendant
 // l'enrichissement d'une projection déjà remplie par une version antérieure.
 export const CLE_PROJECTION_ELEVES_COMPLETE = "projection_eleves_en_cours_complete_v3";
-const DELAI_REPRISE_PLANIFICATION_MS = 60_000;
 const DELAI_REGROUPEMENT_COMPTEUR_MS = 5_000;
+const PLANIFICATION_COMPTEUR_PREFIXE = "planifie:";
 
 export type EleveEnCoursLecture = {
   source_eleve_id: Id<"abo_eleves_en_cours">;
@@ -123,26 +123,32 @@ export async function invaliderCompteurPublic(ctx: MutationCtx): Promise<boolean
 export async function programmerRafraichissementCompteurPublic(
   ctx: MutationCtx,
 ): Promise<void> {
-  const maintenant = Date.now();
   const marqueur = await ctx.db.query("abo_app_config")
     .withIndex("by_cle", (q) => q.eq("cle", CLE_COMPTEUR_A_RECALCULER)).first();
-  const planificationRecente = marqueur?.valeur === "planifie" &&
-    marqueur.updated_at !== undefined &&
-    maintenant - Date.parse(marqueur.updated_at) < DELAI_REPRISE_PLANIFICATION_MS;
-  if (planificationRecente) return;
-
-  const planification = {
-    valeur: "planifie",
-    updated_at: new Date(maintenant).toISOString(),
-  };
-  if (marqueur) await ctx.db.patch(marqueur._id, planification);
-  else await ctx.db.insert("abo_app_config", {
-    cle: CLE_COMPTEUR_A_RECALCULER,
-    ...planification,
-  });
-  await ctx.scheduler.runAfter(
+  if (marqueur?.valeur?.startsWith(PLANIFICATION_COMPTEUR_PREFIXE)) {
+    const planificationId = marqueur.valeur.slice(
+      PLANIFICATION_COMPTEUR_PREFIXE.length,
+    ) as Id<"_scheduled_functions">;
+    const planification = await ctx.db.system.get("_scheduled_functions", planificationId);
+    if (planification?.state.kind === "pending" || planification?.state.kind === "inProgress") {
+      return;
+    }
+  }
+  const planificationId = await ctx.scheduler.runAfter(
     DELAI_REGROUPEMENT_COMPTEUR_MS,
     internal.abo.compteur.rafraichirCompteurPublic,
     { siNecessaire: true },
   );
+  const planification = {
+    valeur: `${PLANIFICATION_COMPTEUR_PREFIXE}${planificationId}`,
+    updated_at: new Date().toISOString(),
+  };
+  if (marqueur) {
+    await ctx.db.patch(marqueur._id, planification);
+  } else {
+    await ctx.db.insert("abo_app_config", {
+      cle: CLE_COMPTEUR_A_RECALCULER,
+      ...planification,
+    });
+  }
 }

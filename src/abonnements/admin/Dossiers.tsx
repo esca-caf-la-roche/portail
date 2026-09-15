@@ -8,6 +8,7 @@ import CompteurJauge from "./CompteurJauge";
 import SyncClub from "./SyncClub";
 import FilDiscussion from "../FilDiscussion";
 import { useMaintenantMinute } from "../lib/useMaintenantMinute";
+import { SANS_ARGUMENTS, useQueryPonctuelle } from "../../hooks/useQueryPonctuelle";
 
 // Vue admin « Dossiers » : jauge compteur en tête, cartes filtrées (défaut
 // « nouvelles demandes »), validation PAR PERSONNE (boutons de statut) et détail
@@ -55,11 +56,25 @@ function personnesParPriorite(personnes: Personne[]) {
   });
 }
 
-export default function Dossiers({ onVoirTests }: { onVoirTests: (licence: string) => void }) {
+export default function Dossiers({
+  onVoirTests,
+  versionSources,
+}: {
+  onVoirTests: (licence: string) => void;
+  versionSources: number;
+}) {
   const maintenantMs = useMaintenantMinute();
-  const dossiers = useQuery(api.abo.demandes.getDossiersAdmin);
+  const {
+    data: dossiers,
+    erreur: erreurDossiers,
+    recharger: rechargerDossiers,
+  } = useQueryPonctuelle(api.abo.demandes.getDossiersAdmin, SANS_ARGUMENTS, versionSources);
   const suppressions = useQuery(api.abo.demandes.getSuppressions);
-  const eleves = useQuery(api.abo.compteur.getElevesEnCours);
+  const {
+    data: eleves,
+    erreur: erreurEleves,
+    recharger: rechargerEleves,
+  } = useQueryPonctuelle(api.abo.compteur.getElevesEnCours, SANS_ARGUMENTS, versionSources);
   const compteur = useQuery(api.abo.compteur.compteurPublic, { maintenantMs });
   const nonLus = useQuery(api.abo.messages.messagesNonLusAdmin);
   const validerPersonne = useMutation(api.abo.demandes.validerPersonne);
@@ -163,6 +178,7 @@ export default function Dossiers({ onVoirTests }: { onVoirTests: (licence: strin
         decision,
         ...(autoriserDepassementPlafond ? { autoriserDepassementPlafond: true } : {}),
       });
+      await rechargerDossiers();
       setErreurs((prev) => {
         const next = { ...prev };
         delete next[personne.id];
@@ -197,13 +213,35 @@ export default function Dossiers({ onVoirTests }: { onVoirTests: (licence: strin
   }
 
   if (dossiers === undefined) {
+    if (erreurDossiers) {
+      return <p className="abo-admin-status abo-admin-status--error">Impossible de charger les dossiers.</p>;
+    }
     return <p>Chargement…</p>;
   }
 
   return (
     <div className="abo-admin-section">
       <CompteurJauge />
-      <SyncClub />
+      <SyncClub onTerminee={() => {
+        void rechargerDossiers();
+        void rechargerEleves();
+      }} />
+      <button type="button" className="abo-admin-button" onClick={() => {
+        void rechargerDossiers();
+        void rechargerEleves();
+      }}>
+        Actualiser l'affichage
+      </button>
+      {erreurDossiers !== null && (
+        <p className="abo-admin-status abo-admin-status--error" role="alert">
+          L'actualisation des dossiers a échoué. Les données affichées peuvent être anciennes.
+        </p>
+      )}
+      {erreurEleves !== null && (
+        <p className="abo-admin-status abo-admin-status--error" role="alert">
+          L'actualisation des élèves en cours a échoué. Les badges affichés peuvent être anciens.
+        </p>
+      )}
       <section className="abo-admin-card abo-admin-card--attention">
         <h2>Décider les demandes du portail</h2>
         <p className="abo-admin-rules-lead"><strong>Votre rôle ici :</strong> décider la demande de chaque personne dans le portail. Cette page ne modifie jamais le site du club.</p>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import "../abo.css";
@@ -40,6 +40,11 @@ export default function AboAdmin() {
   const reglementsATraiter = useQuery(api.abo.reglements.compterActions, {});
   const [vue, setVue] = useState<Vue>("dossiers");
   const [licenceTest, setLicenceTest] = useState<string | null>(null);
+  const [versionSources, setVersionSources] = useState(0);
+  const actualiserVuesSources = useCallback(
+    () => setVersionSources((version) => version + 1),
+    [],
+  );
 
   const compteurs: Partial<Record<Vue, number>> = {
     messages: messagesNonLus?.reduce((total, message) => total + message.count, 0),
@@ -66,7 +71,7 @@ export default function AboAdmin() {
         <p className="subtitle">Gestion des nouvelles inscriptions aux créneaux autonomes.</p>
       </header>
 
-      <SyncStatusPanel />
+      <SyncStatusPanel onTerminee={actualiserVuesSources} />
 
       <nav className="abo-admin-nav">
         {TABS.filter((t) => t.id !== "config" || peutGererConfiguration === true).map((t) => {
@@ -94,6 +99,7 @@ export default function AboAdmin() {
       <div className="abo-admin-view">
         {vue === "dossiers" ? (
           <Dossiers
+            versionSources={versionSources}
             onVoirTests={(licence) => {
               setLicenceTest(licence);
               setVue("tests");
@@ -112,7 +118,7 @@ export default function AboAdmin() {
         ) : vue === "anomalies" ? (
           <Anomalies />
         ) : vue === "paiements" ? (
-          <Paiements />
+          <Paiements versionSources={versionSources} />
         ) : vue === "config" ? (
           <Configuration />
         ) : (

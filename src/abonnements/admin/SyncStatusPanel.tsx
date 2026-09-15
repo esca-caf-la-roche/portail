@@ -88,7 +88,7 @@ function resumerResultats(resultats: ResultatsSync) {
   return `Vérification terminée : ${reussites} source${reussites > 1 ? "s ont" : " a"} été mise${reussites > 1 ? "s" : ""} à jour.`;
 }
 
-export default function SyncStatusPanel() {
+export default function SyncStatusPanel({ onTerminee }: { onTerminee?: () => void }) {
   const maintenantMs = useMaintenantMinute();
   const etatSources = useQuery(api.abo.sync.getStatutSyncAbo, {});
   const statut = etatSources === undefined ? undefined : {
@@ -118,6 +118,9 @@ export default function SyncStatusPanel() {
       const nouveauxResultats = await syncAbo({});
       setResultats(nouveauxResultats);
       setAnnonce(resumerResultats(nouveauxResultats));
+      if (Object.values(nouveauxResultats).some((resultat) => resultat === "done")) {
+        onTerminee?.();
+      }
     } catch (error) {
       const detail = messageErreur(error);
       setErreur(detail);
@@ -125,7 +128,7 @@ export default function SyncStatusPanel() {
     } finally {
       setEnCours(false);
     }
-  }, [syncAbo]);
+  }, [onTerminee, syncAbo]);
 
   useEffect(() => {
     if (verificationAutomatiqueLancee.current) return;

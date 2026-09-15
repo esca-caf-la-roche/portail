@@ -6,6 +6,7 @@ import type { Id } from "../../convex/_generated/dataModel";
 import { useMaintenantJourParis } from "../abonnements/lib/useMaintenantJourParis";
 import { useMaintenantMinute } from "../abonnements/lib/useMaintenantMinute";
 import { actualiserStatutSource } from "../../convex/abo/syncStatus";
+import { useQueryPonctuelle } from "../hooks/useQueryPonctuelle";
 import {
   emailsUniques,
   normaliserAdresseEmailUnique,
@@ -259,8 +260,17 @@ function CoursRepliable({
 export default function LicencesEnCours() {
   const maintenantJour = useMaintenantJourParis();
   const maintenantMs = useMaintenantMinute();
+  const argumentsEleves = useMemo(() => ({ maintenantJour }), [maintenantJour]);
   const [afficherCandidats, setAfficherCandidats] = useState(false);
-  const data = useQuery(api.abo.licencesEnCours.getElevesLicenceInvalide, { maintenantJour });
+  const {
+    data,
+    erreur: erreurChargement,
+    recharger,
+  } = useQueryPonctuelle(
+    api.abo.licencesEnCours.getElevesLicenceInvalide,
+    argumentsEleves,
+    maintenantJour,
+  );
   const rechercheCandidatsActive = afficherCandidats && !!data?.eleves.some((eleve) => !eleve.traite);
   const candidats = useQuery(
     api.abo.licencesEnCours.getCandidatsLicences,
@@ -301,12 +311,13 @@ export default function LicencesEnCours() {
         } else {
           setSyncStatut("ok");
         }
+        if (resultat.eleves === "done") void recharger();
       })
       .catch((err) => {
         setSyncStatut("erreur");
         setSyncMsg(errMessage(err, "Échec de la synchronisation avec le site club."));
       });
-  }, [synchroniser]);
+  }, [recharger, synchroniser]);
 
   const eleves = useMemo<EleveLicence[]>(() => {
     if (!data) return [];
@@ -395,6 +406,7 @@ export default function LicencesEnCours() {
     setTraitementEnCours(eleve.eleve_id);
     try {
       await definirTraite({ eleveId: eleve.eleve_id, traite: !eleve.traite });
+      await recharger();
       if (!eleve.traite) {
         setSelection((precedente) => {
           if (!precedente.has(eleve.eleve_id)) return precedente;
@@ -409,6 +421,10 @@ export default function LicencesEnCours() {
       setTraitementEnCours(null);
     }
   };
+
+  if (data === undefined && erreurChargement) {
+    return <p className="error-message">Impossible de charger les élèves sans licence.</p>;
+  }
 
   const basculerRepli = (cle: string, setReplis: Dispatch<SetStateAction<Set<string>>>) => {
     setReplis((precedents) => {
@@ -432,6 +448,15 @@ export default function LicencesEnCours() {
           {syncStatut === "erreur" && `Synchronisation échouée : ${syncMsg} — données potentiellement obsolètes.`}
         </p>
       </header>
+
+      <button type="button" className="btn btn-secondary" onClick={() => void recharger()}>
+        Actualiser l'affichage
+      </button>
+      {erreurChargement !== null && (
+        <p className="error-message" role="alert">
+          L'actualisation de la liste a échoué. Les données affichées peuvent être anciennes.
+        </p>
+      )}
 
       <section className="licences-cours-syncs" aria-label="État des synchronisations, heures de Paris">
         {([

@@ -164,6 +164,7 @@ describe("recalcul du compteur après les imports", () => {
     await t.mutation(internal.abo.compteur.remplacerElevesEnCours, { ...eleves, lignes: [] });
     expect(await planifies()).toBe(1);
     await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect(await cache(t)).toMatchObject({ occupe: 0 });
   });
 
   test("un snapshot élèves identique reconstruit un cache manquant", async () => {
@@ -223,6 +224,35 @@ describe("recalcul du compteur après les imports", () => {
       grimpeurs_abonnement: 5,
       grimpeurs_cours_et_abonnement: 2,
     });
+  });
+
+  test("un snapshot identique replanifie un recalcul précédent qui n'est plus actif", async () => {
+    vi.useFakeTimers();
+    const t = creerTest();
+    await t.mutation(internal.abo.compteur.rafraichirCompteurPublic, {});
+    await t.run(async (ctx) => {
+      const planificationId = await ctx.scheduler.runAfter(
+        60_000,
+        internal.abo.compteur.rafraichirCompteurPublic,
+        { siNecessaire: true },
+      );
+      await ctx.scheduler.cancel(planificationId);
+      await ctx.db.insert("abo_app_config", {
+        cle: "compteur_public_a_recalculer",
+        valeur: `planifie:${planificationId}`,
+      });
+    });
+
+    await t.mutation(internal.abo.compteur.remplacerElevesEnCours, {
+      saison: eleves.saison,
+      lignes: [],
+    });
+    const planifications = await t.run(async (ctx) =>
+      await ctx.db.system.query("_scheduled_functions").collect(),
+    );
+    expect(planifications.filter((item) => item.state.kind === "pending")).toHaveLength(1);
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect(await invalidation(t)).toBeNull();
   });
 
   test("les queries admin servent le compteur et les anomalies matérialisés sans changer leur contrat", async () => {
