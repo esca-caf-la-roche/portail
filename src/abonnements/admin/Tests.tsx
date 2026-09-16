@@ -7,9 +7,9 @@ import { cleJour, formatDateJour, formatJour, formatTranche } from "../lib/tests
 import SuiviTestsModal from "./SuiviTestsModal";
 
 // Vue admin « Tests d'autonomie » : gestion des disponibilités + inscrits.
-// Chaque admin propose ses créneaux (jour + plage). La capacité par slot de 20 min
-// se cumule au prorata des encadrants présents (calcul côté serveur, tranches de
-// 40/60 min). Supprimer un créneau peut déloger des candidats en surplus (LIFO) —
+// Chaque admin propose ses disponibilités (jour + plage). Chaque slot fixe de 20 min
+// accueille 2 personnes par encadrant présent ; les capacités se cumulent.
+// Supprimer une disponibilité peut déloger des candidats en surplus (LIFO) —
 // la mutation renvoie le nombre annulé. Portage de src/pages/admin-tests.js.
 
 // Grille de sélection : slots de 20 min (minutes depuis minuit). 8h00 → 22h40.
@@ -75,9 +75,9 @@ export default function Tests({ licenceInitiale }: { licenceInitiale: string | n
   return (
     <div className="abo-admin-section">
       <p className="abo-admin-intro">
-        Proposez vos disponibilités : un encadrant teste 2 personnes par tranche
-        de 20 min ; la capacité de plusieurs encadrants se cumule. Les candidats
-        réservent une tranche de 40 ou 60 min (répartition fine le jour J).
+        Proposez vos disponibilités : chaque créneau fixe de 20 min accueille
+        2 personnes par encadrant présent. Quand plusieurs encadrants sont disponibles
+        au même horaire, leurs capacités se cumulent.
       </p>
 
       <section className="abo-admin-tests-followup" aria-labelledby="suivi-tests-heading">
@@ -145,13 +145,16 @@ export default function Tests({ licenceInitiale }: { licenceInitiale: string | n
       <hr className="abo-admin-separator" />
 
       <section>
-        <h3 className="abo-admin-subheading">Inscrits par créneau</h3>
+        <h3 className="abo-admin-subheading">Inscrits par créneau de 20 min</h3>
         <Inscrits vue={vueCreneaux} />
       </section>
 
       <hr className="abo-admin-separator" />
 
-      <ArchiveTests licenceInitiale={licenceInitiale} />
+      <ArchiveTests
+        licenceInitiale={licenceInitiale}
+        instantReference={borneCreneaux.instantReference}
+      />
     </div>
   );
 }
@@ -164,13 +167,16 @@ type CandidatTest = NonNullable<
   ReturnType<typeof useQuery<typeof api.abo.testDocuments.rechercherCandidatParLicence>>
 >[number];
 
-function ArchiveTests({ licenceInitiale }: { licenceInitiale: string | null }) {
+function ArchiveTests({
+  licenceInitiale,
+  instantReference,
+}: {
+  licenceInitiale: string | null;
+  instantReference: string;
+}) {
   const [filtre, setFiltre] = useState<FiltreArchive>("a_traiter");
   const [licenceSaisie, setLicenceSaisie] = useState("");
   const [licenceRecherchee, setLicenceRecherchee] = useState<string | null>(null);
-  // L'heure est figée à l'ouverture : un rechargement suffit lorsque le créneau
-  // commence, sans abonnement Convex périodique.
-  const [instantReference] = useState(() => new Date().toISOString());
   const derniereLicenceInitiale = useRef<string | null>(null);
   const archives = useQuery(api.abo.testDocuments.listArchives, { filtre });
   const toutesArchives = useQuery(api.abo.testDocuments.listArchives, { filtre: "tous" });
@@ -309,7 +315,7 @@ function ListePersonnesAEnregistrer({
     <section className="abo-admin-subsection abo-admin-tests-step">
       <h4 className="abo-admin-subheading">Tests d'autonomie à enregistrer</h4>
       <p className="abo-admin-meta">
-        Les candidats apparaissent dès le début de leur créneau et restent affichés après celui-ci.
+        Les candidats apparaissent à la fin de leur créneau et restent ensuite affichés.
       </p>
       {reservations === undefined ? (
         <p>Chargement…</p>
@@ -581,10 +587,11 @@ function PickerCreneau({
   const [busy, setBusy] = useState(false);
 
   function cliquer(min: number) {
-    // 1er clic = début ; 2e clic (après le début) = fin ; sinon on redémarre.
-    if (debut == null || fin != null || min <= debut) {
+    // Le premier clic sélectionne un créneau de 20 min. Un clic ultérieur après
+    // la sélection étend la plage ; un clic dedans ou avant redémarre à cet horaire.
+    if (debut == null || min <= (fin ?? debut)) {
       setDebut(min);
-      setFin(null);
+      setFin(min);
     } else {
       setFin(min);
     }
@@ -615,7 +622,7 @@ function PickerCreneau({
     ? `${minToLabel(debut!)} → ${minToLabel(fin! + 20)} · ${dureeLabel(fin! + 20 - debut!)}`
     : debut != null
       ? `Début ${minToLabel(debut)} — cliquez l'heure de fin.`
-      : "Cliquez l'heure de début.";
+      : "Cliquez un créneau de 20 min, puis étendez la plage si nécessaire.";
 
   const heures: number[] = [];
   for (let h = Math.floor(SLOT_MIN / 60); h <= Math.floor(SLOT_MAX / 60); h++) {
@@ -860,7 +867,7 @@ function Inscrits({ vue }: { vue: VueCreneauxAdmin | undefined }) {
         role="group"
         aria-label={`${libellePrises(total.prises)} sur ${libellePlaces(total.capacite)}, ${libellePlaces(total.disponibles)} disponible${total.disponibles === 1 ? "" : "s"} au total`}
       >
-        <p className="abo-admin-test-capacity-summary-title">Toutes les tranches</p>
+        <p className="abo-admin-test-capacity-summary-title">Tous les créneaux de 20 min</p>
         <p className="abo-admin-test-capacity-main">
           <strong>{total.prises} / {total.capacite}</strong>
           <span>place{total.prises === 1 ? "" : "s"} prise{total.prises === 1 ? "" : "s"}</span>

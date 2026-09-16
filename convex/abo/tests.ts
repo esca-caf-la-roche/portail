@@ -2,14 +2,13 @@
 //   - test_autonomie.sql (tables abo_test_creneaux / abo_test_reservations)
 //   - test_autonomie_rpc.sql + *_tranches.sql + *_tranches_20min.sql (capacité,
 //     réservation, surbooking, inscrits) — modèle DÉFINITIF : slots de 20 min,
-//     2 candidats / encadrant / slot, tranches proposées de 40 ou 60 min.
+//     2 candidats / encadrant / slot.
 //
-// Chaque admin propose ses créneaux (jour + plage horaire, alignés 20 min, ≥ 40
-// min). On fusionne les dispos de TOUS les encadrants en plages continues de slots
-// de 20 min (capacité d'un slot = 2 × nb d'admins distincts qui le couvrent), puis
-// on découpe chaque plage en tranches de 3 slots (60 min) puis 2 slots (40 min),
-// en privilégiant 60. Le candidat réserve UNE tranche (anonyme : aucune identité
-// d'admin exposée — la répartition fine se fait le jour J sur place).
+// Chaque admin propose ses créneaux (jour + plage horaire, alignés 20 min, ≥ 20
+// min). On projette les disponibilités de TOUS les encadrants en slots atomiques
+// de 20 min (capacité = 2 × nb d'admins distincts qui couvrent le slot). Chaque
+// slot reste une proposition indépendante et stable. Le candidat réserve
+// UN slot, sans qu'aucune identité d'admin ne lui soit exposée.
 //
 // Fuseau : un créneau est saisi en heure de PARIS (date_jour + heure) ; les
 // tranches sont des instants (ISO UTC) calculés via parisWallToUtcMs (gère
@@ -112,10 +111,9 @@ function estReservationActive(r: Doc<"abo_test_reservations">): boolean {
   return r.statut === "active";
 }
 
-// ── Tranches (40/60 min) avec capacité cumulée ───────────────────────
-// Reproduit test_tranches() : 1) slots de 20 min (cap = 2 × admins distincts) sur
-// [début, fin-20min] ; 2) plages continues (slots espacés de 20 min) ; 3) découpe
-// en tranches de 3 slots (60) puis 2 slots (40), 60 privilégié.
+// ── Slots atomiques de 20 min ────────────────────────────────────────
+// Une clé de slot ne dépend que de son instant de début. Ajouter, chevaucher ou
+// retirer une disponibilité ne redécoupe donc jamais les autres propositions.
 interface Tranche {
   tranche_debut: string; // ISO UTC (début)
   tranche_fin: string; // ISO UTC (fin)
@@ -141,64 +139,13 @@ async function calculerTranchesDepuisCreneaux(
       set.add(c.admin_id);
     }
   }
-  if (parSlot.size === 0) return [];
-
-  const slots = [...parSlot.keys()].sort((a, b) => a - b);
-
-  // 2. Plages continues (slots espacés d'exactement 20 min).
-  const runs: number[][] = [];
-  let courant: number[] = [];
-  for (const t of slots) {
-    if (courant.length > 0 && t !== courant[courant.length - 1] + SLOT_MS) {
-      runs.push(courant);
-      courant = [];
-    }
-    courant.push(t);
-  }
-  if (courant.length > 0) runs.push(courant);
-
-  // 3. Découpe de chaque plage : k slots → 60 privilégié, reste en 40.
-  const out: Tranche[] = [];
-  for (const run of runs) {
-    const k = run.length;
-    let sizes: number[];
-    if (k === 1) {
-      sizes = [1]; // garde-fou (créneau ≥ 40 min en théorie)
-    } else {
-      let nb3: number;
-      let nb2: number;
-      if (k % 3 === 0) {
-        nb3 = k / 3;
-        nb2 = 0;
-      } else if (k % 3 === 1) {
-        nb3 = Math.floor(k / 3) - 1;
-        nb2 = 2;
-      } else {
-        nb3 = Math.floor(k / 3);
-        nb2 = 1;
-      }
-      sizes = [
-        ...Array<number>(nb3).fill(3),
-        ...Array<number>(nb2).fill(2),
-      ];
-    }
-
-    let i = 0;
-    for (const sz of sizes) {
-      let somme = 0;
-      for (let j = 0; j < sz; j++) {
-        somme += 2 * (parSlot.get(run[i + j])?.size ?? 0);
-      }
-      out.push({
-        tranche_debut: new Date(run[i]).toISOString(),
-        tranche_fin: new Date(run[i + sz - 1] + SLOT_MS).toISOString(),
-        capacite: somme,
-      });
-      i += sz;
-    }
-  }
-  out.sort((a, b) => a.tranche_debut.localeCompare(b.tranche_debut));
-  return out;
+  return [...parSlot.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([debut, encadrants]) => ({
+      tranche_debut: new Date(debut).toISOString(),
+      tranche_fin: new Date(debut + SLOT_MS).toISOString(),
+      capacite: 2 * encadrants.size,
+    }));
 }
 
 async function calculerTranches(ctx: QueryCtx | MutationCtx): Promise<Tranche[]> {
@@ -214,19 +161,159 @@ async function calculerTranches(ctx: QueryCtx | MutationCtx): Promise<Tranche[]>
   return await calculerTranchesDepuisCreneaux(creneaux);
 }
 
-// Nb de réservations actives par tranche (clé = ISO début).
-async function reservationsActivesParTranche(
-  ctx: QueryCtx | MutationCtx,
-): Promise<Map<string, number>> {
-  const actives = await ctx.db
-    .query("abo_test_reservations")
-    .collect();
-  const parTranche = new Map<string, number>();
-  for (const r of actives) {
-    if (!estReservationActive(r)) continue;
-    parTranche.set(r.tranche, (parTranche.get(r.tranche) ?? 0) + 1);
+type AllocationReservations = {
+  parReservation: Map<Id<"abo_test_reservations">, string>;
+  prisesParTranche: Map<string, number>;
+  nonAffectees: Doc<"abo_test_reservations">[];
+  hypothetiquesAffectees: number;
+};
+
+function finReservationMs(reservation: Doc<"abo_test_reservations">): number | null {
+  const debut = Date.parse(reservation.tranche);
+  if (!Number.isFinite(debut)) return null;
+  const fin = reservation.tranche_fin ? Date.parse(reservation.tranche_fin) : Number.NaN;
+  return Number.isFinite(fin) && fin > debut ? fin : debut + 3 * SLOT_MS;
+}
+
+type ReservationAAllouer = {
+  cle: string;
+  reservation: Doc<"abo_test_reservations"> | null;
+  creationTime: number;
+  slotsPossibles: string[];
+};
+
+// Les réservations historiques 40/60 min restent inchangées en base. Un
+// b-matching par chemins augmentants traite toutes les réservations par
+// ancienneté globale : un slot exact récent peut déplacer un legacy ancien vers
+// un autre slot, sans jamais sacrifier cet ancien. Le surplus est donc LIFO.
+function allouerReservations(
+  tranches: Tranche[],
+  reservations: Doc<"abo_test_reservations">[],
+  hypothetiques: string[] = [],
+): AllocationReservations {
+  const capacites = new Map(tranches.map((tranche) => [tranche.tranche_debut, tranche.capacite]));
+  const candidats: ReservationAAllouer[] = [];
+  for (const reservation of reservations.filter(estReservationActive)) {
+    const debut = Date.parse(reservation.tranche);
+    const fin = finReservationMs(reservation);
+    const exacte = fin !== null && fin === debut + SLOT_MS;
+    const slotsPossibles = fin === null ? [] : tranches
+      .filter((tranche) => {
+        const slotDebut = Date.parse(tranche.tranche_debut);
+        return exacte
+          ? tranche.tranche_debut === reservation.tranche
+          : slotDebut >= debut && slotDebut + SLOT_MS <= fin;
+      })
+      .map((tranche) => tranche.tranche_debut);
+    candidats.push({
+      cle: reservation._id,
+      reservation,
+      creationTime: reservation._creationTime,
+      slotsPossibles,
+    });
   }
-  return parTranche;
+  hypothetiques.forEach((tranche, index) => {
+    candidats.push({
+      cle: `hypothetique:${index}`,
+      reservation: null,
+      creationTime: Number.MAX_SAFE_INTEGER,
+      slotsPossibles: capacites.has(tranche) ? [tranche] : [],
+    });
+  });
+  candidats.sort((a, b) =>
+    a.creationTime - b.creationTime || a.cle.localeCompare(b.cle)
+  );
+  const candidatsParCle = new Map(candidats.map((candidat) => [candidat.cle, candidat]));
+  const occupantsParTranche = new Map<string, string[]>(
+    tranches.map((tranche) => [tranche.tranche_debut, []]),
+  );
+  const affectationParCle = new Map<string, string>();
+
+  const essayerAffecter = (
+    candidat: ReservationAAllouer,
+    tranchesVisitees: Set<string>,
+  ): boolean => {
+    for (const tranche of candidat.slotsPossibles) {
+      if (tranchesVisitees.has(tranche)) continue;
+      tranchesVisitees.add(tranche);
+      const occupants = occupantsParTranche.get(tranche)!;
+      if (occupants.length < (capacites.get(tranche) ?? 0)) {
+        occupants.push(candidat.cle);
+        affectationParCle.set(candidat.cle, tranche);
+        return true;
+      }
+      for (let index = occupants.length - 1; index >= 0; index--) {
+        const occupant = candidatsParCle.get(occupants[index]);
+        if (!occupant || !essayerAffecter(occupant, tranchesVisitees)) continue;
+        occupants[index] = candidat.cle;
+        affectationParCle.set(candidat.cle, tranche);
+        return true;
+      }
+    }
+    return false;
+  };
+
+  const nonAffectees: Doc<"abo_test_reservations">[] = [];
+  for (const candidat of candidats) {
+    if (!essayerAffecter(candidat, new Set())) {
+      if (candidat.reservation) nonAffectees.push(candidat.reservation);
+    }
+  }
+
+  const parReservation = new Map<Id<"abo_test_reservations">, string>();
+  for (const candidat of candidats) {
+    if (!candidat.reservation) continue;
+    const tranche = affectationParCle.get(candidat.cle);
+    if (tranche) parReservation.set(candidat.reservation._id, tranche);
+  }
+  const prisesParTranche = new Map<string, number>();
+  for (const tranche of parReservation.values()) {
+    prisesParTranche.set(tranche, (prisesParTranche.get(tranche) ?? 0) + 1);
+  }
+  const hypothetiquesAffectees = hypothetiques.reduce(
+    (total, _tranche, index) => total + (affectationParCle.has(`hypothetique:${index}`) ? 1 : 0),
+    0,
+  );
+  return { parReservation, prisesParTranche, nonAffectees, hypothetiquesAffectees };
+}
+
+function placesReservablesParTranche(
+  tranches: Tranche[],
+  reservations: Doc<"abo_test_reservations">[],
+): Map<string, number> {
+  const disponibles = new Map<string, number>();
+  for (const tranche of tranches) {
+    let bas = 0;
+    let haut = tranche.capacite;
+    while (bas < haut) {
+      const milieu = Math.ceil((bas + haut) / 2);
+      const simulation = allouerReservations(
+        tranches,
+        reservations,
+        Array<string>(milieu).fill(tranche.tranche_debut),
+      );
+      if (simulation.hypothetiquesAffectees === milieu) bas = milieu;
+      else haut = milieu - 1;
+    }
+    disponibles.set(tranche.tranche_debut, bas);
+  }
+  return disponibles;
+}
+
+async function reservationsActives(
+  ctx: QueryCtx | MutationCtx,
+): Promise<Doc<"abo_test_reservations">[]> {
+  const reservations = await ctx.db
+    .query("abo_test_reservations")
+    .withIndex("by_statut_and_tranche", (q) => q.eq("statut", "active"))
+    .take(MAX_SUIVI_RESERVATIONS + 1);
+  if (reservations.length > MAX_SUIVI_RESERVATIONS) {
+    throw new ConvexError({
+      code: "ABO_TEST_TROP_DE_RESERVATIONS",
+      message: "Trop de réservations existent pour recalculer les disponibilités.",
+    });
+  }
+  return reservations;
 }
 
 function validerBornesVueCreneaux(args: {
@@ -409,14 +496,15 @@ export const testCreneauxDisponibles = authenticatedQuery({
   handler: async (ctx) => {
     await requireAboIdentity(ctx);
     const tranches = await calculerTranches(ctx);
-    const reserves = await reservationsActivesParTranche(ctx);
+    const reservations = await reservationsActives(ctx);
+    const disponibles = placesReservablesParTranche(tranches, reservations);
     const now = Date.now();
     return tranches
       .map((t) => ({
         tranche_debut: t.tranche_debut,
         tranche_fin: t.tranche_fin,
         capacite: t.capacite,
-        disponible: t.capacite - (reserves.get(t.tranche_debut) ?? 0),
+        disponible: disponibles.get(t.tranche_debut) ?? 0,
       }))
       .filter(
         (t) => new Date(t.tranche_debut).getTime() > now && t.disponible > 0,
@@ -440,14 +528,15 @@ export const disponibilitesPourNotification = internalQuery({
     });
     if (intervalles.length === 0) return [];
     const tranches = await calculerTranches(ctx);
-    const reserves = await reservationsActivesParTranche(ctx);
+    const reservations = await reservationsActives(ctx);
+    const disponibles = placesReservablesParTranche(tranches, reservations);
     const now = Date.now();
     return tranches
       .map((t) => ({
         tranche_debut: t.tranche_debut,
         tranche_fin: t.tranche_fin,
         capacite: t.capacite,
-        disponible: t.capacite - (reserves.get(t.tranche_debut) ?? 0),
+        disponible: disponibles.get(t.tranche_debut) ?? 0,
       }))
       .filter((t) => {
         const debut = new Date(t.tranche_debut).getTime();
@@ -793,10 +882,11 @@ export const reserverTestDirect = authenticatedMutation({
       return null;
     }
     if (await reservationActivePourLicence(ctx, licence)) throw new ConvexError({ code: "P0011", message: "Cette personne a déjà une réservation. Annulez-la pour en changer." });
-    const cible = (await calculerTranches(ctx)).find((t) => t.tranche_debut === args.tranche);
+    const tranches = await calculerTranches(ctx);
+    const cible = tranches.find((t) => t.tranche_debut === args.tranche);
     if (!cible || new Date(cible.tranche_debut).getTime() <= Date.now()) throw new ConvexError({ code: "P0012", message: "Ce créneau n'existe pas, ou il est passé." });
-    const reserves = await reservationsActivesParTranche(ctx);
-    if ((reserves.get(args.tranche) ?? 0) >= cible.capacite) throw new ConvexError({ code: "P0013", message: "Ce créneau est complet, choisissez-en un autre." });
+    const allocation = allouerReservations(tranches, await reservationsActives(ctx), [args.tranche]);
+    if (allocation.hypothetiquesAffectees !== 1) throw new ConvexError({ code: "P0013", message: "Ce créneau est complet, choisissez-en un autre." });
     const rappelPrevuMs = Math.max(
       Date.now(),
       new Date(cible.tranche_debut).getTime() - 24 * 60 * 60 * 1000,
@@ -881,8 +971,8 @@ export const reserverTest = authenticatedMutation({
         message: "Ce créneau est passé, choisissez-en un autre.",
       });
     }
-    const reserves = await reservationsActivesParTranche(ctx);
-    if ((reserves.get(args.tranche) ?? 0) >= cible.capacite) {
+    const allocation = allouerReservations(tranches, await reservationsActives(ctx), [args.tranche]);
+    if (allocation.hypothetiquesAffectees !== 1) {
       throw new ConvexError({
         code: "P0013",
         message: "Ce créneau est complet, choisissez-en un autre.",
@@ -1124,8 +1214,9 @@ export const vueCreneauxAdmin = authenticatedQuery({
       staffActifs,
       id.userId,
     );
-    const tranchesCalculees = (await calculerTranchesDepuisCreneaux(creneauxActifs))
-      .filter((tranche) => Date.parse(tranche.tranche_debut) > instantReferenceMs);
+    const toutesTranches = await calculerTranchesDepuisCreneaux(creneauxActifs);
+    const tranchesCalculees = toutesTranches
+      .filter((tranche) => Date.parse(tranche.tranche_fin) > instantReferenceMs);
     if (tranchesCalculees.length === 0) {
       return {
         disponibilitesEquipe,
@@ -1134,50 +1225,29 @@ export const vueCreneauxAdmin = authenticatedQuery({
       };
     }
 
-    const premiereTranche = tranchesCalculees[0].tranche_debut;
-    const derniereTranche = tranchesCalculees.at(-1)!.tranche_debut;
-    const reservationsLues = await ctx.db
-      .query("abo_test_reservations")
-      .withIndex("by_statut_and_tranche", (q) =>
-        q
-          .eq("statut", "active")
-          .gte("tranche", premiereTranche)
-          .lte("tranche", derniereTranche)
-      )
-      .take(MAX_SUIVI_RESERVATIONS + 1);
-    if (reservationsLues.length > MAX_SUIVI_RESERVATIONS) {
-      throw new ConvexError({
-        code: "ABO_TEST_TROP_DE_RESERVATIONS",
-        message: "Trop de réservations existent pour afficher une vue complète.",
-      });
-    }
-
-    const debutsTranches = new Set(
+    const reservationsLues = await reservationsActives(ctx);
+    const allocation = allouerReservations(toutesTranches, reservationsLues);
+    const tranchesAffichees = new Set(
       tranchesCalculees.map((tranche) => tranche.tranche_debut),
     );
     const reservations = reservationsLues
-      .filter((reservation) => debutsTranches.has(reservation.tranche))
-      .sort((a, b) =>
-        a.tranche.localeCompare(b.tranche) || a._creationTime - b._creationTime
-      );
+      .filter((reservation) => {
+        const trancheAffectee = allocation.parReservation.get(reservation._id);
+        return trancheAffectee !== undefined && tranchesAffichees.has(trancheAffectee);
+      })
+      .sort((a, b) => a._creationTime - b._creationTime);
     const inscrits = await inscrireReservationsAdmin(ctx, reservations);
     const inscritsParTranche = new Map<string, InscritTestAdmin[]>();
     for (const inscrit of inscrits) {
-      const groupe = inscritsParTranche.get(inscrit.tranche_debut) ?? [];
+      const trancheAffectee = allocation.parReservation.get(inscrit.reservationId)!;
+      const groupe = inscritsParTranche.get(trancheAffectee) ?? [];
       groupe.push(inscrit);
-      inscritsParTranche.set(inscrit.tranche_debut, groupe);
-    }
-    const prisesParTranche = new Map<string, number>();
-    for (const reservation of reservations) {
-      prisesParTranche.set(
-        reservation.tranche,
-        (prisesParTranche.get(reservation.tranche) ?? 0) + 1,
-      );
+      inscritsParTranche.set(trancheAffectee, groupe);
     }
 
     const tranches = tranchesCalculees.map((tranche) => {
       const inscritsTranche = inscritsParTranche.get(tranche.tranche_debut) ?? [];
-      const prises = prisesParTranche.get(tranche.tranche_debut) ?? 0;
+      const prises = allocation.prisesParTranche.get(tranche.tranche_debut) ?? 0;
       return {
         ...tranche,
         prises,
@@ -1214,7 +1284,7 @@ function hhmmEnMinutes(t: string): number | null {
   return h * 60 + mn;
 }
 
-// ── Admin : créer un créneau (aligné 20 min, durée ≥ 40 min) ─────────
+// ── Admin : créer un créneau (aligné 20 min, durée ≥ 20 min) ─────────
 export const creerTestCreneau = authenticatedMutation({
   args: { date: v.string(), debut: v.string(), fin: v.string() },
   returns: v.id("abo_test_creneaux"),
@@ -1241,8 +1311,8 @@ export const creerTestCreneau = authenticatedMutation({
     if (d % 20 !== 0 || f % 20 !== 0) {
       err("Les heures doivent être alignées sur 20 min (00, 20 ou 40).");
     }
-    if (f - d < 40) {
-      err("Le créneau doit durer au moins 40 minutes.");
+    if (f - d < 20) {
+      err("Le créneau doit durer au moins 20 minutes.");
     }
     if (args.date < todayParisISO()) {
       err("Le jour du créneau ne peut pas être dans le passé.");
@@ -1365,6 +1435,12 @@ export const supprimerTestCreneau = authenticatedMutation({
       });
     }
 
+    const reservations = await reservationsActives(ctx);
+    const allocationAvant = allouerReservations(
+      await calculerTranches(ctx),
+      reservations,
+    );
+
     const creneauxDuCaller = await ctx.db
       .query("abo_test_creneaux")
       .withIndex("by_admin", (q) => q.eq("admin_id", id.userId))
@@ -1379,60 +1455,48 @@ export const supprimerTestCreneau = authenticatedMutation({
       await ctx.db.delete(doublon._id);
     }
 
-    // Capacités recalculées (sans ce créneau).
+    // Capacités et affectations recalculées (sans ce créneau).
     const tranches = await calculerTranches(ctx);
-    const capParTranche = new Map(tranches.map((t) => [t.tranche_debut, t.capacite]));
-
-    // Toutes les réservations actives, groupées par tranche.
-    const actives = (await ctx.db.query("abo_test_reservations").collect()).filter(
-      estReservationActive,
+    const allocationApres = allouerReservations(tranches, reservations);
+    const maintenant = Date.now();
+    const nouvellementNonAffectees = reservations.filter((reservation) =>
+      allocationAvant.parReservation.has(reservation._id)
+      && !allocationApres.parReservation.has(reservation._id)
+      && (finReservationMs(reservation) ?? Number.NEGATIVE_INFINITY) > maintenant
     );
-    const parTranche = new Map<string, Doc<"abo_test_reservations">[]>();
-    for (const r of actives) {
-      const list = parTranche.get(r.tranche) ?? [];
-      list.push(r);
-      parTranche.set(r.tranche, list);
-    }
 
     let total = 0;
-    for (const [tranche, list] of parTranche) {
-      const cap = capParTranche.get(tranche) ?? 0;
-      const surplus = list.length - cap;
-      if (surplus <= 0) continue;
-      // LIFO : les plus récents d'abord.
-      list.sort((a, b) => b._creationTime - a._creationTime);
-      for (const r of list.slice(0, surplus)) {
-        await ctx.db.patch(r._id, {
-          statut: "annulee",
-          annulee_le: new Date().toISOString(),
-          annulee_raison: "creneau_admin_annule",
-        });
-        // Notifie l'annulation (envoi réel via la boîte abo ; journalisation
-        // dans abo_email_log faite par le pipeline, sans dedup pour test_annule).
-        if (!r.personne_id) {
-          if (r.candidat_user_id && r.candidat_licence) {
-            const candidat = await ctx.db
-              .query("abo_test_candidats_directs")
-              .withIndex("by_user_id_and_licence", (q) => q.eq("user_id", r.candidat_user_id!).eq("licence", r.candidat_licence!))
-              .first();
-            if (candidat) await marquerAttente(ctx, `direct:${candidat._id}`, "en_attente");
-          }
-          await ctx.scheduler.runAfter(0, internal.abo.emails.envoyerAnnulationCreneauTest, {
-            reservationId: r._id,
-          });
-        } else {
-          await marquerAttente(ctx, `dossier:${r.personne_id}`, "en_attente");
-          const personne = await ctx.db.get(r.personne_id);
-          const dossier = personne ? await ctx.db.get(personne.dossier_id) : null;
-          if (dossier) {
-            await ctx.scheduler.runAfter(0, internal.abo.emails.envoyerEmailAbo, {
-              dossierId: dossier._id,
-              typeEmail: "test_annule",
-            });
-          }
+    for (const r of nouvellementNonAffectees.sort((a, b) => b._creationTime - a._creationTime)) {
+      await ctx.db.patch(r._id, {
+        statut: "annulee",
+        annulee_le: new Date().toISOString(),
+        annulee_raison: "creneau_admin_annule",
+      });
+      // Notifie l'annulation (envoi réel via la boîte abo ; journalisation
+      // dans abo_email_log faite par le pipeline, sans dedup pour test_annule).
+      if (!r.personne_id) {
+        if (r.candidat_user_id && r.candidat_licence) {
+          const candidat = await ctx.db
+            .query("abo_test_candidats_directs")
+            .withIndex("by_user_id_and_licence", (q) => q.eq("user_id", r.candidat_user_id!).eq("licence", r.candidat_licence!))
+            .first();
+          if (candidat) await marquerAttente(ctx, `direct:${candidat._id}`, "en_attente");
         }
-        total++;
+        await ctx.scheduler.runAfter(0, internal.abo.emails.envoyerAnnulationCreneauTest, {
+          reservationId: r._id,
+        });
+      } else {
+        await marquerAttente(ctx, `dossier:${r.personne_id}`, "en_attente");
+        const personne = await ctx.db.get(r.personne_id);
+        const dossier = personne ? await ctx.db.get(personne.dossier_id) : null;
+        if (dossier) {
+          await ctx.scheduler.runAfter(0, internal.abo.emails.envoyerEmailAbo, {
+            dossierId: dossier._id,
+            typeEmail: "test_annule",
+          });
+        }
       }
+      total++;
     }
     return total;
   },
@@ -1633,14 +1697,14 @@ export const suiviCandidatsAdmin = authenticatedQuery({
         });
       }
 
-      const trancheMs = Date.parse(reservation.tranche);
-      if (!Number.isFinite(trancheMs)) {
+      const trancheFinMs = finReservationMs(reservation);
+      if (trancheFinMs === null) {
         throw new ConvexError({
           code: "ABO_TEST_TRANCHE_INVALIDE",
           message: "Une réservation active contient un instant de tranche invalide.",
         });
       }
-      if (trancheMs <= instantReferenceMs) {
+      if (trancheFinMs <= instantReferenceMs) {
         if (
           !candidat.reservationPassee ||
           reservation.tranche > candidat.reservationPassee.tranche

@@ -236,35 +236,22 @@ describe("réservation de test d'autonomie", () => {
       participants: [{ nomAffiche: "Encadrant Test", estMoi: true }],
       monCreneauId: expect.any(String),
     }]);
-    expect(vue.tranches).toEqual([
-      {
-        tranche_debut: "2099-06-02T08:00:00.000Z",
-        tranche_fin: "2099-06-02T09:00:00.000Z",
-        capacite: 6,
-        prises: 1,
-        disponibles: 5,
-        inscrits: [{
-          reservationId: expect.any(String),
-          tranche_debut: "2099-06-02T08:00:00.000Z",
-          tranche_fin: "2099-06-02T09:00:00.000Z",
-          etat_confirmation: "confirmee",
-          personne_id: personneId,
-          licence: "748000000111",
-          nom: "Candidate",
-          prenom: "Test",
-          email: "abo@example.test",
-        }],
-      },
-      {
-        tranche_debut: "2099-06-02T09:00:00.000Z",
-        tranche_fin: "2099-06-02T09:40:00.000Z",
-        capacite: 4,
-        prises: 0,
-        disponibles: 4,
-        inscrits: [],
-      },
+    expect(vue.tranches.map(({ tranche_debut, tranche_fin, capacite, prises, disponibles }) => ({
+      tranche_debut, tranche_fin, capacite, prises, disponibles,
+    }))).toEqual([
+      { tranche_debut: "2099-06-02T08:00:00.000Z", tranche_fin: "2099-06-02T08:20:00.000Z", capacite: 2, prises: 1, disponibles: 1 },
+      { tranche_debut: "2099-06-02T08:20:00.000Z", tranche_fin: "2099-06-02T08:40:00.000Z", capacite: 2, prises: 0, disponibles: 2 },
+      { tranche_debut: "2099-06-02T08:40:00.000Z", tranche_fin: "2099-06-02T09:00:00.000Z", capacite: 2, prises: 0, disponibles: 2 },
+      { tranche_debut: "2099-06-02T09:00:00.000Z", tranche_fin: "2099-06-02T09:20:00.000Z", capacite: 2, prises: 0, disponibles: 2 },
+      { tranche_debut: "2099-06-02T09:20:00.000Z", tranche_fin: "2099-06-02T09:40:00.000Z", capacite: 2, prises: 0, disponibles: 2 },
     ]);
+    expect(vue.tranches[0]?.inscrits).toEqual([expect.objectContaining({
+      personne_id: personneId,
+      tranche_debut: "2099-06-02T08:00:00.000Z",
+      tranche_fin: "2099-06-02T09:00:00.000Z",
+    })]);
     expect(vue.total).toEqual({ capacite: 10, prises: 1, disponibles: 9 });
+    expect(vue.total.prises + vue.total.disponibles).toBe(vue.total.capacite);
   });
 
   test("conserve une tranche future issue d'une disponibilité déjà commencée", async () => {
@@ -289,16 +276,250 @@ describe("réservation de test d'autonomie", () => {
     );
 
     expect(vue.disponibilitesEquipe).toEqual([]);
-    expect(vue.tranches).toEqual([
-      expect.objectContaining({
-        tranche_debut: "2099-06-02T09:00:00.000Z",
-        tranche_fin: "2099-06-02T10:00:00.000Z",
-        capacite: 6,
-        prises: 0,
-        disponibles: 6,
-      }),
+    expect(vue.tranches.map((tranche) => tranche.tranche_debut)).toEqual([
+      "2099-06-02T08:20:00.000Z",
+      "2099-06-02T08:40:00.000Z",
+      "2099-06-02T09:00:00.000Z",
+      "2099-06-02T09:20:00.000Z",
+      "2099-06-02T09:40:00.000Z",
     ]);
-    expect(vue.total).toEqual({ capacite: 6, prises: 0, disponibles: 6 });
+    expect(vue.tranches.every((tranche) => tranche.capacite === 2)).toBe(true);
+    expect(vue.total).toEqual({ capacite: 10, prises: 0, disponibles: 10 });
+  });
+
+  test("garde des slots stables de 20 minutes avec des disponibilités qui se chevauchent", async () => {
+    const t = convexTest(schema, modules);
+    const aliceId = await creerAdminAbo(t, { email: "alice-slots@example.test" });
+    const bobId = await creerAdminAbo(t, { email: "bob-slots@example.test" });
+    const candidat = await creerPersonne(t);
+    await t.run((ctx) => ctx.db.insert("abo_test_creneaux", {
+      admin_id: aliceId,
+      date_jour: "2099-06-02",
+      heure_debut: "10:00",
+      heure_fin: "11:00",
+    }));
+
+    const caller = t.withIdentity({ subject: candidat.userId });
+    const avant = await caller.query(api.abo.tests.testCreneauxDisponibles, {});
+    expect(avant.map((slot) => [slot.tranche_debut, slot.capacite])).toEqual([
+      ["2099-06-02T08:00:00.000Z", 2],
+      ["2099-06-02T08:20:00.000Z", 2],
+      ["2099-06-02T08:40:00.000Z", 2],
+    ]);
+
+    await t.run((ctx) => ctx.db.insert("abo_test_creneaux", {
+      admin_id: bobId,
+      date_jour: "2099-06-02",
+      heure_debut: "10:20",
+      heure_fin: "11:20",
+    }));
+    const apres = await caller.query(api.abo.tests.testCreneauxDisponibles, {});
+    expect(apres.map((slot) => [slot.tranche_debut, slot.tranche_fin, slot.capacite])).toEqual([
+      ["2099-06-02T08:00:00.000Z", "2099-06-02T08:20:00.000Z", 2],
+      ["2099-06-02T08:20:00.000Z", "2099-06-02T08:40:00.000Z", 4],
+      ["2099-06-02T08:40:00.000Z", "2099-06-02T09:00:00.000Z", 4],
+      ["2099-06-02T09:00:00.000Z", "2099-06-02T09:20:00.000Z", 2],
+    ]);
+    expect(apres.slice(0, 3).map((slot) => slot.tranche_debut))
+      .toEqual(avant.map((slot) => slot.tranche_debut));
+  });
+
+  test("répartit les réservations historiques sans doublon et priorise le slot atomique", async () => {
+    const t = convexTest(schema, modules);
+    const adminId = await creerAdminAbo(t);
+    await t.run(async (ctx) => {
+      await ctx.db.insert("abo_test_creneaux", {
+        admin_id: adminId,
+        date_jour: "2099-06-02",
+        heure_debut: "10:00",
+        heure_fin: "11:00",
+      });
+      for (let index = 0; index < 5; index++) {
+        await ctx.db.insert("abo_test_reservations", {
+          candidat_licence: `74800000004${index}`,
+          candidat_nom: `Legacy ${index}`,
+          candidat_prenom: "Test",
+          candidat_email: `legacy-${index}@example.test`,
+          tranche: "2099-06-02T08:00:00.000Z",
+          tranche_fin: index % 2 === 0
+            ? "2099-06-02T09:00:00.000Z"
+            : "2099-06-02T08:40:00.000Z",
+          statut: "active",
+          etat_confirmation: "confirmee",
+        });
+      }
+      await ctx.db.insert("abo_test_reservations", {
+        candidat_licence: "748000000049",
+        candidat_nom: "Atomique",
+        candidat_prenom: "Test",
+        candidat_email: "atomique@example.test",
+        tranche: "2099-06-02T08:20:00.000Z",
+        tranche_fin: "2099-06-02T08:40:00.000Z",
+        statut: "active",
+        etat_confirmation: "confirmee",
+      });
+    });
+
+    const vue = await t.withIdentity({ subject: adminId }).query(
+      api.abo.tests.vueCreneauxAdmin,
+      { dateDebut: "2099-01-01", instantReference: "2099-01-01T00:00:00.000Z" },
+    );
+    expect(vue.tranches.map((slot) => slot.prises)).toEqual([2, 2, 2]);
+    const ids = vue.tranches.flatMap((slot) => slot.inscrits.map((inscrit) => inscrit.reservationId));
+    expect(ids).toHaveLength(6);
+    expect(new Set(ids).size).toBe(6);
+    expect(vue.tranches[1]?.inscrits).toEqual(expect.arrayContaining([
+      expect.objectContaining({ nom: "Atomique" }),
+    ]));
+  });
+
+  test("alloue d'abord les fenêtres historiques qui finissent le plus tôt", async () => {
+    const t = convexTest(schema, modules);
+    const adminId = await creerAdminAbo(t);
+    await t.run(async (ctx) => {
+      await ctx.db.insert("abo_test_creneaux", {
+        admin_id: adminId,
+        date_jour: "2099-06-02",
+        heure_debut: "10:00",
+        heure_fin: "11:00",
+      });
+      for (let index = 0; index < 6; index++) {
+        await ctx.db.insert("abo_test_reservations", {
+          candidat_licence: `74800000005${index}`,
+          candidat_nom: `EDF ${index}`,
+          candidat_prenom: "Test",
+          candidat_email: `edf-${index}@example.test`,
+          tranche: "2099-06-02T08:00:00.000Z",
+          tranche_fin: index < 2
+            ? "2099-06-02T09:00:00.000Z"
+            : "2099-06-02T08:40:00.000Z",
+          statut: "active",
+        });
+      }
+    });
+
+    const vue = await t.withIdentity({ subject: adminId }).query(
+      api.abo.tests.vueCreneauxAdmin,
+      { dateDebut: "2099-01-01", instantReference: "2099-01-01T00:00:00.000Z" },
+    );
+    expect(vue.tranches.map((slot) => slot.prises)).toEqual([2, 2, 2]);
+    expect(vue.total).toEqual({ capacite: 6, prises: 6, disponibles: 0 });
+  });
+
+  test("déplace un legacy ancien pour accueillir des réservations atomiques plus récentes", async () => {
+    const t = convexTest(schema, modules);
+    const adminId = await creerAdminAbo(t);
+    const candidat = await creerPersonne(t);
+    const secondCandidat = await creerPersonne(t);
+    await t.run(async (ctx) => {
+      await ctx.db.insert("abo_test_creneaux", {
+        admin_id: adminId,
+        date_jour: "2099-06-02",
+        heure_debut: "10:00",
+        heure_fin: "10:40",
+      });
+      await ctx.db.insert("abo_test_reservations", {
+        candidat_licence: "748000000061",
+        candidat_nom: "Legacy ancien",
+        candidat_prenom: "Test",
+        candidat_email: "legacy-ancien@example.test",
+        tranche: "2099-06-02T08:00:00.000Z",
+        tranche_fin: "2099-06-02T08:40:00.000Z",
+        statut: "active",
+      });
+    });
+
+    const disponibilites = await t.withIdentity({ subject: candidat.userId }).query(
+      api.abo.tests.testCreneauxDisponibles,
+      {},
+    );
+    expect(disponibilites[0]).toMatchObject({
+      tranche_debut: "2099-06-02T08:00:00.000Z",
+      disponible: 2,
+    });
+
+    await t.withIdentity({ subject: candidat.userId }).mutation(
+      api.abo.tests.reserverTest,
+      { personneId: candidat.personneId, tranche: "2099-06-02T08:00:00.000Z" },
+    );
+    await t.withIdentity({ subject: secondCandidat.userId }).mutation(
+      api.abo.tests.reserverTest,
+      { personneId: secondCandidat.personneId, tranche: "2099-06-02T08:00:00.000Z" },
+    );
+    const vue = await t.withIdentity({ subject: adminId }).query(
+      api.abo.tests.vueCreneauxAdmin,
+      { dateDebut: "2099-01-01", instantReference: "2099-01-01T00:00:00.000Z" },
+    );
+    expect(vue.tranches.map((slot) => slot.prises)).toEqual([2, 1]);
+    expect(vue.tranches[0]?.inscrits.map((inscrit) => inscrit.personne_id).sort()).toEqual([
+      candidat.personneId,
+      secondCandidat.personneId,
+    ].sort());
+    expect(vue.tranches[1]?.inscrits).toEqual([
+      expect.objectContaining({ nom: "Legacy ancien" }),
+    ]);
+  });
+
+  test("reproduit la topologie PROD 17 h 40–20 h avec 27 réservations legacy", async () => {
+    const t = convexTest(schema, modules);
+    const admins = await Promise.all([
+      creerAdminAbo(t, { email: "prod-a@example.test", name: "Prod A" }),
+      creerAdminAbo(t, { email: "prod-b@example.test", name: "Prod B" }),
+      creerAdminAbo(t, { email: "prod-c@example.test", name: "Prod C" }),
+      creerAdminAbo(t, { email: "prod-d@example.test", name: "Prod D" }),
+    ]);
+    await t.run(async (ctx) => {
+      for (const adminId of admins.slice(0, 2)) {
+        await ctx.db.insert("abo_test_creneaux", {
+          admin_id: adminId,
+          date_jour: "2099-06-02",
+          heure_debut: "17:40",
+          heure_fin: "20:00",
+        });
+      }
+      for (const adminId of admins.slice(2)) {
+        await ctx.db.insert("abo_test_creneaux", {
+          admin_id: adminId,
+          date_jour: "2099-06-02",
+          heure_debut: "19:00",
+          heure_fin: "19:40",
+        });
+      }
+      const groupes = [
+        { nombre: 8, debut: "2099-06-02T15:40:00.000Z", fin: "2099-06-02T16:40:00.000Z" },
+        { nombre: 6, debut: "2099-06-02T16:40:00.000Z", fin: "2099-06-02T17:20:00.000Z" },
+        { nombre: 6, debut: "2099-06-02T17:00:00.000Z", fin: "2099-06-02T18:00:00.000Z" },
+        { nombre: 7, debut: "2099-06-02T17:20:00.000Z", fin: "2099-06-02T18:00:00.000Z" },
+      ];
+      let index = 0;
+      for (const groupe of groupes) {
+        for (let dansGroupe = 0; dansGroupe < groupe.nombre; dansGroupe++) {
+          await ctx.db.insert("abo_test_reservations", {
+            candidat_licence: `748000001${String(index).padStart(2, "0")}`,
+            candidat_nom: `PROD ${index}`,
+            candidat_prenom: "Test",
+            candidat_email: `prod-${index}@example.test`,
+            tranche: groupe.debut,
+            tranche_fin: groupe.fin,
+            statut: "active",
+            etat_confirmation: "confirmee",
+          });
+          index++;
+        }
+      }
+    });
+
+    const vue = await t.withIdentity({ subject: admins[0] }).query(
+      api.abo.tests.vueCreneauxAdmin,
+      { dateDebut: "2099-01-01", instantReference: "2099-01-01T00:00:00.000Z" },
+    );
+    expect(vue.tranches.map((slot) => slot.capacite)).toEqual([4, 4, 4, 4, 8, 8, 4]);
+    expect(vue.total).toEqual({ capacite: 36, prises: 27, disponibles: 9 });
+    const reservationsVisibles = vue.tranches.flatMap((slot) =>
+      slot.inscrits.map((inscrit) => inscrit.reservationId)
+    );
+    expect(reservationsVisibles).toHaveLength(27);
+    expect(new Set(reservationsVisibles).size).toBe(27);
   });
 
   test("refuse la vue consolidée à un administrateur sans tuile Abonnements", async () => {
@@ -354,7 +575,7 @@ describe("réservation de test d'autonomie", () => {
       api.abo.tests.testCreneauxDisponibles,
       {},
     );
-    expect(tranches[0]?.capacite).toBe(4);
+    expect(tranches[0]?.capacite).toBe(2);
 
     await expect(t.withIdentity({ subject: adminId }).mutation(
       api.abo.tests.rejoindreTestCreneau,
@@ -493,6 +714,41 @@ describe("réservation de test d'autonomie", () => {
     ]));
   });
 
+  test("bascule le suivi en passé à la fin effective avec fallback legacy de 60 minutes", async () => {
+    const t = convexTest(schema, modules);
+    const adminId = await creerAdminAbo(t);
+    const moderne = await creerPersonne(t, { licence: "748000000021" });
+    const legacy = await creerPersonne(t, { licence: "748000000022" });
+    await t.run(async (ctx) => {
+      await ctx.db.insert("abo_test_reservations", {
+        personne_id: moderne.personneId,
+        tranche: "2099-06-02T08:00:00.000Z",
+        tranche_fin: "2099-06-02T08:20:00.000Z",
+        statut: "active",
+      });
+      await ctx.db.insert("abo_test_reservations", {
+        personne_id: legacy.personneId,
+        tranche: "2099-06-02T08:00:00.000Z",
+        statut: "active",
+      });
+    });
+    const admin = t.withIdentity({ subject: adminId });
+
+    const avantFin = await admin.query(api.abo.tests.suiviCandidatsAdmin, {
+      instantReference: "2099-06-02T08:19:59.999Z",
+    });
+    expect(avantFin.candidats.find((c) => c.licence === "748000000021")?.statut).toBe("reserve");
+    const aLaFin = await admin.query(api.abo.tests.suiviCandidatsAdmin, {
+      instantReference: "2099-06-02T08:20:00.000Z",
+    });
+    expect(aLaFin.candidats.find((c) => c.licence === "748000000021")?.statut).toBe("passe");
+    expect(aLaFin.candidats.find((c) => c.licence === "748000000022")?.statut).toBe("reserve");
+    const finLegacy = await admin.query(api.abo.tests.suiviCandidatsAdmin, {
+      instantReference: "2099-06-02T09:00:00.000Z",
+    });
+    expect(finLegacy.candidats.find((c) => c.licence === "748000000022")?.statut).toBe("passe");
+  });
+
   test("exige un nom configuré pour proposer ou rejoindre un créneau", async () => {
     const t = convexTest(schema, modules);
     const adminNommeId = await creerAdminAbo(t, {
@@ -595,6 +851,29 @@ describe("réservation de test d'autonomie", () => {
     expect(rows).toHaveLength(2);
   });
 
+  test("accepte une disponibilité staff minimale de 20 minutes", async () => {
+    const t = convexTest(schema, modules);
+    const adminId = await creerAdminAbo(t);
+    const admin = t.withIdentity({ subject: adminId });
+
+    await expect(admin.mutation(api.abo.tests.creerTestCreneau, {
+      date: "2099-06-02",
+      debut: "10:00",
+      fin: "10:20",
+    })).resolves.toEqual(expect.any(String));
+    const vue = await admin.query(api.abo.tests.vueCreneauxAdmin, {
+      dateDebut: "2099-01-01",
+      instantReference: "2099-01-01T00:00:00.000Z",
+    });
+    expect(vue.tranches).toEqual([
+      expect.objectContaining({
+        tranche_debut: "2099-06-02T08:00:00.000Z",
+        tranche_fin: "2099-06-02T08:20:00.000Z",
+        capacite: 2,
+      }),
+    ]);
+  });
+
   test("préserve l'idempotence au plafond mais refuse une 201e ligne", async () => {
     const t = convexTest(schema, modules);
     const aliceId = await creerAdminAbo(t, { email: "alice@example.test" });
@@ -678,6 +957,113 @@ describe("réservation de test d'autonomie", () => {
     ]);
   });
 
+  test("annule en LIFO le surbooking après retrait d'un encadrant", async () => {
+    const t = convexTest(schema, modules);
+    const aliceId = await creerAdminAbo(t, { email: "alice-lifo@example.test" });
+    const bobId = await creerAdminAbo(t, { email: "bob-lifo@example.test" });
+    const personnes = await Promise.all([
+      creerPersonne(t, { licence: "748000000031" }),
+      creerPersonne(t, { licence: "748000000032" }),
+      creerPersonne(t, { licence: "748000000033" }),
+    ]);
+    const { bobCreneauId, reservationIds, autreJourId, orphelineId } = await t.run(async (ctx) => {
+      await ctx.db.insert("abo_test_creneaux", {
+        admin_id: aliceId,
+        date_jour: "2099-06-02",
+        heure_debut: "10:00",
+        heure_fin: "10:20",
+      });
+      const bobCreneauId = await ctx.db.insert("abo_test_creneaux", {
+        admin_id: bobId,
+        date_jour: "2099-06-02",
+        heure_debut: "10:00",
+        heure_fin: "10:20",
+      });
+      const reservationIds = [] as Id<"abo_test_reservations">[];
+      for (const personne of personnes) {
+        reservationIds.push(await ctx.db.insert("abo_test_reservations", {
+          personne_id: personne.personneId,
+          tranche: "2099-06-02T08:00:00.000Z",
+          tranche_fin: "2099-06-02T08:20:00.000Z",
+          statut: "active",
+        }));
+      }
+      await ctx.db.insert("abo_test_creneaux", {
+        admin_id: aliceId,
+        date_jour: "2099-06-03",
+        heure_debut: "10:00",
+        heure_fin: "10:20",
+      });
+      const autreJourId = await ctx.db.insert("abo_test_reservations", {
+        candidat_licence: "748000000081",
+        candidat_nom: "Autre jour",
+        candidat_prenom: "Test",
+        candidat_email: "autre-jour@example.test",
+        tranche: "2099-06-03T08:00:00.000Z",
+        tranche_fin: "2099-06-03T08:20:00.000Z",
+        statut: "active",
+      });
+      const orphelineId = await ctx.db.insert("abo_test_reservations", {
+        candidat_licence: "748000000082",
+        candidat_nom: "Orpheline",
+        candidat_prenom: "Test",
+        candidat_email: "orpheline@example.test",
+        tranche: "2099-06-04T08:00:00.000Z",
+        tranche_fin: "2099-06-04T08:20:00.000Z",
+        statut: "active",
+      });
+      return { bobCreneauId, reservationIds, autreJourId, orphelineId };
+    });
+
+    await expect(t.withIdentity({ subject: bobId }).mutation(
+      api.abo.tests.supprimerTestCreneau,
+      { creneauId: bobCreneauId },
+    )).resolves.toBe(1);
+    const reservations = await t.run((ctx) => Promise.all(
+      reservationIds.map((reservationId) => ctx.db.get(reservationId)),
+    ));
+    expect(reservations.map((reservation) => reservation?.statut)).toEqual([
+      "active",
+      "active",
+      "annulee",
+    ]);
+    expect(reservations[2]).toMatchObject({ annulee_raison: "creneau_admin_annule" });
+    await expect(t.run(async (ctx) => ({
+      autreJour: (await ctx.db.get(autreJourId))?.statut,
+      orpheline: (await ctx.db.get(orphelineId))?.statut,
+    }))).resolves.toEqual({ autreJour: "active", orpheline: "active" });
+  });
+
+  test("ne désinscrit pas une réservation terminée lors du retrait de son ancien créneau", async () => {
+    const t = convexTest(schema, modules);
+    const adminId = await creerAdminAbo(t);
+    const { creneauId, reservationId } = await t.run(async (ctx) => {
+      const creneauId = await ctx.db.insert("abo_test_creneaux", {
+        admin_id: adminId,
+        date_jour: "2020-06-02",
+        heure_debut: "10:00",
+        heure_fin: "10:20",
+      });
+      const reservationId = await ctx.db.insert("abo_test_reservations", {
+        candidat_licence: "748000000083",
+        candidat_nom: "Passée",
+        candidat_prenom: "Test",
+        candidat_email: "passee@example.test",
+        tranche: "2020-06-02T08:00:00.000Z",
+        tranche_fin: "2020-06-02T08:20:00.000Z",
+        statut: "active",
+      });
+      return { creneauId, reservationId };
+    });
+
+    await expect(t.withIdentity({ subject: adminId }).mutation(
+      api.abo.tests.supprimerTestCreneau,
+      { creneauId },
+    )).resolves.toBe(0);
+    await expect(t.run(async (ctx) => (await ctx.db.get(reservationId))?.statut))
+      .resolves.toBe("active");
+  });
+
   test("refuse de rejoindre un créneau passé", async () => {
     const t = convexTest(schema, modules);
     const aliceId = await creerAdminAbo(t, { email: "alice@example.test" });
@@ -718,6 +1104,8 @@ describe("réservation de test d'autonomie", () => {
     const reservations = await caller.query(api.abo.tests.getMesReservationsParPersonne, {});
     expect(reservations[0]?.active?.etat_confirmation).toBe("provisoire");
     expect(reservations[0]?.active?.annulation_autorisee).toBe(true);
+    expect(Date.parse(reservations[0]!.active!.tranche_fin!)
+      - Date.parse(reservations[0]!.active!.tranche)).toBe(20 * 60 * 1_000);
   });
 
   test("affiche sur la personne une réservation directe de même licence sans transférer son annulation", async () => {

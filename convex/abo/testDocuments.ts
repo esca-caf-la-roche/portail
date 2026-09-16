@@ -8,6 +8,20 @@ import { internalMutation, internalQuery } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 import { requireAboAdmin } from "./auth";
 
+const DUREE_LEGACY_MS = 60 * 60 * 1000;
+
+function reservationEstPassee(
+  reservation: { tranche: string; tranche_fin?: string },
+  avant: string,
+): boolean {
+  const debut = Date.parse(reservation.tranche);
+  const reference = Date.parse(avant);
+  if (!Number.isFinite(debut) || !Number.isFinite(reference)) return false;
+  const finLue = reservation.tranche_fin ? Date.parse(reservation.tranche_fin) : Number.NaN;
+  const fin = Number.isFinite(finLue) && finLue > debut ? finLue : debut + DUREE_LEGACY_MS;
+  return fin <= reference;
+}
+
 const statutValidator = v.union(v.literal("a_traiter"), v.literal("traite"));
 const uploadStatutValidator = v.union(
   v.literal("autorise"),
@@ -73,7 +87,7 @@ async function reservationPasseePourPersonne(
     .take(20);
   return reservations.some(
     (reservation) =>
-      reservation.statut === "active" && reservation.tranche <= avant,
+      reservation.statut === "active" && reservationEstPassee(reservation, avant),
   );
 }
 
@@ -215,6 +229,7 @@ export const listeReservationsPassees = authenticatedQuery({
 
     for (const reservation of reservations) {
       if (reservation.statut !== "active") continue;
+      if (!reservationEstPassee(reservation, args.avant)) continue;
       if (!reservation.personne_id) {
         const licence = reservation.candidat_licence?.trim() ?? "";
         if (!licence || !reservation.candidat_nom || !reservation.candidat_prenom || vus.has(licence)) continue;

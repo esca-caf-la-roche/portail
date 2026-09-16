@@ -36,6 +36,86 @@ async function ajouterLicence(
 }
 
 describe("archive des tests d'autonomie", () => {
+  test("rend le test archivable à la fin du créneau, pas à son début", async () => {
+    const t = convexTest(schema, modules);
+    const { admin } = await creerAdmin(t);
+    const personneId = await t.run(async (ctx) => {
+      const ownerId = await ctx.db.insert("users", { email: "fin-creneau@example.test" });
+      const dossierId = await ctx.db.insert("abo_dossiers", {
+        email: "fin-creneau@example.test",
+        statut_dossier: "validee",
+        date_soumission: "2026-09-01T00:00:00.000Z",
+        owner_id: ownerId,
+      });
+      const id = await ctx.db.insert("abo_personnes", {
+        dossier_id: dossierId,
+        nom: "FIN",
+        prenom: "Créneau",
+        nom_prenom_normalise: "fin creneau",
+        licence: "748020260001",
+        licence_statut: "annuaire_valide",
+        etape_demande: true,
+        etape_validation: "validee",
+        etape_licence: true,
+        etape_test_autonomie: "requis",
+        etape_inscription_site: false,
+        etape_photo: false,
+        etape_paiement: false,
+        etape_abonnement_valide: false,
+      });
+      await ctx.db.insert("abo_test_reservations", {
+        personne_id: id,
+        tranche: "2026-09-16T08:00:00.000Z",
+        tranche_fin: "2026-09-16T08:20:00.000Z",
+        statut: "active",
+      });
+      return id;
+    });
+
+    await expect(admin.query(api.abo.testDocuments.listeReservationsPassees, {
+      avant: "2026-09-16T08:19:59.999Z",
+    })).resolves.toEqual([]);
+    const justeAvant = await admin.query(api.abo.testDocuments.rechercherCandidatParLicence, {
+      licence: "748020260001",
+      avant: "2026-09-16T08:19:59.999Z",
+    });
+    expect(justeAvant[0]).toMatchObject({ personneId, reservationPassee: false });
+
+    const aLaFin = await admin.query(api.abo.testDocuments.listeReservationsPassees, {
+      avant: "2026-09-16T08:20:00.000Z",
+    });
+    expect(aLaFin).toEqual([expect.objectContaining({ personneId, reservationPassee: true })]);
+    const rechercheALaFin = await admin.query(api.abo.testDocuments.rechercherCandidatParLicence, {
+      licence: "748020260001",
+      avant: "2026-09-16T08:20:00.000Z",
+    });
+    expect(rechercheALaFin[0]).toMatchObject({ personneId, reservationPassee: true });
+  });
+
+  test("applique une fin conservatrice à début plus 60 minutes aux réservations legacy", async () => {
+    const t = convexTest(schema, modules);
+    const { admin } = await creerAdmin(t);
+    await t.run(async (ctx) => {
+      await ctx.db.insert("abo_test_reservations", {
+        candidat_licence: "748020260002",
+        candidat_nom: "LEGACY",
+        candidat_prenom: "Test",
+        candidat_email: "legacy@example.test",
+        tranche: "2026-09-16T08:00:00.000Z",
+        statut: "active",
+      });
+    });
+
+    await expect(admin.query(api.abo.testDocuments.listeReservationsPassees, {
+      avant: "2026-09-16T08:59:59.999Z",
+    })).resolves.toEqual([]);
+    await expect(admin.query(api.abo.testDocuments.listeReservationsPassees, {
+      avant: "2026-09-16T09:00:00.000Z",
+    })).resolves.toEqual([
+      expect.objectContaining({ licence: "748020260002", reservationPassee: true }),
+    ]);
+  });
+
   test("recherche un licencié avec les 4 ou 6 derniers chiffres de sa licence", async () => {
     const t = convexTest(schema, modules);
     const { admin } = await creerAdmin(t);

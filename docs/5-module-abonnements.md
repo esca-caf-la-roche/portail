@@ -553,15 +553,19 @@ passer le test. Un clic ouvre la liste consolidée des dossiers validés dont le
 est requis, des candidats directs éligibles, des réservations actives et des
 tests archivés pendant la campagne. Chaque personne apparaît une seule fois,
 avec le statut **En attente de créneau**, **Créneau réservé** ou **Test passé**.
-Une réservation dont le début est atteint est considérée comme passée ; ce
+Une réservation dont la fin est atteinte est considérée comme passée ; ce
 statut décrit le rendez-vous et ne vaut pas validation du résultat sur le site
 du club. La vue est réservée au staff Abonnements, hors saison comptable.
 
-La section **Inscrits par créneau** présente toutes les tranches futures de 40
-ou 60 minutes, y compris celles qui n'ont encore aucune réservation. Pour chaque
-tranche, elle affiche les places prises, la capacité calculée et les places
-encore disponibles. Un résumé additionne ces mêmes valeurs sur l'ensemble des
-tranches futures ; les rendez-vous passés ne sont pas mélangés à ce total.
+La section **Inscrits par créneau de 20 min** présente tous les créneaux fixes
+futurs de 20 minutes, y compris ceux qui n'ont encore aucune réservation. Chaque
+encadrant présent ouvre 2 places sur le créneau ; les capacités se cumulent quand
+plusieurs encadrants sont disponibles au même horaire. Pour chaque créneau,
+l'interface affiche les places prises, la capacité calculée et les places encore
+disponibles. Un résumé additionne ces mêmes valeurs sur l'ensemble des créneaux
+futurs ; les rendez-vous terminés ne sont pas mélangés à ce total. Un candidat
+n'apparaît dans **Tests d'autonomie à enregistrer** qu'à la fin de son créneau,
+y compris pour une ancienne réservation d'une durée différente.
 
 Les destinataires sont validés comme adresses uniques à l'entrée de
 l'authentification puis de nouveau dans les actions SMTP. Les listes de
@@ -599,8 +603,9 @@ déploiement `npx.cmd convex dev` actif.
   sans aucune modification du site club.
 - [ ] **Test d'autonomie** : créer un créneau avec un premier membre du staff,
   vérifier qu'un second voit son nom puis peut s'ajouter depuis la liste
-  partagée ; contrôler la capacité cumulée des tranches de 40/60 min, les
-  compteurs pris/capacité/disponibles de chaque tranche (dont une tranche vide)
+  partagée ; contrôler que chaque créneau fixe de 20 min ouvre 2 places par
+  encadrant, puis les compteurs pris/capacité/disponibles de chaque créneau
+  (dont un créneau vide)
   et leur total. Une
   demande validée, sans licence, âge ni autonomie connus, réserve un RDV
   provisoire ; réserver/annuler ; retirer un encadrant d'un créneau surbooké →
