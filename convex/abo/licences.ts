@@ -20,7 +20,6 @@ import type { Doc } from "../_generated/dataModel";
 import { api, internal } from "../_generated/api";
 import { requireAboAdmin } from "./auth";
 import { canoniserLicence, normaliserNomPrenom, similarite } from "./lib";
-import { champsPersonneDepuisScrap } from "./matching";
 import { champsModifies } from "../dbUtils";
 import { ANNUAIRE_ATTEMPT_KEY } from "./syncConstants";
 import { invaliderCompteurPublic, programmerRafraichissementCompteurPublic } from "./compteur";
@@ -253,78 +252,6 @@ export const validerLicence = authenticatedMutation({
     }
     if (resultat === "modifie") await programmerRafraichissementCompteurPublic(ctx);
     return { statut: "attribue" as const, licence };
-  },
-});
-
-// Réparation ponctuelle, strictement bornée, d'une identité qui a été écrasée
-// par erreur. Le mail du dossier n'est volontairement jamais utilisé comme
-// preuve d'identité. Cette mutation sera retirée après la réparation PROD.
-export const restaurerIdentitePersonneInterne = internalMutation({
-  args: {
-    personneId: v.id("abo_personnes"),
-    dossierId: v.id("abo_dossiers"),
-    licenceActuelleAttendue: v.string(),
-    identiteActuelleAttendue: v.string(),
-    licenceCible: v.string(),
-    identiteCibleAttendue: v.string(),
-  },
-  returns: v.object({ statut: v.literal("restaure"), modifie: v.boolean() }),
-  handler: async (ctx, args) => {
-    const licenceActuelle = canoniserLicence(args.licenceActuelleAttendue);
-    const licenceCible = canoniserLicence(args.licenceCible);
-    if (!licenceActuelle || !licenceCible || licenceActuelle === licenceCible) {
-      throw new ConvexError("Licences de restauration invalides.");
-    }
-
-    const [personne, dossier, scrapCible] = await Promise.all([
-      ctx.db.get(args.personneId),
-      ctx.db.get(args.dossierId),
-      ctx.db.query("abo_abonnes_scrap")
-        .withIndex("by_licence", (q) => q.eq("licence", licenceCible))
-        .unique(),
-    ]);
-    if (!personne || !dossier || personne.dossier_id !== dossier._id) {
-      throw new ConvexError("Personne ou dossier inattendu.");
-    }
-
-    const identiteActuelle = normaliserNomPrenom(personne.nom, personne.prenom);
-    const dejaRestauree = personne.licence === licenceCible
-      && identiteActuelle === args.identiteCibleAttendue;
-    if (dejaRestauree) {
-      return { statut: "restaure" as const, modifie: false };
-    }
-    if (
-      personne.licence !== licenceActuelle
-      || identiteActuelle !== args.identiteActuelleAttendue
-    ) {
-      throw new ConvexError("L'identité actuelle ne correspond plus à l'état à réparer.");
-    }
-    if (await autrePorteuseLicence(ctx, personne._id, licenceCible)) {
-      throw new ConvexError("La licence cible est déjà portée par une autre personne.");
-    }
-
-    const nom = scrapCible?.nom?.trim();
-    const prenom = scrapCible?.prenom?.trim();
-    if (
-      !scrapCible
-      || !nom
-      || !prenom
-      || normaliserNomPrenom(nom, prenom) !== args.identiteCibleAttendue
-    ) {
-      throw new ConvexError("Le snapshot ne confirme pas l'identité cible.");
-    }
-
-    await ctx.db.patch(personne._id, {
-      nom,
-      prenom,
-      nom_prenom_normalise: args.identiteCibleAttendue,
-      licence: licenceCible,
-      licence_statut: "annuaire_valide",
-      ...champsPersonneDepuisScrap(scrapCible),
-    });
-    await invaliderCompteurPublic(ctx);
-    await programmerRafraichissementCompteurPublic(ctx);
-    return { statut: "restaure" as const, modifie: true };
   },
 });
 
