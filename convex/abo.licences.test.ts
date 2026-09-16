@@ -68,6 +68,221 @@ async function ajouterPersonne(
 }
 
 describe("résolution simple d'un conflit de licence entre dossiers", () => {
+  test("(A) la résolution automatique conserve strictement l'identité du dossier", async () => {
+    const t = convexTest(schema, modules);
+    const admin = await creerAdmin(t);
+    const dossier = await creerDossier(t, "antoine.palumbo4@gmail.com");
+    await t.run(async (ctx) => {
+      await ctx.db.patch(dossier.personneId, {
+        nom: "Guigo",
+        prenom: "Olivia",
+        nom_prenom_normalise: "GUIGO OLIVIA",
+      });
+      await ctx.db.insert("abo_licences", {
+        licence: "748020279190",
+        nom: "GUIGO",
+        prenom: "OLIVIA",
+        nom_prenom_normalise: "GUIGO OLIVIA",
+        imported_at: "2026-09-16T00:00:00.000Z",
+      });
+    });
+
+    await expect(admin.mutation(api.abo.licences.resoudreLicencesPersonnes, {}))
+      .resolves.toBe(1);
+    expect(await t.run((ctx) => ctx.db.get(dossier.personneId))).toMatchObject({
+      nom: "Guigo",
+      prenom: "Olivia",
+      nom_prenom_normalise: "GUIGO OLIVIA",
+      licence: "748020279190",
+      licence_statut: "annuaire_auto",
+    });
+  });
+
+  test("la résolution automatique n'attribue rien à deux personnes homonymes", async () => {
+    const t = convexTest(schema, modules);
+    const admin = await creerAdmin(t);
+    const dossierA = await creerDossier(t, "famille-a@example.test");
+    const dossierB = await creerDossier(t, "famille-b@example.test");
+    await t.run(async (ctx) => {
+      for (const personneId of [dossierA.personneId, dossierB.personneId]) {
+        await ctx.db.patch(personneId, {
+          nom: "DUPONT",
+          prenom: "Camille",
+          nom_prenom_normalise: "DUPONT CAMILLE",
+        });
+      }
+      await ctx.db.insert("abo_licences", {
+        licence: "123456789012",
+        nom: "DUPONT",
+        prenom: "Camille",
+        nom_prenom_normalise: "DUPONT CAMILLE",
+        imported_at: "2026-09-16T00:00:00.000Z",
+      });
+    });
+
+    await expect(admin.mutation(api.abo.licences.resoudreLicencesPersonnes, {}))
+      .resolves.toBe(0);
+    const personnes = await t.run(async (ctx) => Promise.all([
+      ctx.db.get(dossierA.personneId),
+      ctx.db.get(dossierB.personneId),
+    ]));
+    expect(personnes.every((personne) => personne?.licence === undefined)).toBe(true);
+  });
+
+  test("la résolution automatique bloque aussi un homonyme déjà licencié", async () => {
+    const t = convexTest(schema, modules);
+    const admin = await creerAdmin(t);
+    const dossierSansLicence = await creerDossier(t, "sans-licence@example.test");
+    const dossierAvecLicence = await creerDossier(t, "avec-licence@example.test", "999999999999");
+    await t.run(async (ctx) => {
+      for (const personneId of [dossierSansLicence.personneId, dossierAvecLicence.personneId]) {
+        await ctx.db.patch(personneId, {
+          nom: "DUPONT",
+          prenom: "Camille",
+          nom_prenom_normalise: "DUPONT CAMILLE",
+        });
+      }
+      await ctx.db.insert("abo_licences", {
+        licence: "123456789012",
+        nom: "DUPONT",
+        prenom: "Camille",
+        nom_prenom_normalise: "DUPONT CAMILLE",
+        imported_at: "2026-09-16T00:00:00.000Z",
+      });
+    });
+
+    await expect(admin.mutation(api.abo.licences.resoudreLicencesPersonnes, {}))
+      .resolves.toBe(0);
+    expect((await t.run((ctx) => ctx.db.get(dossierSansLicence.personneId)))?.licence)
+      .toBeUndefined();
+    expect((await t.run((ctx) => ctx.db.get(dossierAvecLicence.personneId)))?.licence)
+      .toBe("999999999999");
+  });
+
+  test("(B) la validation manuelle d'une identité correspondante conserve sa graphie", async () => {
+    const t = convexTest(schema, modules);
+    const admin = await creerAdmin(t);
+    const dossier = await creerDossier(t, "contact-famille@example.test");
+    await t.run(async (ctx) => {
+      await ctx.db.patch(dossier.personneId, {
+        nom: "Guigo",
+        prenom: "Olivia",
+        nom_prenom_normalise: "GUIGO OLIVIA",
+      });
+      await ctx.db.insert("abo_licences", {
+        licence: "748020279190",
+        nom: "GUIGO",
+        prenom: "OLIVIA",
+        nom_prenom_normalise: "GUIGO OLIVIA",
+        imported_at: "2026-09-16T00:00:00.000Z",
+      });
+    });
+
+    await expect(admin.mutation(api.abo.licences.validerLicence, {
+      personneId: dossier.personneId,
+      licence: "748020279190",
+    })).resolves.toEqual({ statut: "attribue", licence: "748020279190" });
+    expect(await t.run((ctx) => ctx.db.get(dossier.personneId))).toMatchObject({
+      nom: "Guigo",
+      prenom: "Olivia",
+      nom_prenom_normalise: "GUIGO OLIVIA",
+      licence: "748020279190",
+      licence_statut: "annuaire_valide",
+    });
+  });
+
+  test("(C) une identité annuaire différente exige confirmation et n'écrit rien", async () => {
+    const t = convexTest(schema, modules);
+    const admin = await creerAdmin(t);
+    const dossier = await creerDossier(t, "antoine.palumbo4@gmail.com");
+    await t.run(async (ctx) => {
+      await ctx.db.patch(dossier.personneId, {
+        nom: "GUIGO",
+        prenom: "Olivia",
+        nom_prenom_normalise: "GUIGO OLIVIA",
+      });
+      await ctx.db.insert("abo_licences", {
+        licence: "748020239271",
+        nom: "PALUMBO",
+        prenom: "Antoine",
+        nom_prenom_normalise: "PALUMBO ANTOINE",
+        imported_at: "2026-09-16T00:00:00.000Z",
+      });
+    });
+
+    await expect(admin.mutation(api.abo.licences.validerLicence, {
+      personneId: dossier.personneId,
+      licence: "748020239271",
+    })).resolves.toEqual({
+      statut: "confirmation_requise",
+      licence: "748020239271",
+      nomAnnuaire: "PALUMBO",
+      prenomAnnuaire: "Antoine",
+    });
+    expect(await t.run((ctx) => ctx.db.get(dossier.personneId))).toMatchObject({
+      nom: "GUIGO",
+      prenom: "Olivia",
+      nom_prenom_normalise: "GUIGO OLIVIA",
+      licence_statut: "inconnu",
+    });
+    expect((await t.run((ctx) => ctx.db.get(dossier.personneId)))?.licence).toBeUndefined();
+  });
+
+  test("(G) la confirmation explicite associe seulement la licence, sans utiliser l'email", async () => {
+    const t = convexTest(schema, modules);
+    const admin = await creerAdmin(t);
+    const dossier = await creerDossier(t, "antoine.palumbo4@gmail.com");
+    await t.run(async (ctx) => {
+      await ctx.db.patch(dossier.personneId, {
+        nom: "GUIGO",
+        prenom: "Olivia",
+        nom_prenom_normalise: "GUIGO OLIVIA",
+      });
+      await ctx.db.insert("abo_licences", {
+        licence: "748020239271",
+        nom: "PALUMBO",
+        prenom: "Antoine",
+        nom_prenom_normalise: "PALUMBO ANTOINE",
+        imported_at: "2026-09-16T00:00:00.000Z",
+      });
+    });
+
+    await expect(admin.mutation(api.abo.licences.validerLicence, {
+      personneId: dossier.personneId,
+      licence: "748020239271",
+      confirmerIdentite: true,
+    })).resolves.toEqual({ statut: "attribue", licence: "748020239271" });
+    expect(await t.run((ctx) => ctx.db.get(dossier.personneId))).toMatchObject({
+      nom: "GUIGO",
+      prenom: "Olivia",
+      nom_prenom_normalise: "GUIGO OLIVIA",
+      licence: "748020239271",
+      licence_statut: "annuaire_valide",
+    });
+  });
+
+  test("reste idempotente quand la même licence est validée deux fois", async () => {
+    const t = convexTest(schema, modules);
+    const admin = await creerAdmin(t);
+    const dossier = await creerDossier(t, "olivia@example.test");
+    await t.run(async (ctx) => {
+      await ctx.db.patch(dossier.personneId, {
+        nom: "GUIGO",
+        prenom: "Olivia",
+        nom_prenom_normalise: "GUIGO OLIVIA",
+      });
+    });
+    const args = { personneId: dossier.personneId, licence: "748020279190" };
+
+    await expect(admin.mutation(api.abo.licences.validerLicence, args))
+      .resolves.toEqual({ statut: "attribue", licence: "748020279190" });
+    const apresPremiereValidation = await t.run((ctx) => ctx.db.get(dossier.personneId));
+    await expect(admin.mutation(api.abo.licences.validerLicence, args))
+      .resolves.toEqual({ statut: "attribue", licence: "748020279190" });
+    expect(await t.run((ctx) => ctx.db.get(dossier.personneId)))
+      .toEqual(apresPremiereValidation);
+  });
+
   test("validerLicence signale le conflit sans écrire la licence sur la cible", async () => {
     const t = convexTest(schema, modules);
     const admin = await creerAdmin(t);

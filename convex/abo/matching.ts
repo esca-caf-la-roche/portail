@@ -203,6 +203,18 @@ export const matcherScrapPersonnes = internalMutation({
 
     // Index licence → ligne scrap (licence unique dans abo_abonnes_scrap).
     const parLicence = new Map<string, (typeof scrap)[number]>();
+    // Ces index sont dérivés du balayage déjà nécessaire des personnes :
+    // aucune lecture supplémentaire n'est faite pour sécuriser l'attribution.
+    const compteIdentitePersonnes = new Map<string, number>();
+    const licencesPortees = new Set<string>();
+    for (const personne of personnes) {
+      const identite = personne.nom_prenom_normalise;
+      compteIdentitePersonnes.set(
+        identite,
+        (compteIdentitePersonnes.get(identite) ?? 0) + 1,
+      );
+      if (personne.licence) licencesPortees.add(personne.licence);
+    }
     // Comptage nom_prenom_normalise pour ne garder que les noms NON ambigus.
     const compteNom = new Map<string, number>();
     for (const s of scrap) {
@@ -224,8 +236,18 @@ export const matcherScrapPersonnes = internalMutation({
       if (p.licence) {
         s = parLicence.get(p.licence);
       } else {
-        s = parNomUnique.get(p.nom_prenom_normalise);
-        if (s?.licence) licenceResolue = s.licence;
+        const candidate = parNomUnique.get(p.nom_prenom_normalise);
+        if (
+          candidate?.licence
+          && compteIdentitePersonnes.get(p.nom_prenom_normalise) === 1
+          && !licencesPortees.has(candidate.licence)
+        ) {
+          s = candidate;
+          licenceResolue = candidate.licence;
+          // Empêche une seconde attribution dans la même transaction si les
+          // données deviennent incohérentes malgré les gardes d'unicité.
+          licencesPortees.add(candidate.licence);
+        }
       }
 
       if (!s) {
@@ -261,10 +283,11 @@ export const matcherScrapPersonnes = internalMutation({
         maj++;
       }
 
-      // Après un scrap effectivement réussi, seule la ligne trouvée par la
-      // licence exacte peut confirmer ou invalider une réservation provisoire.
-      // Aucun rapprochement nom/prénom ne suffit pour annuler un rendez-vous.
-      if (!p.licence || s.licence !== p.licence) continue;
+      // Après l'attribution strictement non ambiguë ci-dessus, la licence
+      // désormais effective peut confirmer ou invalider la réservation sans
+      // attendre la synchronisation suivante.
+      const licenceEffective = licenceResolue ?? p.licence;
+      if (!licenceEffective || s.licence !== licenceEffective) continue;
       const autonomie = testAutonomieDepuisScrap(s.autonomie);
       const age = s.age;
       if (autonomie === undefined || age === undefined) continue;

@@ -55,6 +55,12 @@ les deux e-mails et, pour chaque dossier, uniquement les noms, prénoms et
 licences des personnes. Les informations du site du club ne sont jamais
 arbitrées : la licence reste la clé de rapprochement avec le snapshot externe.
 
+L'association automatique ou manuelle d'une licence ne réécrit jamais
+`nom`, `prenom` ou `nom_prenom_normalise` sur `abo_personnes`. Une divergence
+avec l'identité de l'annuaire exige une confirmation explicite du staff, puis
+seuls `licence` et `licence_statut` sont modifiés. L'e-mail du dossier reste une
+donnée de contact et n'est jamais utilisé comme preuve d'identité.
+
 L'admin choisit de conserver les deux dossiers, seulement le dossier A ou
 seulement le dossier B, puis affecte chaque personne finale à un dossier
 conservé. La personne présente deux fois pour la même licence n'apparaît qu'une

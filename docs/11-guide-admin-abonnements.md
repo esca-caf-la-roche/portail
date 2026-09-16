@@ -282,7 +282,9 @@ les exports de cours. L'onglet montre les personnes dont la licence n'a pas pu
 être reliée avec certitude.
 
 Les correspondances exactes de nom/prénom — y compris dans l'ordre inversé —
-sont résolues automatiquement. Les cas restants exigent un arbitrage humain.
+ne sont résolues automatiquement que si l'identité est unique dans le portail
+et dans l'annuaire, et si la licence n'est portée par personne d'autre. Les cas
+restants exigent un arbitrage humain.
 
 ### Procédure conseillée
 
@@ -300,6 +302,12 @@ sont résolues automatiquement. Les cas restants exigent un arbitrage humain.
    pourcentage de similarité.
 4. Cliquer **Associer** uniquement lorsque l'identité est certaine ; sinon,
    saisir manuellement le numéro de licence à 12 chiffres puis associer.
+
+L'association ne modifie jamais le nom ni le prénom du dossier. Si l'identité
+de l'annuaire diffère, l'écran affiche les deux identités et exige une seconde
+confirmation avant de modifier uniquement le numéro et le statut de licence.
+L'adresse e-mail du dossier est un contact et ne sert jamais de preuve
+d'identité pour ce rattachement.
 
 > Ne jamais associer une licence sur la seule ressemblance d'un nom. Une erreur
 > fausse le suivi de la licence, de l'inscription et potentiellement le

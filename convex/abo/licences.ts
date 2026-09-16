@@ -108,8 +108,8 @@ export const getLicencesAValider = authenticatedQuery({
   },
 });
 
-// Aligne nom/prénom d'une personne sur la fiche annuaire d'une licence, et pose
-// la licence + son statut. Recalcule nom_prenom_normalise (ex-trigger).
+// Pose uniquement la licence et son statut. L'identité saisie dans la demande
+// reste la source de vérité et n'est jamais remplacée par l'annuaire.
 async function autrePorteuseLicence(
   ctx: MutationCtx,
   personneId: Doc<"abo_personnes">["_id"],
@@ -127,24 +127,18 @@ async function poserLicence(
   personne: Doc<"abo_personnes">,
   licence: string,
   statut: "annuaire_auto" | "annuaire_valide",
-  fiche: Doc<"abo_licences"> | null,
 ): Promise<"conflit" | "inchange" | "modifie"> {
   if (await autrePorteuseLicence(ctx, personne._id, licence)) {
     return "conflit";
   }
-  const nom = fiche?.nom ?? personne.nom;
-  const prenom = fiche?.prenom ?? personne.prenom;
   const patch = {
     licence,
     licence_statut: statut,
-    nom,
-    prenom,
-    nom_prenom_normalise: normaliserNomPrenom(nom, prenom),
   };
   if (!champsModifies(personne, patch)) return "inchange";
   await ctx.db.patch(personne._id, patch);
-  // Licence et nom pilotent aussi le dédoublonnage des demandes avec le site.
-  // Leur correction doit rafraîchir le compteur même si le scrap ne change pas.
+  // La licence pilote aussi le dédoublonnage des demandes avec le site.
+  // Sa correction doit rafraîchir le compteur même si le scrap ne change pas.
   await invaliderCompteurPublic(ctx);
   return "modifie";
 }
@@ -167,8 +161,19 @@ export const resoudreLicencesPersonnes = authenticatedMutation({
 
       // Licences distinctes de l'annuaire correspondant à l'une des deux clés.
       const distinctes = new Set<string>();
-      const fiches = new Map<string, Doc<"abo_licences">>();
       const cles = cleInverse === cleDirecte ? [cleDirecte] : [cleDirecte, cleInverse];
+      // Recherches indexées et bornées : une personne homonyme déjà licenciée
+      // rend aussi l'association ambiguë, pas seulement les non-résolues.
+      const personnesCorrespondantes = await Promise.all(
+        cles.map((cle) => ctx.db
+          .query("abo_personnes")
+          .withIndex("by_nom_prenom_normalise", (q) => q.eq("nom_prenom_normalise", cle))
+          .take(2)),
+      );
+      const idsCorrespondants = new Set(
+        personnesCorrespondantes.flat().map((personne) => personne._id),
+      );
+      if (idsCorrespondants.size !== 1 || !idsCorrespondants.has(p._id)) continue;
       for (const cle of cles) {
         const rows = await ctx.db
           .query("abo_licences")
@@ -178,14 +183,13 @@ export const resoudreLicencesPersonnes = authenticatedMutation({
           .collect();
         for (const r of rows) {
           distinctes.add(r.licence);
-          fiches.set(r.licence, r);
         }
       }
 
       // Résolue SSI l'annuaire contient EXACTEMENT une licence correspondante.
       if (distinctes.size === 1) {
         const licence = [...distinctes][0];
-        if (await poserLicence(ctx, p, licence, "annuaire_auto", fiches.get(licence) ?? null) === "modifie") {
+        if (await poserLicence(ctx, p, licence, "annuaire_auto") === "modifie") {
           resolues++;
         }
       }
@@ -197,9 +201,19 @@ export const resoudreLicencesPersonnes = authenticatedMutation({
 
 // ── validerLicence : association manuelle (admin) ────────────────────
 export const validerLicence = authenticatedMutation({
-  args: { personneId: v.id("abo_personnes"), licence: v.string() },
+  args: {
+    personneId: v.id("abo_personnes"),
+    licence: v.string(),
+    confirmerIdentite: v.optional(v.boolean()),
+  },
   returns: v.union(
     v.object({ statut: v.literal("attribue"), licence: v.string() }),
+    v.object({
+      statut: v.literal("confirmation_requise"),
+      licence: v.string(),
+      nomAnnuaire: v.string(),
+      prenomAnnuaire: v.string(),
+    }),
     v.object({
       statut: v.literal("conflit"),
       licence: v.string(),
@@ -224,7 +238,8 @@ export const validerLicence = authenticatedMutation({
     if (!personne) {
       throw new ConvexError({ code: "P0002", message: "Personne introuvable." });
     }
-    // Correspondance annuaire (aligne nom/prénom si la licence y figure).
+    // L'annuaire sert à avertir d'un écart d'identité, jamais à remplacer
+    // l'identité de la personne ni à déduire un lien depuis son email.
     const fiche = await ctx.db
       .query("abo_licences")
       .withIndex("by_licence", (q) => q.eq("licence", licence))
@@ -243,7 +258,25 @@ export const validerLicence = authenticatedMutation({
         personneExistanteEmail: dossierPorteuse?.email ?? null,
       };
     }
-    const resultat = await poserLicence(ctx, personne, licence, "annuaire_valide", fiche);
+    const annuaireNom = fiche?.nom?.trim();
+    const annuairePrenom = fiche?.prenom?.trim();
+    const identiteAnnuaire = annuaireNom && annuairePrenom
+      ? normaliserNomPrenom(annuaireNom, annuairePrenom)
+      : null;
+    const identitePersonne = normaliserNomPrenom(personne.nom, personne.prenom);
+    const identitePersonneInversee = normaliserNomPrenom(personne.prenom, personne.nom);
+    const identiteCorrespond = identiteAnnuaire === null
+      || identiteAnnuaire === identitePersonne
+      || identiteAnnuaire === identitePersonneInversee;
+    if (!identiteCorrespond && !args.confirmerIdentite) {
+      return {
+        statut: "confirmation_requise" as const,
+        licence,
+        nomAnnuaire: annuaireNom!,
+        prenomAnnuaire: annuairePrenom!,
+      };
+    }
+    const resultat = await poserLicence(ctx, personne, licence, "annuaire_valide");
     if (resultat === "conflit") {
       throw new ConvexError({
         code: "LICENCE_CONCURRENTE",
