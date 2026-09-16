@@ -519,27 +519,33 @@ describe("planning des salariés du samedi", () => {
   });
 
   test("bloque le changement de ressource tant qu'une affectation à venir existe", async () => {
-    const f = await fixture();
-    await f.t.run((ctx) => ctx.db.insert("planning_salaries_affectations", {
-      saison: "2026-27",
-      date: "2026-09-05",
-      salarieId: f.aliceId,
-      resourceCalendarIdSnapshot: "alice@resource.calendar.google.com",
-      createdBy: f.managerId,
-      createdAt: 1,
-      updatedBy: f.managerId,
-      updatedAt: 1,
-    }));
-    await expect(f.t.withIdentity({ subject: f.managerId }).mutation(
-      api.planningSalaries.annuaire.modifier,
-      {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-25T07:00:00.000Z"));
+    try {
+      const f = await fixture();
+      await f.t.run((ctx) => ctx.db.insert("planning_salaries_affectations", {
+        saison: "2026-27",
+        date: "2026-09-05",
         salarieId: f.aliceId,
-        prenom: "Alice",
-        email: "alice@example.test",
-        resourceCalendarId: "alice-new@resource.calendar.google.com",
-        actif: true,
-      },
-    )).rejects.toThrow("affectation à venir");
+        resourceCalendarIdSnapshot: "alice@resource.calendar.google.com",
+        createdBy: f.managerId,
+        createdAt: 1,
+        updatedBy: f.managerId,
+        updatedAt: 1,
+      }));
+      await expect(f.t.withIdentity({ subject: f.managerId }).mutation(
+        api.planningSalaries.annuaire.modifier,
+        {
+          salarieId: f.aliceId,
+          prenom: "Alice",
+          email: "alice@example.test",
+          resourceCalendarId: "alice-new@resource.calendar.google.com",
+          actif: true,
+        },
+      )).rejects.toThrow("affectation à venir");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test("purge du cache une occurrence retirée de Google", async () => {
