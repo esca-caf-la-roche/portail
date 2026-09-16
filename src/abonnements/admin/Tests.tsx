@@ -159,7 +159,7 @@ type ArchiveTest = NonNullable<
 >[number];
 type CandidatTest = NonNullable<
   ReturnType<typeof useQuery<typeof api.abo.testDocuments.rechercherCandidatParLicence>>
->;
+>[number];
 
 function ArchiveTests({ licenceInitiale }: { licenceInitiale: string | null }) {
   const [filtre, setFiltre] = useState<FiltreArchive>("a_traiter");
@@ -174,10 +174,12 @@ function ArchiveTests({ licenceInitiale }: { licenceInitiale: string | null }) {
   const reservations = useQuery(api.abo.testDocuments.listeReservationsPassees, {
     avant: instantReference,
   });
-  const candidat = useQuery(
+  const candidats = useQuery(
     api.abo.testDocuments.rechercherCandidatParLicence,
     licenceRecherchee ? { licence: licenceRecherchee, avant: instantReference } : "skip",
   );
+  const candidat = candidats?.find((resultat) => resultat.licence === licenceRecherchee)
+    ?? (candidats?.length === 1 ? candidats[0] : null);
 
   useEffect(() => {
     if (!licenceInitiale || licenceInitiale === derniereLicenceInitiale.current) return;
@@ -206,7 +208,7 @@ function ArchiveTests({ licenceInitiale }: { licenceInitiale: string | null }) {
 
       <section className="abo-admin-tests-step">
       <h4 className="abo-admin-subheading">Rechercher un licencié pour enregistrer son test</h4>
-      <p className="abo-admin-meta">Recherchez par numéro de licence, puis importez la photo ou le PDF du test.</p>
+      <p className="abo-admin-meta">Saisissez le début du numéro de licence, puis choisissez le licencié et importez la photo ou le PDF du test.</p>
       <form className="abo-admin-toolbar abo-admin-tests-licence-search" onSubmit={rechercher}>
         <label className="abo-admin-filter-field" htmlFor="recherche-licence-test">
           <span>Numéro de licence</span>
@@ -225,11 +227,30 @@ function ArchiveTests({ licenceInitiale }: { licenceInitiale: string | null }) {
         </button>
       </form>
 
-      {licenceRecherchee && candidat === undefined && <p>Recherche…</p>}
-      {licenceRecherchee && candidat === null && (
+      {licenceRecherchee && candidats === undefined && <p>Recherche…</p>}
+      {licenceRecherchee && candidats?.length === 0 && (
         <p className="abo-admin-empty">
-          Aucun test passé n'est associé à cette licence. Vérifiez le numéro de licence.
+          Aucun licencié ne correspond à ce début de numéro.
         </p>
+      )}
+      {licenceRecherchee && candidats && candidats.length > 1 && !candidat && (
+        <ul className="abo-admin-test-results" aria-label="Licenciés correspondants">
+          {candidats.map((resultat) => (
+            <li key={resultat.licence} className="abo-admin-test-result">
+              <span>{`${resultat.prenom} ${resultat.nom}`.trim() || "Identité inconnue"} — licence {resultat.licence}</span>
+              <button
+                type="button"
+                className="abo-admin-button abo-admin-button--secondary"
+                onClick={() => {
+                  setLicenceSaisie(resultat.licence);
+                  setLicenceRecherchee(resultat.licence);
+                }}
+              >
+                Sélectionner
+              </button>
+            </li>
+          ))}
+        </ul>
       )}
       {candidat && !candidat.driveUrl && (
         <RechercheDrive key={candidat.licence} nom={candidat.nom} prenom={candidat.prenom} />

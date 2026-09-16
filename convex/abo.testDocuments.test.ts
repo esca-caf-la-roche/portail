@@ -36,6 +36,24 @@ async function ajouterLicence(
 }
 
 describe("archive des tests d'autonomie", () => {
+  test("recherche un licencié avec le début de son numéro de licence", async () => {
+    const t = convexTest(schema, modules);
+    const { admin } = await creerAdmin(t);
+    await ajouterLicence(t, "123456789012");
+    await ajouterLicence(t, "123456000000");
+    await ajouterLicence(t, "987654321098");
+
+    const candidats = await admin.query(
+      api.abo.testDocuments.rechercherCandidatParLicence,
+      { licence: "123456", avant: "2026-09-16T10:00:00.000Z" },
+    );
+
+    expect(candidats.map((candidat) => candidat.licence)).toEqual([
+      "123456000000",
+      "123456789012",
+    ]);
+  });
+
   test("un admin Abonnements prépare un dépôt sans exposer le brouillon dans la file", async () => {
     const t = convexTest(schema, modules);
     const { admin } = await creerAdmin(t);

@@ -100,71 +100,74 @@ export const listArchives = authenticatedQuery({
   },
 });
 
-// Recherche strictement exacte : aucune consultation d'annuaire ni de nom.
+const MAX_CANDIDATS_RECHERCHE_LICENCE = 10;
+
+// Recherche par début de numéro, bornée sur les index de licence.
 export const rechercherCandidatParLicence = authenticatedQuery({
   args: { licence: v.string(), avant: v.string() },
-  returns: v.union(candidatValidator, v.null()),
+  returns: v.array(candidatValidator),
   handler: async (ctx, args) => {
     await requireAboAdmin(ctx);
-    const licence = args.licence.trim();
-    if (!licence) return null;
+    const prefixe = args.licence.trim();
+    if (!prefixe) return [];
+    const borneHaute = `${prefixe}\uffff`;
 
     const personnes = await ctx.db
       .query("abo_personnes")
-      .withIndex("by_licence", (q) => q.eq("licence", licence))
-      .take(2);
-    if (personnes.length > 1) return null;
-    const archive = await ctx.db
+      .withIndex("by_licence", (q) => q.gte("licence", prefixe).lt("licence", borneHaute))
+      .take(MAX_CANDIDATS_RECHERCHE_LICENCE + 1);
+    const annuaire = await ctx.db
+      .query("abo_licences")
+      .withIndex("by_licence", (q) => q.gte("licence", prefixe).lt("licence", borneHaute))
+      .take(MAX_CANDIDATS_RECHERCHE_LICENCE + 1);
+    const archives = await ctx.db
       .query("abo_tests_autonomie_archive")
-      .withIndex("by_licence", (q) => q.eq("licence", licence))
-      .unique();
-    if (personnes.length === 0) {
-      const entreeAnnuaire = await ctx.db
-        .query("abo_licences")
-        .withIndex("by_licence", (q) => q.eq("licence", licence))
-        .unique();
-      if (!entreeAnnuaire?.nom || !entreeAnnuaire.prenom) {
-        if (!archive) return null;
-        return {
-          personneId: null,
-          licence,
-          nom: archive.nom,
-          prenom: archive.prenom,
-          licenceManquante: false,
-          reservationPassee: false,
-          archiveId: archive._id,
-          statut: archive.statut,
-          driveUrl: archive.drive_url || null,
-        };
+      .withIndex("by_licence", (q) => q.gte("licence", prefixe).lt("licence", borneHaute))
+      .take(MAX_CANDIDATS_RECHERCHE_LICENCE + 1);
+
+    const nombrePersonnesParLicence = new Map<string, number>();
+    for (const personne of personnes) {
+      if (personne.licence) {
+        nombrePersonnesParLicence.set(
+          personne.licence,
+          (nombrePersonnesParLicence.get(personne.licence) ?? 0) + 1,
+        );
       }
+    }
+    const personnesParLicence = new Map(
+      personnes
+        .filter((personne) => personne.licence && nombrePersonnesParLicence.get(personne.licence) === 1)
+        .map((personne) => [personne.licence!, personne]),
+    );
+    const annuaireParLicence = new Map(annuaire.map((entree) => [entree.licence, entree]));
+    const archivesParLicence = new Map(archives.map((archive) => [archive.licence, archive]));
+    const licences = [...new Set([
+      ...personnesParLicence.keys(),
+      ...annuaireParLicence.keys(),
+      ...archivesParLicence.keys(),
+    ])]
+      .filter((licence) => (nombrePersonnesParLicence.get(licence) ?? 0) <= 1)
+      .sort()
+      .slice(0, MAX_CANDIDATS_RECHERCHE_LICENCE);
+
+    return await Promise.all(licences.map(async (licence) => {
+      const personne = personnesParLicence.get(licence) ?? null;
+      const entreeAnnuaire = annuaireParLicence.get(licence);
+      const archive = archivesParLicence.get(licence);
       return {
-        personneId: null,
+        personneId: personne?._id ?? null,
         licence,
-        nom: entreeAnnuaire.nom,
-        prenom: entreeAnnuaire.prenom,
+        nom: personne?.nom ?? entreeAnnuaire?.nom ?? archive?.nom ?? "",
+        prenom: personne?.prenom ?? entreeAnnuaire?.prenom ?? archive?.prenom ?? "",
         licenceManquante: false,
-        reservationPassee: false,
+        reservationPassee: personne
+          ? await reservationPasseePourPersonne(ctx, personne._id, args.avant)
+          : false,
         archiveId: archive?._id ?? null,
         statut: archive?.statut ?? null,
         driveUrl: archive?.drive_url || null,
       };
-    }
-    const personne = personnes[0];
-    return {
-      personneId: personne._id,
-      licence,
-      nom: personne.nom,
-      prenom: personne.prenom,
-      licenceManquante: false,
-      reservationPassee: await reservationPasseePourPersonne(
-        ctx,
-        personne._id,
-        args.avant,
-      ),
-      archiveId: archive?._id ?? null,
-      statut: archive?.statut ?? null,
-      driveUrl: archive?.drive_url || null,
-    };
+    }));
   },
 });
 
