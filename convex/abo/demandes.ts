@@ -888,7 +888,9 @@ export async function calculerSuiviPersonnes(
       personne_id: p._id,
       licence_ok,
       inscription_ok: scrap !== null,
-      paiement_ok: scrap ? abonnementEstValide(scrap.abonnement_valide) : false,
+      // Le point 5 reflète la validation explicite de la colonne Paiement du
+      // site club. Le statut global de l'abonnement est une étape distincte.
+      paiement_ok: scrap?.paiement === "OK",
       test_autonomie: mapAutonomie(scrap?.autonomie),
       reglement_signe: reglementSigne !== null,
       age: scrap?.age ?? p.age ?? null,
