@@ -31,7 +31,7 @@ import { components, internal } from "../_generated/api";
 import { requireAboIdentity, requireAboAdmin } from "./auth";
 import { parisWallToUtcMs } from "./config";
 import { getAboStaffActifsIds, getAboStaffActifsParId } from "../users";
-import { canoniserLicence } from "./lib";
+import { canoniserLicence, normaliserNomPrenom } from "./lib";
 import {
   CLUB_SYNC_ATTEMPT_KEY,
   CLUB_SYNC_COMPLETE_KEY,
@@ -48,6 +48,7 @@ const SLOT_MS = 20 * 60 * 1000; // slot de base = 20 min
 const MAX_CRENEAUX_STAFF = 200;
 const MAX_CANDIDATS_DIRECTS_PAR_COMPTE = 10;
 const MAX_PERSONNES_PAR_LICENCE = 50;
+const MAX_RESERVATIONS_PAR_PERSONNE = 100;
 const MAX_SUIVI_CANDIDATS_PAR_SOURCE = 1_000;
 const MAX_SUIVI_RESERVATIONS = 2_000;
 const rateLimiter = new RateLimiter(components.rateLimiter, {
@@ -736,9 +737,13 @@ interface ReservationVue {
   annulee_le: string | null;
   etat_confirmation: "provisoire" | "confirmee";
   annulee_raison: "candidat" | "creneau_admin_annule" | "conditions_test_non_remplies" | null;
+  annulation_autorisee: boolean;
 }
 
-function reservationVue(r: Doc<"abo_test_reservations">): ReservationVue {
+function reservationVue(
+  r: Doc<"abo_test_reservations">,
+  annulationAutorisee: boolean,
+): ReservationVue {
   return {
     id: r._id,
     tranche: r.tranche,
@@ -747,7 +752,28 @@ function reservationVue(r: Doc<"abo_test_reservations">): ReservationVue {
     etat_confirmation: r.etat_confirmation ?? "provisoire",
     annulee_le: r.annulee_le ?? null,
     annulee_raison: r.annulee_raison ?? null,
+    annulation_autorisee: annulationAutorisee,
   };
+}
+
+function reservationDirecteCorrespondPersonne(
+  reservation: Doc<"abo_test_reservations">,
+  personne: Doc<"abo_personnes">,
+): boolean {
+  if (
+    reservation.personne_id
+    || personne.etape_validation !== "validee"
+    || (personne.licence_statut !== "annuaire_auto" && personne.licence_statut !== "annuaire_valide")
+    || !reservation.candidat_nom
+    || !reservation.candidat_prenom
+  ) {
+    return false;
+  }
+  const identites = new Set([
+    normaliserNomPrenom(reservation.candidat_nom, reservation.candidat_prenom),
+    normaliserNomPrenom(reservation.candidat_prenom, reservation.candidat_nom),
+  ]);
+  return identites.has(personne.nom_prenom_normalise);
 }
 
 export const getMesReservationsParPersonne = authenticatedQuery({
@@ -771,10 +797,36 @@ export const getMesReservationsParPersonne = authenticatedQuery({
         .withIndex("by_dossier", (q) => q.eq("dossier_id", dossier._id))
         .collect();
       for (const p of personnes) {
-        const rows = await ctx.db
-          .query("abo_test_reservations")
-          .withIndex("by_personne", (q) => q.eq("personne_id", p._id))
-          .collect();
+        const peutChercherDirectes = Boolean(p.licence)
+          && p.etape_validation === "validee"
+          && (p.licence_statut === "annuaire_auto" || p.licence_statut === "annuaire_valide");
+        const [liees, directes] = await Promise.all([
+          ctx.db
+            .query("abo_test_reservations")
+            .withIndex("by_personne", (q) => q.eq("personne_id", p._id))
+            .take(MAX_RESERVATIONS_PAR_PERSONNE + 1),
+          peutChercherDirectes
+            ? ctx.db
+                .query("abo_test_reservations")
+                .withIndex("by_candidat_licence", (q) => q.eq("candidat_licence", p.licence!))
+                .take(MAX_RESERVATIONS_PAR_PERSONNE + 1)
+            : Promise.resolve([]),
+        ]);
+        if (
+          liees.length > MAX_RESERVATIONS_PAR_PERSONNE
+          || directes.length > MAX_RESERVATIONS_PAR_PERSONNE
+        ) {
+          throw new ConvexError({
+            code: "ABO_TEST_RESERVATIONS_TROP_NOMBREUSES",
+            message: "Trop de réservations existent pour afficher ce suivi.",
+          });
+        }
+        const rows = [...new Map(
+          [...liees, ...directes.filter((reservation) =>
+            reservationDirecteCorrespondPersonne(reservation, p),
+          )]
+            .map((reservation) => [reservation._id, reservation]),
+        ).values()];
         // Plus récent d'abord (l'annulée subie la plus récente pour le bandeau).
         rows.sort((a, b) => b._creationTime - a._creationTime);
         const active = rows.find(estReservationActive) ?? null;
@@ -788,8 +840,8 @@ export const getMesReservationsParPersonne = authenticatedQuery({
         if (active || annulee) {
           out.push({
             personne_id: p._id,
-            active: active ? reservationVue(active) : null,
-            annulee: annulee ? reservationVue(annulee) : null,
+            active: active ? reservationVue(active, active.personne_id === p._id) : null,
+            annulee: annulee ? reservationVue(annulee, false) : null,
           });
         }
       }

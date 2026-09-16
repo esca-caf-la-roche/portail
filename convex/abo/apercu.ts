@@ -8,6 +8,7 @@ import { authenticatedQuery } from "../customFunctions";
 import { requireAboAdmin } from "./auth";
 import { liensFinalisationVue, vagueCourante } from "./config";
 import { calculerSuiviPersonnes, personneVue } from "./demandes";
+import { normaliserNomPrenom } from "./lib";
 
 const MAX_PERSONNES_PAR_DOSSIER = 10;
 const MAX_RESERVATIONS_PAR_PERSONNE = 100;
@@ -166,6 +167,26 @@ function reservationVue(r: Doc<"abo_test_reservations">): ReservationVue {
   };
 }
 
+function reservationDirecteCorrespondPersonne(
+  reservation: Doc<"abo_test_reservations">,
+  personne: Doc<"abo_personnes">,
+): boolean {
+  if (
+    reservation.personne_id
+    || personne.etape_validation !== "validee"
+    || (personne.licence_statut !== "annuaire_auto" && personne.licence_statut !== "annuaire_valide")
+    || !reservation.candidat_nom
+    || !reservation.candidat_prenom
+  ) {
+    return false;
+  }
+  const identites = new Set([
+    normaliserNomPrenom(reservation.candidat_nom, reservation.candidat_prenom),
+    normaliserNomPrenom(reservation.candidat_prenom, reservation.candidat_nom),
+  ]);
+  return identites.has(personne.nom_prenom_normalise);
+}
+
 // Bundle consommé par la vue admin : dossier, contrôles live, réservations,
 // alertes, fil et liens. Le shape est volontairement proche des queries de la
 // page Suivi afin que le front puisse partager ses composants de présentation.
@@ -203,17 +224,38 @@ export const get = authenticatedQuery({
     const reservations = [];
     const suivisDisponibilites = [];
     for (const personne of personnes) {
-      const lignes = await ctx.db
-        .query("abo_test_reservations")
-        .withIndex("by_personne", (q) => q.eq("personne_id", personne._id))
-        .order("desc")
-        .take(MAX_RESERVATIONS_PAR_PERSONNE + 1);
-      if (lignes.length > MAX_RESERVATIONS_PAR_PERSONNE) {
+      const peutChercherDirectes = Boolean(personne.licence)
+        && personne.etape_validation === "validee"
+        && (personne.licence_statut === "annuaire_auto" || personne.licence_statut === "annuaire_valide");
+      const [liees, directes] = await Promise.all([
+        ctx.db
+          .query("abo_test_reservations")
+          .withIndex("by_personne", (q) => q.eq("personne_id", personne._id))
+          .order("desc")
+          .take(MAX_RESERVATIONS_PAR_PERSONNE + 1),
+        peutChercherDirectes
+          ? ctx.db
+              .query("abo_test_reservations")
+              .withIndex("by_candidat_licence", (q) => q.eq("candidat_licence", personne.licence!))
+              .order("desc")
+              .take(MAX_RESERVATIONS_PAR_PERSONNE + 1)
+          : Promise.resolve([]),
+      ]);
+      if (
+        liees.length > MAX_RESERVATIONS_PAR_PERSONNE
+        || directes.length > MAX_RESERVATIONS_PAR_PERSONNE
+      ) {
         throw new ConvexError({
           code: "ABO_APERCU_RESERVATIONS_TROP_NOMBREUSES",
           message: "Trop de réservations existent pour afficher un aperçu fiable.",
         });
       }
+      const lignes = [...new Map(
+        [...liees, ...directes.filter((reservation) =>
+          reservationDirecteCorrespondPersonne(reservation, personne),
+        )]
+          .map((reservation) => [reservation._id, reservation]),
+      ).values()].sort((a, b) => b._creationTime - a._creationTime);
       const active = lignes.find((ligne) => ligne.statut === "active") ?? null;
       const annulee =
         lignes.find(

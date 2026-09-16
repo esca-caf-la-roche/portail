@@ -592,6 +592,103 @@ describe("réservation de test d'autonomie", () => {
     })).resolves.toBeNull();
     const reservations = await caller.query(api.abo.tests.getMesReservationsParPersonne, {});
     expect(reservations[0]?.active?.etat_confirmation).toBe("provisoire");
+    expect(reservations[0]?.active?.annulation_autorisee).toBe(true);
+  });
+
+  test("affiche sur la personne une réservation directe de même licence sans transférer son annulation", async () => {
+    const t = convexTest(schema, modules);
+    const { userId, personneId } = await creerPersonne(t, {
+      licence: "748020279190",
+    });
+    const reservationId = await t.run(async (ctx) => {
+      await ctx.db.patch(personneId, {
+        nom: "GUIGO",
+        prenom: "Olivia",
+        nom_prenom_normalise: "GUIGO OLIVIA",
+        licence_statut: "annuaire_valide",
+      });
+      const candidatUserId = await ctx.db.insert("users", {
+        email: "candidate-directe@example.test",
+      });
+      return await ctx.db.insert("abo_test_reservations", {
+        candidat_user_id: candidatUserId,
+        candidat_licence: "748020279190",
+        candidat_nom: "GUIGO",
+        candidat_prenom: "Olivia",
+        candidat_email: "candidate-directe@example.test",
+        tranche: "2099-06-02T08:00:00.000Z",
+        statut: "active",
+        etat_confirmation: "confirmee",
+      });
+    });
+
+    const reservations = await t.withIdentity({ subject: userId })
+      .query(api.abo.tests.getMesReservationsParPersonne, {});
+
+    expect(reservations).toEqual([
+      expect.objectContaining({
+        personne_id: personneId,
+        active: expect.objectContaining({
+          id: reservationId,
+          etat_confirmation: "confirmee",
+          annulation_autorisee: false,
+        }),
+      }),
+    ]);
+  });
+
+  test("n'expose pas une réservation directe sur une licence seulement saisie", async () => {
+    const t = convexTest(schema, modules);
+    const { userId, personneId } = await creerPersonne(t, { licence: "748020279190" });
+    await t.run(async (ctx) => {
+      await ctx.db.patch(personneId, {
+        nom: "GUIGO",
+        prenom: "Olivia",
+        nom_prenom_normalise: "GUIGO OLIVIA",
+      });
+      const candidatUserId = await ctx.db.insert("users", {
+        email: "candidate-directe@example.test",
+      });
+      await ctx.db.insert("abo_test_reservations", {
+        candidat_user_id: candidatUserId,
+        candidat_licence: "748020279190",
+        candidat_nom: "GUIGO",
+        candidat_prenom: "Olivia",
+        candidat_email: "candidate-directe@example.test",
+        tranche: "2099-06-02T08:00:00.000Z",
+        statut: "active",
+        etat_confirmation: "confirmee",
+      });
+    });
+
+    await expect(t.withIdentity({ subject: userId })
+      .query(api.abo.tests.getMesReservationsParPersonne, {}))
+      .resolves.toEqual([]);
+  });
+
+  test("n'expose pas une réservation directe d'une autre identité avec une licence validée", async () => {
+    const t = convexTest(schema, modules);
+    const { userId, personneId } = await creerPersonne(t, { licence: "748020279190" });
+    await t.run(async (ctx) => {
+      await ctx.db.patch(personneId, { licence_statut: "annuaire_valide" });
+      const candidatUserId = await ctx.db.insert("users", {
+        email: "candidate-directe@example.test",
+      });
+      await ctx.db.insert("abo_test_reservations", {
+        candidat_user_id: candidatUserId,
+        candidat_licence: "748020279190",
+        candidat_nom: "GUIGO",
+        candidat_prenom: "Olivia",
+        candidat_email: "candidate-directe@example.test",
+        tranche: "2099-06-02T08:00:00.000Z",
+        statut: "active",
+        etat_confirmation: "confirmee",
+      });
+    });
+
+    await expect(t.withIdentity({ subject: userId })
+      .query(api.abo.tests.getMesReservationsParPersonne, {}))
+      .resolves.toEqual([]);
   });
 
   test("autorise provisoirement une personne de moins de 16 ans", async () => {

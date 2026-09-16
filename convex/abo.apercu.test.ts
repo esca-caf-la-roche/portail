@@ -240,6 +240,41 @@ describe("prévisualisation admin comme l'abonné", () => {
     expect(apres).toEqual(avant);
   });
 
+  test("affiche une réservation directe rattachée par licence exacte", async () => {
+    const fixture = await preparerFixture();
+    const reservationDirecteId = await fixture.t.run(async (ctx) => {
+      await ctx.db.delete(fixture.reservationId);
+      const candidatUserId = await ctx.db.insert("users", {
+        email: "candidate-directe@example.test",
+      });
+      return await ctx.db.insert("abo_test_reservations", {
+        candidat_user_id: candidatUserId,
+        candidat_licence: "748012345678",
+        candidat_nom: "DUPONT",
+        candidat_prenom: "Alice",
+        candidat_email: "candidate-directe@example.test",
+        tranche: "2026-09-27T08:00:00.000Z",
+        tranche_fin: "2026-09-27T09:00:00.000Z",
+        statut: "active",
+        etat_confirmation: "confirmee",
+      });
+    });
+
+    const apercu = await fixture.t
+      .withIdentity({ subject: fixture.staffId })
+      .query(api.abo.apercu.get, {
+        dossierId: fixture.dossierId,
+        maintenantMs: MAINTENANT_MS,
+      });
+
+    expect(apercu.reservations).toEqual([
+      expect.objectContaining({
+        personne_id: fixture.personneId,
+        active: expect.objectContaining({ id: reservationDirecteId }),
+      }),
+    ]);
+  });
+
   test("refuse un administrateur global sans tuile Abonnements", async () => {
     const fixture = await preparerFixture();
     await expect(

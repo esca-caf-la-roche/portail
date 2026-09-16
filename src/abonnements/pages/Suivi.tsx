@@ -521,9 +521,15 @@ function ReservationTest({
             className="abo-link"
             onClick={annulerRdv}
             disabled={busy}
+            hidden={!active.annulation_autorisee}
           >
             Annuler ce RDV
           </button>
+          {!active.annulation_autorisee && (
+            <p className="abo-resa-information">
+              Ce rendez-vous a été réservé depuis un autre compte. Son annulation reste disponible depuis ce compte.
+            </p>
+          )}
         </div>
       ) : suitCoursEscalade ? null : (
         <>

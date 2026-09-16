@@ -499,6 +499,13 @@ rattachements sans relancer la synchronisation. L'éligibilité est néanmoins
 réévaluée au moment de réserver et une licence ne peut avoir qu'une réservation
 active, y compris entre le parcours direct et le suivi d'une demande.
 
+Si cette licence est ensuite rattachée à une personne validée d'un dossier,
+la réservation directe apparaît aussi dans son suivi lorsque l'identité
+nom/prénom correspond exactement à la réservation et que la licence est
+confirmée par l'annuaire. Le mail n'intervient pas dans ce rapprochement. Si le
+rendez-vous a été créé depuis un autre compte, le dossier peut le consulter mais
+seul le compte d'origine peut l'annuler.
+
 Cette synchronisation publique authentifiée
 réutilise le verrou global du bouton admin et ajoute une limite publique d'une
 tentative globale par quart d'heure, ainsi que deux tentatives par compte sur la
