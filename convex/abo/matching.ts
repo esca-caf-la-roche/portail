@@ -215,6 +215,18 @@ export const matcherScrapPersonnes = internalMutation({
       const clé = s.nom_prenom_normalise;
       if (clé && compteNom.get(clé) === 1) parNomUnique.set(clé, s);
     }
+    const personnesParLicence = new Map<string, (typeof personnes)[number][]>();
+    const compteIdentitePersonnes = new Map<string, number>();
+    for (const personne of personnes) {
+      compteIdentitePersonnes.set(
+        personne.nom_prenom_normalise,
+        (compteIdentitePersonnes.get(personne.nom_prenom_normalise) ?? 0) + 1,
+      );
+      if (!personne.licence) continue;
+      const porteuses = personnesParLicence.get(personne.licence) ?? [];
+      porteuses.push(personne);
+      personnesParLicence.set(personne.licence, porteuses);
+    }
 
     let maj = 0;
     for (const p of personnes) {
@@ -223,6 +235,25 @@ export const matcherScrapPersonnes = internalMutation({
       let licenceResolue: string | undefined;
       if (p.licence) {
         s = parLicence.get(p.licence);
+        if (!s) {
+          const correspondanceUnique = parNomUnique.get(p.nom_prenom_normalise);
+          const nouvelleLicence = correspondanceUnique?.licence;
+          const autrePorteuse = nouvelleLicence
+            ? (personnesParLicence.get(nouvelleLicence) ?? []).some(
+                (personne) => personne._id !== p._id,
+              )
+            : false;
+          if (
+            nouvelleLicence
+            && nouvelleLicence !== p.licence
+            && !autrePorteuse
+            && compteIdentitePersonnes.get(p.nom_prenom_normalise) === 1
+            && (p.licence_statut === "saisie" || p.licence_statut === "annuaire_auto")
+          ) {
+            s = correspondanceUnique;
+            licenceResolue = nouvelleLicence;
+          }
+        }
       } else {
         s = parNomUnique.get(p.nom_prenom_normalise);
         if (s?.licence) licenceResolue = s.licence;
@@ -261,10 +292,11 @@ export const matcherScrapPersonnes = internalMutation({
         maj++;
       }
 
-      // Après un scrap effectivement réussi, seule la ligne trouvée par la
-      // licence exacte peut confirmer ou invalider une réservation provisoire.
-      // Aucun rapprochement nom/prénom ne suffit pour annuler un rendez-vous.
-      if (!p.licence || s.licence !== p.licence) continue;
+      // Après un scrap effectivement réussi, la ligne trouvée par la licence
+      // exacte — éventuellement corrigée sous les gardes strictes ci-dessus —
+      // peut confirmer ou invalider une réservation provisoire.
+      const licenceEffective = licenceResolue ?? p.licence;
+      if (!licenceEffective || s.licence !== licenceEffective) continue;
       const autonomie = testAutonomieDepuisScrap(s.autonomie);
       const age = s.age;
       if (autonomie === undefined || age === undefined) continue;

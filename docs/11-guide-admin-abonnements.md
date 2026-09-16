@@ -301,13 +301,21 @@ sont résolues automatiquement. Les cas restants exigent un arbitrage humain.
 4. Cliquer **Associer** uniquement lorsque l'identité est certaine ; sinon,
    saisir manuellement le numéro de licence à 12 chiffres puis associer.
 
+Si le nom ou le prénom de l'annuaire diffère de celui du dossier, le portail
+affiche les deux identités et exige une seconde confirmation. Cette confirmation
+associe uniquement le numéro : elle ne remplace jamais le nom ou le prénom du
+dossier.
+
 > Ne jamais associer une licence sur la seule ressemblance d'un nom. Une erreur
 > fausse le suivi de la licence, de l'inscription et potentiellement le
 > rapprochement avec le site du club.
 
-L'annuaire affiché est le dernier snapshot FFCAM réussi : une licence qui n'y
-figure plus est retirée du cache de recherche, sans retirer la licence déjà
-associée à une personne ni supprimer son dossier.
+L'annuaire affiché est le dernier snapshot FFCAM réussi. La synchronisation du
+site du club peut corriger un ancien numéro déjà stocké uniquement lorsque
+l'ancien numéro a disparu du snapshot, que le même nom/prénom désigne exactement
+une personne du portail et une ligne du site, et que le nouveau numéro n'est pas
+déjà porté. Une licence confirmée manuellement n'est jamais remplacée par ce
+mécanisme ; elle repasse par un arbitrage du staff.
 
 ### Conflit de licence
 

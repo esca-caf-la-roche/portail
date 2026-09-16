@@ -100,6 +100,9 @@ son snapshot demeure une source externe strictement en lecture seule.
 Le portail et le site du club sont séparés. Le portail lit le snapshot
 `abo_abonnes_scrap`, mais ne crée, ne modifie et ne supprime jamais une
 inscription sur le site : le staff y intervient manuellement puis synchronise.
+L'association manuelle d'une licence ne remplace jamais le nom ou le prénom de
+la demande. Si l'identité de l'annuaire diffère, une confirmation explicite du
+staff est requise et seul le numéro est rattaché.
 Un ancien abonné N-1, rapproché de façon unique par nom et prénom normalisés,
 est redirigé vers le site du club. En vague 2, la licence doit figurer dans le
 snapshot des élèves en cours ; cette priorité de dépôt ne rend jamais conforme
@@ -329,6 +332,11 @@ local `abo_abonnes_scrap`. Cela ne modifie jamais le site du club. Une liste
 vide, illisible ou en erreur n'entraîne aucune purge.
 Les dossiers déposés dans le portail sont conservés ; seules leurs confirmations
 issues du site sont retirées jusqu'à une nouvelle présence dans le snapshot.
+Lorsqu'un numéro saisi ou résolu automatiquement a ensuite été corrigé sur le
+site, le portail adopte le nouveau numéro seulement si l'ancien n'est plus
+présent, si le nom/prénom est unique dans le snapshot et dans les demandes, et
+si personne d'autre ne porte déjà la nouvelle licence. Une licence validée
+manuellement n'est jamais corrigée automatiquement.
 
 Le compteur public, le détail du compteur staff, la liste des anomalies et les
 trois indicateurs de l'accueil (cours, abonnement, intersection) sont des

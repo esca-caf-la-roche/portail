@@ -68,6 +68,182 @@ async function ajouterPersonne(
 }
 
 describe("résolution simple d'un conflit de licence entre dossiers", () => {
+  test("demande une confirmation si l'annuaire diffère sans jamais remplacer l'identité", async () => {
+    const t = convexTest(schema, modules);
+    const admin = await creerAdmin(t);
+    const dossier = await creerDossier(t, "olivia@example.test");
+    await t.run(async (ctx) => {
+      await ctx.db.patch(dossier.personneId, {
+        nom: "GUIGO",
+        prenom: "Olivia",
+        nom_prenom_normalise: "GUIGO OLIVIA",
+      });
+      await ctx.db.insert("abo_licences", {
+        licence: "748020279190",
+        nom: "PALUMBO",
+        prenom: "Antoine",
+        nom_prenom_normalise: "PALUMBO ANTOINE",
+        imported_at: "2026-09-15T00:00:00.000Z",
+      });
+    });
+
+    await expect(admin.mutation(api.abo.licences.validerLicence, {
+      personneId: dossier.personneId,
+      licence: "748020279190",
+    })).resolves.toEqual({
+      statut: "confirmation_requise",
+      licence: "748020279190",
+      nomAnnuaire: "PALUMBO",
+      prenomAnnuaire: "Antoine",
+    });
+    expect(await t.run((ctx) => ctx.db.get(dossier.personneId))).toMatchObject({
+      nom: "GUIGO",
+      prenom: "Olivia",
+      nom_prenom_normalise: "GUIGO OLIVIA",
+      licence_statut: "inconnu",
+    });
+
+    await expect(admin.mutation(api.abo.licences.validerLicence, {
+      personneId: dossier.personneId,
+      licence: "748020279190",
+      confirmerIdentite: true,
+    })).resolves.toEqual({ statut: "attribue", licence: "748020279190" });
+    expect(await t.run((ctx) => ctx.db.get(dossier.personneId))).toMatchObject({
+      nom: "GUIGO",
+      prenom: "Olivia",
+      nom_prenom_normalise: "GUIGO OLIVIA",
+      licence: "748020279190",
+      licence_statut: "annuaire_valide",
+    });
+  });
+
+  test("associe sans confirmation une identité annuaire correspondante en conservant sa graphie", async () => {
+    const t = convexTest(schema, modules);
+    const admin = await creerAdmin(t);
+    const dossier = await creerDossier(t, "olivia@example.test");
+    await t.run(async (ctx) => {
+      await ctx.db.patch(dossier.personneId, {
+        nom: "Guigo",
+        prenom: "Olivia",
+        nom_prenom_normalise: "GUIGO OLIVIA",
+      });
+      await ctx.db.insert("abo_licences", {
+        licence: "748020279190",
+        nom: "GUIGO",
+        prenom: "OLIVIA",
+        nom_prenom_normalise: "GUIGO OLIVIA",
+        imported_at: "2026-09-15T00:00:00.000Z",
+      });
+    });
+
+    await expect(admin.mutation(api.abo.licences.validerLicence, {
+      personneId: dossier.personneId,
+      licence: "748020279190",
+    })).resolves.toEqual({ statut: "attribue", licence: "748020279190" });
+    expect(await t.run((ctx) => ctx.db.get(dossier.personneId))).toMatchObject({
+      nom: "Guigo",
+      prenom: "Olivia",
+      nom_prenom_normalise: "GUIGO OLIVIA",
+      licence: "748020279190",
+    });
+  });
+
+  test("restaure le titulaire du dossier sans toucher à la réservation directe d'une autre personne", async () => {
+    const t = convexTest(schema, modules);
+    const dossier = await creerDossier(t, "antoine.palumbo4@gmail.com", "748020279182");
+    const reservationDirecteId = await t.run(async (ctx) => {
+      await ctx.db.patch(dossier.personneId, {
+        nom: "GUIGO",
+        prenom: "Olivia",
+        nom_prenom_normalise: "GUIGO OLIVIA",
+      });
+      await ctx.db.insert("abo_abonnes_scrap", {
+        licence: "748020239271",
+        nom: "PALUMBO",
+        prenom: "Antoine",
+        nom_prenom_normalise: "PALUMBO ANTOINE",
+        email: "antoine.palumbo4@gmail.com",
+        age: 32,
+        adhesion: "OK",
+        autonomie: "OK",
+        photo: "OK",
+        paiement: "OK",
+        abonnement_valide: "oui",
+      });
+      const oliviaUserId = await ctx.db.insert("users", { email: "guigo.olivia@gmail.com" });
+      return await ctx.db.insert("abo_test_reservations", {
+        candidat_user_id: oliviaUserId,
+        candidat_licence: "748020279190",
+        candidat_nom: "GUIGO",
+        candidat_prenom: "Olivia",
+        candidat_email: "guigo.olivia@gmail.com",
+        tranche: "2099-09-17T15:40:00.000Z",
+        statut: "active",
+      });
+    });
+
+    await expect(t.mutation(internal.abo.licences.reparerLicencePersonneInterne, {
+      personneId: dossier.personneId,
+      dossierId: dossier.dossierId,
+      emailDossierAttendu: "autre@example.test",
+      ancienneLicence: "748020279182",
+      nouvelleLicence: "748020239271",
+    })).rejects.toThrow("ne correspond plus");
+
+    const ancienScrapId = await t.run((ctx) => ctx.db.insert("abo_abonnes_scrap", {
+      licence: "748020279182",
+      nom: "GUIGO",
+      prenom: "Olivia",
+      nom_prenom_normalise: "GUIGO OLIVIA",
+      email: "antoine.palumbo4@gmail.com",
+      abonnement_valide: "oui",
+    }));
+    await expect(t.mutation(internal.abo.licences.reparerLicencePersonneInterne, {
+      personneId: dossier.personneId,
+      dossierId: dossier.dossierId,
+      emailDossierAttendu: "antoine.palumbo4@gmail.com",
+      ancienneLicence: "748020279182",
+      nouvelleLicence: "748020239271",
+    })).rejects.toThrow("existe encore");
+    await t.run((ctx) => ctx.db.delete(ancienScrapId));
+
+    await expect(t.mutation(internal.abo.licences.reparerLicencePersonneInterne, {
+      personneId: dossier.personneId,
+      dossierId: dossier.dossierId,
+      emailDossierAttendu: "antoine.palumbo4@gmail.com",
+      ancienneLicence: "748020279182",
+      nouvelleLicence: "748020239271",
+    })).resolves.toEqual({ statut: "repare", modifie: true });
+    expect(await t.run((ctx) => ctx.db.get(dossier.personneId))).toMatchObject({
+      nom: "PALUMBO",
+      prenom: "Antoine",
+      nom_prenom_normalise: "PALUMBO ANTOINE",
+      licence: "748020239271",
+      licence_statut: "annuaire_valide",
+      age: 32,
+      etape_licence: true,
+      etape_test_autonomie: "valide",
+      etape_inscription_site: true,
+      etape_photo: true,
+      etape_paiement: true,
+      etape_abonnement_valide: true,
+    });
+    const reservationDirecte = await t.run((ctx) => ctx.db.get(reservationDirecteId));
+    expect(reservationDirecte).toMatchObject({
+      candidat_licence: "748020279190",
+      candidat_email: "guigo.olivia@gmail.com",
+      statut: "active",
+    });
+    expect(reservationDirecte).not.toHaveProperty("personne_id");
+    await expect(t.mutation(internal.abo.licences.reparerLicencePersonneInterne, {
+      personneId: dossier.personneId,
+      dossierId: dossier.dossierId,
+      emailDossierAttendu: "antoine.palumbo4@gmail.com",
+      ancienneLicence: "748020279182",
+      nouvelleLicence: "748020239271",
+    })).resolves.toEqual({ statut: "repare", modifie: false });
+  });
+
   test("validerLicence signale le conflit sans écrire la licence sur la cible", async () => {
     const t = convexTest(schema, modules);
     const admin = await creerAdmin(t);
