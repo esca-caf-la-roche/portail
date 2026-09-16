@@ -36,21 +36,26 @@ async function ajouterLicence(
 }
 
 describe("archive des tests d'autonomie", () => {
-  test("recherche un licencié avec le début de son numéro de licence", async () => {
+  test("recherche un licencié avec les 4 ou 6 derniers chiffres de sa licence", async () => {
     const t = convexTest(schema, modules);
     const { admin } = await creerAdmin(t);
-    await ajouterLicence(t, "123456789012");
-    await ajouterLicence(t, "123456000000");
-    await ajouterLicence(t, "987654321098");
+    await ajouterLicence(t, "748020120024");
+    await ajouterLicence(t, "748020240024");
+    await ajouterLicence(t, "748020241234");
 
-    const candidats = await admin.query(
+    const parSixChiffres = await admin.query(
       api.abo.testDocuments.rechercherCandidatParLicence,
-      { licence: "123456", avant: "2026-09-16T10:00:00.000Z" },
+      { licence: "120024", avant: "2026-09-16T10:00:00.000Z" },
+    );
+    const parQuatreChiffres = await admin.query(
+      api.abo.testDocuments.rechercherCandidatParLicence,
+      { licence: "0024", avant: "2026-09-16T10:00:00.000Z" },
     );
 
-    expect(candidats.map((candidat) => candidat.licence)).toEqual([
-      "123456000000",
-      "123456789012",
+    expect(parSixChiffres.map((candidat) => candidat.licence)).toEqual(["748020120024"]);
+    expect(parQuatreChiffres.map((candidat) => candidat.licence)).toEqual([
+      "748020120024",
+      "748020240024",
     ]);
   });
 

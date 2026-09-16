@@ -208,7 +208,7 @@ function ArchiveTests({ licenceInitiale }: { licenceInitiale: string | null }) {
 
       <section className="abo-admin-tests-step">
       <h4 className="abo-admin-subheading">Rechercher un licencié pour enregistrer son test</h4>
-      <p className="abo-admin-meta">Saisissez le début du numéro de licence, puis choisissez le licencié et importez la photo ou le PDF du test.</p>
+      <p className="abo-admin-meta">Saisissez les 4 ou 6 derniers chiffres du numéro de licence, puis choisissez le licencié et importez la photo ou le PDF du test.</p>
       <form className="abo-admin-toolbar abo-admin-tests-licence-search" onSubmit={rechercher}>
         <label className="abo-admin-filter-field" htmlFor="recherche-licence-test">
           <span>Numéro de licence</span>
@@ -230,7 +230,7 @@ function ArchiveTests({ licenceInitiale }: { licenceInitiale: string | null }) {
       {licenceRecherchee && candidats === undefined && <p>Recherche…</p>}
       {licenceRecherchee && candidats?.length === 0 && (
         <p className="abo-admin-empty">
-          Aucun licencié ne correspond à ce début de numéro.
+          Aucun licencié ne correspond à ce numéro.
         </p>
       )}
       {licenceRecherchee && candidats && candidats.length > 1 && !candidat && (

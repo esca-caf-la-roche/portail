@@ -101,32 +101,49 @@ export const listArchives = authenticatedQuery({
 });
 
 const MAX_CANDIDATS_RECHERCHE_LICENCE = 10;
+const PREFIXE_LICENCE_CLUB = "7480";
+const ANNEES_LICENCE_RECHERCHE = Array.from({ length: 36 }, (_, index) => 2000 + index);
 
-// Recherche par début de numéro, bornée sur les index de licence.
+// Une licence du club suit le format 7480 + année initiale + identifiant.
+// La recherche accepte le numéro complet, les 6 derniers chiffres (année sur
+// 2 chiffres + identifiant) ou les 4 derniers chiffres. Dans ce dernier cas,
+// les années 2000 à 2035 sont testées par lectures exactes et bornées.
 export const rechercherCandidatParLicence = authenticatedQuery({
   args: { licence: v.string(), avant: v.string() },
   returns: v.array(candidatValidator),
   handler: async (ctx, args) => {
     await requireAboAdmin(ctx);
-    const prefixe = args.licence.trim();
-    if (!prefixe) return [];
-    const borneHaute = `${prefixe}\uffff`;
+    const saisie = args.licence.replace(/\s/g, "");
+    if (!/^\d+$/.test(saisie)) return [];
+    const licencesRecherchees = saisie.length === 12
+      ? [saisie]
+      : saisie.length === 6
+        ? [`${PREFIXE_LICENCE_CLUB}20${saisie}`]
+        : saisie.length === 4
+          ? ANNEES_LICENCE_RECHERCHE.map((annee) => `${PREFIXE_LICENCE_CLUB}${annee}${saisie}`)
+          : [];
+    if (licencesRecherchees.length === 0) return [];
 
-    const personnes = await ctx.db
-      .query("abo_personnes")
-      .withIndex("by_licence", (q) => q.gte("licence", prefixe).lt("licence", borneHaute))
-      .take(MAX_CANDIDATS_RECHERCHE_LICENCE + 1);
-    const annuaire = await ctx.db
-      .query("abo_licences")
-      .withIndex("by_licence", (q) => q.gte("licence", prefixe).lt("licence", borneHaute))
-      .take(MAX_CANDIDATS_RECHERCHE_LICENCE + 1);
-    const archives = await ctx.db
-      .query("abo_tests_autonomie_archive")
-      .withIndex("by_licence", (q) => q.gte("licence", prefixe).lt("licence", borneHaute))
-      .take(MAX_CANDIDATS_RECHERCHE_LICENCE + 1);
+    const [personnes, annuaire, archives] = await Promise.all([
+      Promise.all(licencesRecherchees.map((licence) => ctx.db
+        .query("abo_personnes")
+        .withIndex("by_licence", (q) => q.eq("licence", licence))
+        .take(2))),
+      Promise.all(licencesRecherchees.map((licence) => ctx.db
+        .query("abo_licences")
+        .withIndex("by_licence", (q) => q.eq("licence", licence))
+        .unique())),
+      Promise.all(licencesRecherchees.map((licence) => ctx.db
+        .query("abo_tests_autonomie_archive")
+        .withIndex("by_licence", (q) => q.eq("licence", licence))
+        .unique())),
+    ]);
+    const personnesTrouvees = personnes.flat();
+    const entreesAnnuaire = annuaire.filter((entree) => entree !== null);
+    const archivesTrouvees = archives.filter((archive) => archive !== null);
 
     const nombrePersonnesParLicence = new Map<string, number>();
-    for (const personne of personnes) {
+    for (const personne of personnesTrouvees) {
       if (personne.licence) {
         nombrePersonnesParLicence.set(
           personne.licence,
@@ -135,12 +152,12 @@ export const rechercherCandidatParLicence = authenticatedQuery({
       }
     }
     const personnesParLicence = new Map(
-      personnes
+      personnesTrouvees
         .filter((personne) => personne.licence && nombrePersonnesParLicence.get(personne.licence) === 1)
         .map((personne) => [personne.licence!, personne]),
     );
-    const annuaireParLicence = new Map(annuaire.map((entree) => [entree.licence, entree]));
-    const archivesParLicence = new Map(archives.map((archive) => [archive.licence, archive]));
+    const annuaireParLicence = new Map(entreesAnnuaire.map((entree) => [entree.licence, entree]));
+    const archivesParLicence = new Map(archivesTrouvees.map((archive) => [archive.licence, archive]));
     const licences = [...new Set([
       ...personnesParLicence.keys(),
       ...annuaireParLicence.keys(),
