@@ -70,6 +70,7 @@ async function preparerFixture() {
       age: 31,
       adhesion: "OK",
       autonomie: "Doit passer le test",
+      paiement: "OK",
       abonnement_valide: "oui",
     });
     await ctx.db.insert("abo_reglements_signes", {
