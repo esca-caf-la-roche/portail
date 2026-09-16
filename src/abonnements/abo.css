@@ -1013,6 +1013,30 @@ textarea.abo-input {
 .abo-admin-slot--range { background: var(--success); }
 .abo-admin-slot-placeholder { display: block; width: 2.75rem; }
 .abo-admin-attendee-list { margin: 0.5rem 0 0; padding-left: 1.25rem; }
+.abo-admin-attendee-list > li { margin-top: 0.45rem; overflow-wrap: anywhere; }
+.abo-admin-attendee-list .abo-admin-badge { margin-left: 0.45rem; }
+.abo-admin-test-capacities { display: grid; gap: 1.25rem; margin-top: 0.75rem; }
+.abo-admin-test-capacity-summary { display: grid; grid-template-columns: minmax(0, 1fr) repeat(2, minmax(10rem, auto)); align-items: stretch; gap: 0.75rem; padding: 1rem; border: var(--border-width) solid var(--border-color); background: var(--info); box-shadow: 5px 5px 0 var(--border-color); }
+.abo-admin-test-capacity-summary p { margin: 0; }
+.abo-admin-test-capacity-summary-title { align-self: center; font-size: 1.05rem; font-weight: 900; text-transform: uppercase; }
+.abo-admin-test-capacity-main,
+.abo-admin-test-capacity-available { display: grid; place-items: center; min-width: 0; padding: 0.65rem 0.8rem; border: 2px solid var(--border-color); text-align: center; text-transform: uppercase; }
+.abo-admin-test-capacity-main { background: var(--card); }
+.abo-admin-test-capacity-available { background: var(--success); }
+.abo-admin-test-capacity-main strong,
+.abo-admin-test-capacity-available strong { font-size: clamp(1.65rem, 4vw, 2.35rem); line-height: 1; }
+.abo-admin-test-capacity-main span,
+.abo-admin-test-capacity-available span { font-size: 0.72rem; font-weight: 900; }
+.abo-admin-test-capacity-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); gap: 0.85rem; }
+.abo-admin-test-capacity-card { display: grid; align-content: start; gap: 0.6rem; }
+.abo-admin-test-capacity-card-heading { display: grid; gap: 0.65rem; }
+.abo-admin-test-capacity-card-heading > strong { font-size: 1.1rem; }
+.abo-admin-test-capacity-counts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; }
+.abo-admin-test-capacity-counts > span { display: grid; place-items: center; min-width: 0; padding: 0.5rem; border: 2px solid var(--border-color); font-size: 0.72rem; font-weight: 900; text-align: center; text-transform: uppercase; }
+.abo-admin-test-capacity-counts strong { font-size: 1.3rem; line-height: 1; }
+.abo-admin-test-capacity-taken { background: var(--info); }
+.abo-admin-test-capacity-free { background: var(--success); }
+.abo-admin-test-capacity-empty { margin: 0; padding: 0.65rem; border: 2px dashed var(--border-color); background: var(--background); font-weight: 800; }
 .abo-admin-jauge { display: grid; gap: 0.75rem; }
 .abo-admin-jauge-header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0.5rem; }
 .abo-admin-jauge-total { font-size: 1.7rem; font-weight: 800; }
@@ -1024,6 +1048,8 @@ textarea.abo-input {
 @media (max-width: 640px) {
   .abo-admin-staff-slot { grid-template-columns: minmax(0, 1fr); }
   .abo-admin-staff-slot-action { width: 100%; }
+  .abo-admin-test-capacity-summary { grid-template-columns: 1fr; box-shadow: 4px 4px 0 var(--border-color); }
+  .abo-admin-test-capacity-summary-title { text-align: center; }
 }
 .abo-admin-jauge--danger .abo-admin-jauge-fill { background: var(--danger); }
 .abo-admin-jauge-detail { margin: 0; font-size: 0.85rem; font-weight: 600; }

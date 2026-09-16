@@ -71,6 +71,30 @@ const creneauStaffValidator = v.object({
   monCreneauId: v.union(v.id("abo_test_creneaux"), v.null()),
 });
 
+const inscritTestAdminValidator = v.object({
+  reservationId: v.id("abo_test_reservations"),
+  tranche_debut: v.string(),
+  tranche_fin: v.union(v.string(), v.null()),
+  etat_confirmation: v.union(v.literal("provisoire"), v.literal("confirmee")),
+  personne_id: v.union(v.id("abo_personnes"), v.null()),
+  licence: v.string(),
+  nom: v.string(),
+  prenom: v.string(),
+  email: v.string(),
+});
+
+type InscritTestAdmin = {
+  reservationId: Id<"abo_test_reservations">;
+  tranche_debut: string;
+  tranche_fin: string | null;
+  etat_confirmation: "provisoire" | "confirmee";
+  personne_id: Id<"abo_personnes"> | null;
+  licence: string;
+  nom: string;
+  prenom: string;
+  email: string;
+};
+
 async function exigerNomStaffConfigure(
   ctx: QueryCtx | MutationCtx,
   userId: Id<"users">,
@@ -98,16 +122,9 @@ interface Tranche {
   capacite: number;
 }
 
-async function calculerTranches(ctx: QueryCtx | MutationCtx): Promise<Tranche[]> {
-  const creneauxLus = await ctx.db.query("abo_test_creneaux").collect();
-  const staffActifs = await getAboStaffActifsIds(
-    ctx,
-    creneauxLus.map((creneau) => creneau.admin_id),
-  );
-  const creneaux = creneauxLus.filter((creneau) =>
-    staffActifs.has(creneau.admin_id),
-  );
-
+async function calculerTranchesDepuisCreneaux(
+  creneaux: Doc<"abo_test_creneaux">[],
+): Promise<Tranche[]> {
   // 1. Capacité par slot de 20 min : Map<instant utc ms, Set<adminId>>.
   const parSlot = new Map<number, Set<string>>();
   for (const c of creneaux) {
@@ -184,6 +201,19 @@ async function calculerTranches(ctx: QueryCtx | MutationCtx): Promise<Tranche[]>
   return out;
 }
 
+async function calculerTranches(ctx: QueryCtx | MutationCtx): Promise<Tranche[]> {
+  const creneauxLus = await ctx.db.query("abo_test_creneaux").collect();
+  const staffActifs = await getAboStaffActifsIds(
+    ctx,
+    creneauxLus.map((creneau) => creneau.admin_id),
+  );
+  const creneaux = creneauxLus.filter((creneau) =>
+    staffActifs.has(creneau.admin_id),
+  );
+
+  return await calculerTranchesDepuisCreneaux(creneaux);
+}
+
 // Nb de réservations actives par tranche (clé = ISO début).
 async function reservationsActivesParTranche(
   ctx: QueryCtx | MutationCtx,
@@ -197,6 +227,179 @@ async function reservationsActivesParTranche(
     parTranche.set(r.tranche, (parTranche.get(r.tranche) ?? 0) + 1);
   }
   return parTranche;
+}
+
+function validerBornesVueCreneaux(args: {
+  dateDebut: string;
+  instantReference: string;
+}): number {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(args.dateDebut)) {
+    throw new ConvexError({
+      code: "22023",
+      message: "Date de début requise (AAAA-MM-JJ).",
+    });
+  }
+  const instantReferenceMs = Date.parse(args.instantReference);
+  if (
+    !Number.isFinite(instantReferenceMs) ||
+    new Date(instantReferenceMs).toISOString() !== args.instantReference
+  ) {
+    throw new ConvexError({
+      code: "22023",
+      message: "Instant de référence ISO invalide.",
+    });
+  }
+  return instantReferenceMs;
+}
+
+async function chargerVueCreneauxStaff(
+  ctx: QueryCtx,
+  args: { dateDebut: string; instantReference: string },
+): Promise<{
+  creneauxActifs: Doc<"abo_test_creneaux">[];
+  creneauxARejoindre: Doc<"abo_test_creneaux">[];
+  staffActifs: Map<Id<"users">, Doc<"users">>;
+  instantReferenceMs: number;
+}> {
+  const instantReferenceMs = validerBornesVueCreneaux(args);
+  const creneauxLus = await ctx.db
+    .query("abo_test_creneaux")
+    .withIndex("by_date", (q) => q.gte("date_jour", args.dateDebut))
+    .take(MAX_CRENEAUX_STAFF + 1);
+  if (creneauxLus.length > MAX_CRENEAUX_STAFF) {
+    throw new ConvexError({
+      code: "ABO_TEST_TROP_DE_CRENEAUX",
+      message: "Trop de créneaux futurs existent pour afficher une vue complète.",
+    });
+  }
+  const staffActifs = await getAboStaffActifsParId(
+    ctx,
+    creneauxLus.map((creneau) => creneau.admin_id),
+  );
+  const creneauxActifs = creneauxLus.filter((creneau) =>
+    staffActifs.has(creneau.admin_id)
+  );
+  const creneauxARejoindre = creneauxActifs.filter((creneau) => {
+    const debut = parisWallToUtcMs(
+      `${creneau.date_jour}T${creneau.heure_debut}`,
+    );
+    return debut !== null && debut > instantReferenceMs;
+  });
+  return { creneauxActifs, creneauxARejoindre, staffActifs, instantReferenceMs };
+}
+
+function formaterDisponibilitesEquipe(
+  creneaux: Doc<"abo_test_creneaux">[],
+  staffActifs: Map<Id<"users">, Doc<"users">>,
+  userId: Id<"users">,
+) {
+  const adminIds = [...new Set(creneaux.map((creneau) => creneau.admin_id))];
+  const nomsParAdmin = new Map(
+    adminIds.map((adminId) => [
+      adminId,
+      staffActifs.get(adminId)?.name?.trim() || "Nom à compléter",
+    ]),
+  );
+
+  const groupes = new Map<string, Doc<"abo_test_creneaux">[]>();
+  for (const creneau of creneaux) {
+    const cle = `${creneau.date_jour}\u0000${creneau.heure_debut}\u0000${creneau.heure_fin}`;
+    const groupe = groupes.get(cle) ?? [];
+    groupe.push(creneau);
+    groupes.set(cle, groupe);
+  }
+
+  return [...groupes.values()]
+    .map((groupe) => {
+      const reference = groupe[0];
+      const parAdmin = new Map<Id<"users">, Doc<"abo_test_creneaux">>();
+      for (const creneau of groupe) {
+        if (!parAdmin.has(creneau.admin_id)) {
+          parAdmin.set(creneau.admin_id, creneau);
+        }
+      }
+      const monCreneau = parAdmin.get(userId);
+      const participants = [...parAdmin.keys()]
+        .map((adminId) => ({
+          nomAffiche: nomsParAdmin.get(adminId) ?? "Nom à compléter",
+          estMoi: adminId === userId,
+        }))
+        .sort((a, b) =>
+          a.nomAffiche.localeCompare(b.nomAffiche, "fr", {
+            sensitivity: "base",
+          }),
+        );
+
+      return {
+        creneauId: reference._id,
+        date_jour: reference.date_jour,
+        heure_debut: reference.heure_debut,
+        heure_fin: reference.heure_fin,
+        participants,
+        monCreneauId: monCreneau?._id ?? null,
+      };
+    })
+    .sort(
+      (a, b) =>
+        a.date_jour.localeCompare(b.date_jour) ||
+        a.heure_debut.localeCompare(b.heure_debut) ||
+        a.heure_fin.localeCompare(b.heure_fin),
+    );
+}
+
+async function inscrireReservationsAdmin(
+  ctx: QueryCtx,
+  reservations: Doc<"abo_test_reservations">[],
+): Promise<InscritTestAdmin[]> {
+  const personnesIds = [...new Set(reservations.flatMap((reservation) =>
+    reservation.personne_id ? [reservation.personne_id] : []
+  ))];
+  const personnes = (await Promise.all(personnesIds.map((id) => ctx.db.get(id))))
+    .filter((personne) => personne !== null);
+  const personnesParId = new Map(personnes.map((personne) => [personne._id, personne]));
+  const dossiersIds = [...new Set(personnes.map((personne) => personne.dossier_id))];
+  const dossiers = (await Promise.all(dossiersIds.map((id) => ctx.db.get(id))))
+    .filter((dossier) => dossier !== null);
+  const dossiersParId = new Map(dossiers.map((dossier) => [dossier._id, dossier]));
+
+  const out: InscritTestAdmin[] = [];
+  for (const reservation of reservations) {
+    if (!reservation.personne_id) {
+      if (
+        !reservation.candidat_licence ||
+        !reservation.candidat_nom ||
+        !reservation.candidat_prenom ||
+        !reservation.candidat_email
+      ) continue;
+      out.push({
+        reservationId: reservation._id,
+        tranche_debut: reservation.tranche,
+        tranche_fin: reservation.tranche_fin ?? null,
+        etat_confirmation: reservation.etat_confirmation ?? "confirmee",
+        personne_id: null,
+        licence: reservation.candidat_licence,
+        nom: reservation.candidat_nom,
+        prenom: reservation.candidat_prenom,
+        email: reservation.candidat_email,
+      });
+      continue;
+    }
+    const personne = personnesParId.get(reservation.personne_id);
+    if (!personne) continue;
+    const dossier = dossiersParId.get(personne.dossier_id);
+    out.push({
+      reservationId: reservation._id,
+      tranche_debut: reservation.tranche,
+      tranche_fin: reservation.tranche_fin ?? null,
+      etat_confirmation: reservation.etat_confirmation ?? "provisoire",
+      personne_id: personne._id,
+      licence: personne.licence ?? "",
+      nom: personne.nom,
+      prenom: personne.prenom,
+      email: dossier?.email ?? "",
+    });
+  }
+  return out;
 }
 
 // ── Candidat : tranches encore disponibles (à venir, place libre) ─────
@@ -882,100 +1085,115 @@ export const getCreneauxStaff = authenticatedQuery({
   returns: v.array(creneauStaffValidator),
   handler: async (ctx, args) => {
     const id = await requireAboAdmin(ctx);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(args.dateDebut)) {
-      throw new ConvexError({
-        code: "22023",
-        message: "Date de début requise (AAAA-MM-JJ).",
-      });
+    const { creneauxARejoindre, staffActifs } = await chargerVueCreneauxStaff(ctx, args);
+    return formaterDisponibilitesEquipe(creneauxARejoindre, staffActifs, id.userId);
+  },
+});
+
+// Vue staff consolidée : disponibilités de l'équipe, remplissage par tranche et
+// totaux. Les créneaux ne sont lus qu'une fois et les réservations sont bornées
+// à l'intervalle futur utile via l'index composite statut/tranche.
+export const vueCreneauxAdmin = authenticatedQuery({
+  args: { dateDebut: v.string(), instantReference: v.string() },
+  returns: v.object({
+    disponibilitesEquipe: v.array(creneauStaffValidator),
+    tranches: v.array(v.object({
+      tranche_debut: v.string(),
+      tranche_fin: v.string(),
+      capacite: v.number(),
+      prises: v.number(),
+      disponibles: v.number(),
+      inscrits: v.array(inscritTestAdminValidator),
+    })),
+    total: v.object({
+      capacite: v.number(),
+      prises: v.number(),
+      disponibles: v.number(),
+    }),
+  }),
+  handler: async (ctx, args) => {
+    const id = await requireAboAdmin(ctx);
+    const {
+      creneauxActifs,
+      creneauxARejoindre,
+      staffActifs,
+      instantReferenceMs,
+    } = await chargerVueCreneauxStaff(ctx, args);
+    const disponibilitesEquipe = formaterDisponibilitesEquipe(
+      creneauxARejoindre,
+      staffActifs,
+      id.userId,
+    );
+    const tranchesCalculees = (await calculerTranchesDepuisCreneaux(creneauxActifs))
+      .filter((tranche) => Date.parse(tranche.tranche_debut) > instantReferenceMs);
+    if (tranchesCalculees.length === 0) {
+      return {
+        disponibilitesEquipe,
+        tranches: [],
+        total: { capacite: 0, prises: 0, disponibles: 0 },
+      };
     }
-    const instantReferenceMs = Date.parse(args.instantReference);
-    if (
-      !Number.isFinite(instantReferenceMs) ||
-      new Date(instantReferenceMs).toISOString() !== args.instantReference
-    ) {
+
+    const premiereTranche = tranchesCalculees[0].tranche_debut;
+    const derniereTranche = tranchesCalculees.at(-1)!.tranche_debut;
+    const reservationsLues = await ctx.db
+      .query("abo_test_reservations")
+      .withIndex("by_statut_and_tranche", (q) =>
+        q
+          .eq("statut", "active")
+          .gte("tranche", premiereTranche)
+          .lte("tranche", derniereTranche)
+      )
+      .take(MAX_SUIVI_RESERVATIONS + 1);
+    if (reservationsLues.length > MAX_SUIVI_RESERVATIONS) {
       throw new ConvexError({
-        code: "22023",
-        message: "Instant de référence ISO invalide.",
+        code: "ABO_TEST_TROP_DE_RESERVATIONS",
+        message: "Trop de réservations existent pour afficher une vue complète.",
       });
     }
 
-    const creneauxLus = await ctx.db
-      .query("abo_test_creneaux")
-      .withIndex("by_date", (q) => q.gte("date_jour", args.dateDebut))
-      .take(MAX_CRENEAUX_STAFF + 1);
-    if (creneauxLus.length > MAX_CRENEAUX_STAFF) {
-      throw new ConvexError({
-        code: "ABO_TEST_TROP_DE_CRENEAUX",
-        message: "Trop de créneaux futurs existent pour afficher une vue complète.",
-      });
-    }
-    const staffActifs = await getAboStaffActifsParId(
-      ctx,
-      creneauxLus.map((creneau) => creneau.admin_id),
+    const debutsTranches = new Set(
+      tranchesCalculees.map((tranche) => tranche.tranche_debut),
     );
-    const creneaux = creneauxLus.filter((creneau) => {
-      const debut = parisWallToUtcMs(
-        `${creneau.date_jour}T${creneau.heure_debut}`,
+    const reservations = reservationsLues
+      .filter((reservation) => debutsTranches.has(reservation.tranche))
+      .sort((a, b) =>
+        a.tranche.localeCompare(b.tranche) || a._creationTime - b._creationTime
       );
-      return (
-        staffActifs.has(creneau.admin_id) &&
-        debut !== null &&
-        debut > instantReferenceMs
+    const inscrits = await inscrireReservationsAdmin(ctx, reservations);
+    const inscritsParTranche = new Map<string, InscritTestAdmin[]>();
+    for (const inscrit of inscrits) {
+      const groupe = inscritsParTranche.get(inscrit.tranche_debut) ?? [];
+      groupe.push(inscrit);
+      inscritsParTranche.set(inscrit.tranche_debut, groupe);
+    }
+    const prisesParTranche = new Map<string, number>();
+    for (const reservation of reservations) {
+      prisesParTranche.set(
+        reservation.tranche,
+        (prisesParTranche.get(reservation.tranche) ?? 0) + 1,
       );
+    }
+
+    const tranches = tranchesCalculees.map((tranche) => {
+      const inscritsTranche = inscritsParTranche.get(tranche.tranche_debut) ?? [];
+      const prises = prisesParTranche.get(tranche.tranche_debut) ?? 0;
+      return {
+        ...tranche,
+        prises,
+        disponibles: tranche.capacite - prises,
+        inscrits: inscritsTranche,
+      };
     });
-
-    const adminIds = [...new Set(creneaux.map((creneau) => creneau.admin_id))];
-    const nomsParAdmin = new Map(
-      adminIds.map((adminId) => [
-        adminId,
-        staffActifs.get(adminId)?.name?.trim() || "Nom à compléter",
-      ]),
+    const total = tranches.reduce(
+      (acc, tranche) => ({
+        capacite: acc.capacite + tranche.capacite,
+        prises: acc.prises + tranche.prises,
+        disponibles: acc.disponibles + tranche.disponibles,
+      }),
+      { capacite: 0, prises: 0, disponibles: 0 },
     );
-
-    const groupes = new Map<string, Doc<"abo_test_creneaux">[]>();
-    for (const creneau of creneaux) {
-      const cle = `${creneau.date_jour}\u0000${creneau.heure_debut}\u0000${creneau.heure_fin}`;
-      const groupe = groupes.get(cle) ?? [];
-      groupe.push(creneau);
-      groupes.set(cle, groupe);
-    }
-
-    return [...groupes.values()]
-      .map((groupe) => {
-        const reference = groupe[0];
-        const parAdmin = new Map<Id<"users">, Doc<"abo_test_creneaux">>();
-        for (const creneau of groupe) {
-          if (!parAdmin.has(creneau.admin_id)) {
-            parAdmin.set(creneau.admin_id, creneau);
-          }
-        }
-        const monCreneau = parAdmin.get(id.userId);
-        const participants = [...parAdmin.keys()]
-          .map((adminId) => ({
-            nomAffiche: nomsParAdmin.get(adminId) ?? "Nom à compléter",
-            estMoi: adminId === id.userId,
-          }))
-          .sort((a, b) =>
-            a.nomAffiche.localeCompare(b.nomAffiche, "fr", {
-              sensitivity: "base",
-            }),
-          );
-
-        return {
-          creneauId: reference._id,
-          date_jour: reference.date_jour,
-          heure_debut: reference.heure_debut,
-          heure_fin: reference.heure_fin,
-          participants,
-          monCreneauId: monCreneau?._id ?? null,
-        };
-      })
-      .sort(
-        (a, b) =>
-          a.date_jour.localeCompare(b.date_jour) ||
-          a.heure_debut.localeCompare(b.heure_debut) ||
-          a.heure_fin.localeCompare(b.heure_fin),
-      );
+    return { disponibilitesEquipe, tranches, total };
   },
 });
 
@@ -1517,17 +1735,7 @@ export const suiviCandidatsAdmin = authenticatedQuery({
 // ── Admin : liste globale des inscrits par tranche (jour J) ──────────
 export const testInscritsAdmin = authenticatedQuery({
   args: {},
-  returns: v.array(v.object({
-    reservationId: v.id("abo_test_reservations"),
-    tranche_debut: v.string(),
-    tranche_fin: v.union(v.string(), v.null()),
-    etat_confirmation: v.union(v.literal("provisoire"), v.literal("confirmee")),
-    personne_id: v.union(v.id("abo_personnes"), v.null()),
-    licence: v.string(),
-    nom: v.string(),
-    prenom: v.string(),
-    email: v.string(),
-  })),
+  returns: v.array(inscritTestAdminValidator),
   handler: async (ctx) => {
     await requireAboAdmin(ctx);
     const actives = (await ctx.db.query("abo_test_reservations").collect()).filter(
@@ -1536,49 +1744,6 @@ export const testInscritsAdmin = authenticatedQuery({
     actives.sort(
       (a, b) => a.tranche.localeCompare(b.tranche) || a._creationTime - b._creationTime,
     );
-
-    const out: {
-      tranche_debut: string;
-      tranche_fin: string | null;
-      etat_confirmation: "provisoire" | "confirmee";
-      reservationId: Id<"abo_test_reservations">;
-      personne_id: Id<"abo_personnes"> | null;
-      licence: string;
-      nom: string;
-      prenom: string;
-      email: string;
-    }[] = [];
-    for (const r of actives) {
-      if (!r.personne_id) {
-        if (!r.candidat_licence || !r.candidat_nom || !r.candidat_prenom || !r.candidat_email) continue;
-        out.push({
-          reservationId: r._id,
-          tranche_debut: r.tranche,
-          tranche_fin: r.tranche_fin ?? null,
-          etat_confirmation: r.etat_confirmation ?? "confirmee",
-          personne_id: null,
-          licence: r.candidat_licence,
-          nom: r.candidat_nom,
-          prenom: r.candidat_prenom,
-          email: r.candidat_email,
-        });
-        continue;
-      }
-      const personne = await ctx.db.get(r.personne_id);
-      if (!personne) continue;
-      const dossier = await ctx.db.get(personne.dossier_id);
-      out.push({
-        reservationId: r._id,
-        tranche_debut: r.tranche,
-        tranche_fin: r.tranche_fin ?? null,
-        etat_confirmation: r.etat_confirmation ?? "provisoire",
-        personne_id: personne._id,
-        licence: personne.licence ?? "",
-        nom: personne.nom,
-        prenom: personne.prenom,
-        email: dossier?.email ?? "",
-      });
-    }
-    return out;
+    return await inscrireReservationsAdmin(ctx, actives);
   },
 });

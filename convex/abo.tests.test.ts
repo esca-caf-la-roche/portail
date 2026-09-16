@@ -197,6 +197,131 @@ describe("réservation de test d'autonomie", () => {
     expect(JSON.stringify(creneaux)).not.toContain(aliceId);
   });
 
+  test("consolide les places prises et disponibles par tranche et au total", async () => {
+    const t = convexTest(schema, modules);
+    const adminId = await creerAdminAbo(t, {
+      email: "encadrant@example.test",
+      name: "Encadrant Test",
+    });
+    const { personneId } = await creerPersonne(t, { licence: "748000000111" });
+    await t.run(async (ctx) => {
+      await ctx.db.insert("abo_test_creneaux", {
+        admin_id: adminId,
+        date_jour: "2099-06-02",
+        heure_debut: "10:00",
+        heure_fin: "11:40",
+      });
+      await ctx.db.insert("abo_test_reservations", {
+        personne_id: personneId,
+        tranche: "2099-06-02T08:00:00.000Z",
+        tranche_fin: "2099-06-02T09:00:00.000Z",
+        statut: "active",
+        etat_confirmation: "confirmee",
+      });
+    });
+
+    const vue = await t.withIdentity({ subject: adminId }).query(
+      api.abo.tests.vueCreneauxAdmin,
+      {
+        dateDebut: "2099-01-01",
+        instantReference: "2099-01-01T00:00:00.000Z",
+      },
+    );
+
+    expect(vue.disponibilitesEquipe).toEqual([{
+      creneauId: expect.any(String),
+      date_jour: "2099-06-02",
+      heure_debut: "10:00",
+      heure_fin: "11:40",
+      participants: [{ nomAffiche: "Encadrant Test", estMoi: true }],
+      monCreneauId: expect.any(String),
+    }]);
+    expect(vue.tranches).toEqual([
+      {
+        tranche_debut: "2099-06-02T08:00:00.000Z",
+        tranche_fin: "2099-06-02T09:00:00.000Z",
+        capacite: 6,
+        prises: 1,
+        disponibles: 5,
+        inscrits: [{
+          reservationId: expect.any(String),
+          tranche_debut: "2099-06-02T08:00:00.000Z",
+          tranche_fin: "2099-06-02T09:00:00.000Z",
+          etat_confirmation: "confirmee",
+          personne_id: personneId,
+          licence: "748000000111",
+          nom: "Candidate",
+          prenom: "Test",
+          email: "abo@example.test",
+        }],
+      },
+      {
+        tranche_debut: "2099-06-02T09:00:00.000Z",
+        tranche_fin: "2099-06-02T09:40:00.000Z",
+        capacite: 4,
+        prises: 0,
+        disponibles: 4,
+        inscrits: [],
+      },
+    ]);
+    expect(vue.total).toEqual({ capacite: 10, prises: 1, disponibles: 9 });
+  });
+
+  test("conserve une tranche future issue d'une disponibilité déjà commencée", async () => {
+    const t = convexTest(schema, modules);
+    const adminId = await creerAdminAbo(t, {
+      email: "encadrant@example.test",
+      name: "Encadrant Test",
+    });
+    await t.run((ctx) => ctx.db.insert("abo_test_creneaux", {
+      admin_id: adminId,
+      date_jour: "2099-06-02",
+      heure_debut: "10:00",
+      heure_fin: "12:00",
+    }));
+
+    const vue = await t.withIdentity({ subject: adminId }).query(
+      api.abo.tests.vueCreneauxAdmin,
+      {
+        dateDebut: "2099-06-02",
+        instantReference: "2099-06-02T08:30:00.000Z",
+      },
+    );
+
+    expect(vue.disponibilitesEquipe).toEqual([]);
+    expect(vue.tranches).toEqual([
+      expect.objectContaining({
+        tranche_debut: "2099-06-02T09:00:00.000Z",
+        tranche_fin: "2099-06-02T10:00:00.000Z",
+        capacite: 6,
+        prises: 0,
+        disponibles: 6,
+      }),
+    ]);
+    expect(vue.total).toEqual({ capacite: 6, prises: 0, disponibles: 6 });
+  });
+
+  test("refuse la vue consolidée à un administrateur sans tuile Abonnements", async () => {
+    const t = convexTest(schema, modules);
+    const userId = await t.run(async (ctx) => {
+      const id = await ctx.db.insert("users", { email: "sans-tuile@example.test" });
+      await ctx.db.insert("userSettings", {
+        userId: id,
+        allowedTiles: [],
+        role: "admin",
+      });
+      return id;
+    });
+
+    await expect(t.withIdentity({ subject: userId }).query(
+      api.abo.tests.vueCreneauxAdmin,
+      {
+        dateDebut: "2099-01-01",
+        instantReference: "2099-01-01T00:00:00.000Z",
+      },
+    )).rejects.toThrow("Réservé aux administrateurs");
+  });
+
   test("exclut un ancien staff de la vue, de la capacité et des créneaux rejoignables", async () => {
     const t = convexTest(schema, modules);
     const adminId = await creerAdminAbo(t, {

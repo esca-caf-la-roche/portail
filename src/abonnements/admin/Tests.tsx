@@ -61,11 +61,10 @@ export default function Tests({ licenceInitiale }: { licenceInitiale: string | n
     planifierProchainPalier();
     return () => window.clearTimeout(timeoutId);
   }, []);
-  const creneaux = useQuery(api.abo.tests.getCreneauxStaff, {
+  const vueCreneaux = useQuery(api.abo.tests.vueCreneauxAdmin, {
     dateDebut: borneCreneaux.dateDebut,
     instantReference: borneCreneaux.instantReference,
   });
-  const inscrits = useQuery(api.abo.tests.testInscritsAdmin);
   const suiviCandidats = useQuery(api.abo.tests.suiviCandidatsAdmin, {
     instantReference: borneCreneaux.instantReference,
   });
@@ -136,14 +135,18 @@ export default function Tests({ licenceInitiale }: { licenceInitiale: string | n
           Retrouvez les disponibilités de tous les encadrants et rejoignez-les pour
           organiser les tests à plusieurs.
         </p>
-        <CreneauxStaff creneaux={creneaux} rejoindre={rejoindre} supprimer={supprimer} />
+        <CreneauxStaff
+          creneaux={vueCreneaux?.disponibilitesEquipe}
+          rejoindre={rejoindre}
+          supprimer={supprimer}
+        />
       </section>
 
       <hr className="abo-admin-separator" />
 
       <section>
         <h3 className="abo-admin-subheading">Inscrits par créneau</h3>
-        <Inscrits inscrits={inscrits} />
+        <Inscrits vue={vueCreneaux} />
       </section>
 
       <hr className="abo-admin-separator" />
@@ -689,7 +692,9 @@ function CreneauxStaff({
   rejoindre,
   supprimer,
 }: {
-  creneaux: ReturnType<typeof useQuery<typeof api.abo.tests.getCreneauxStaff>>;
+  creneaux:
+    | NonNullable<ReturnType<typeof useQuery<typeof api.abo.tests.vueCreneauxAdmin>>>["disponibilitesEquipe"]
+    | undefined;
   rejoindre: ReturnType<typeof useMutation<typeof api.abo.tests.rejoindreTestCreneau>>;
   supprimer: ReturnType<typeof useMutation<typeof api.abo.tests.supprimerTestCreneau>>;
 }) {
@@ -815,76 +820,116 @@ function etatConfirmationReservation(reservation: object): "provisoire" | "confi
     : "provisoire";
 }
 
-function Inscrits({
-  inscrits,
-}: {
-  inscrits: ReturnType<typeof useQuery<typeof api.abo.tests.testInscritsAdmin>>;
-}) {
-  if (inscrits === undefined) return <p>Chargement…</p>;
-  if (inscrits.length === 0) {
-    return <p className="abo-admin-empty">Aucun candidat inscrit pour l'instant.</p>;
-  }
+type VueCreneauxAdmin = NonNullable<
+  ReturnType<typeof useQuery<typeof api.abo.tests.vueCreneauxAdmin>>
+>;
+
+function libellePlaces(nombre: number) {
+  return `${nombre} place${nombre === 1 ? "" : "s"}`;
+}
+
+function libellePrises(nombre: number) {
+  return `${libellePlaces(nombre)} prise${nombre === 1 ? "" : "s"}`;
+}
+
+function Inscrits({ vue }: { vue: VueCreneauxAdmin | undefined }) {
+  if (vue === undefined) return <p>Chargement des places et des inscriptions…</p>;
+
+  const { tranches, total } = vue;
 
   // Regroupe par jour, puis par tranche (clé = début).
   const jours = new Map<
     string,
     {
       label: string;
-      tranches: Map<string, { fin: string | null; gens: typeof inscrits }>;
+      tranches: VueCreneauxAdmin["tranches"];
     }
   >();
-  for (const r of inscrits) {
-    const kJour = cleJour(r.tranche_debut);
+  for (const tranche of tranches) {
+    const kJour = cleJour(tranche.tranche_debut);
     if (!jours.has(kJour)) {
-      jours.set(kJour, { label: formatJour(r.tranche_debut), tranches: new Map() });
+      jours.set(kJour, { label: formatJour(tranche.tranche_debut), tranches: [] });
     }
-    const j = jours.get(kJour)!;
-    if (!j.tranches.has(r.tranche_debut)) {
-      j.tranches.set(r.tranche_debut, { fin: r.tranche_fin, gens: [] });
-    }
-    j.tranches.get(r.tranche_debut)!.gens.push(r);
+    jours.get(kJour)!.tranches.push(tranche);
   }
 
   return (
-    <div className="abo-admin-list">
-      {[...jours.values()].map((j) => (
-        <div key={j.label}>
-          <h4 className="abo-admin-subheading">{j.label}</h4>
-          <div className="abo-admin-list">
-            {[...j.tranches.entries()].map(([debut, { fin, gens }]) => (
-              <div
-                key={debut}
-                className="abo-admin-card"
-              >
-                <div className="abo-admin-toolbar">
-                  <strong>{formatTranche(debut, fin)}</strong>
-                  <span className="abo-admin-meta">
-                    {gens.length} inscrit{gens.length > 1 ? "s" : ""}
-                  </span>
-                </div>
-                <ul className="abo-admin-attendee-list">
-                  {gens.map((g) => {
-                    const confirmation = etatConfirmationReservation(g);
-                    return (
-                      <li key={g.reservationId}>
-                        {`${g.prenom ?? ""} ${g.nom ?? ""}`.trim() || "—"}{" "}
-                        <span className="abo-admin-meta">({g.email})</span>
-                        {g.licence && <span className="abo-admin-meta"> — licence {g.licence}</span>}
-                        <span
-                          className={`abo-admin-badge abo-admin-badge--confirmation-${confirmation}`}
-                          aria-label={`Réservation ${confirmation === "confirmee" ? "confirmée" : "provisoire"}`}
-                        >
-                          {confirmation === "confirmee" ? "Confirmé" : "Provisoire"}
+    <div className="abo-admin-test-capacities">
+      <div
+        className="abo-admin-test-capacity-summary"
+        role="group"
+        aria-label={`${libellePrises(total.prises)} sur ${libellePlaces(total.capacite)}, ${libellePlaces(total.disponibles)} disponible${total.disponibles === 1 ? "" : "s"} au total`}
+      >
+        <p className="abo-admin-test-capacity-summary-title">Toutes les tranches</p>
+        <p className="abo-admin-test-capacity-main">
+          <strong>{total.prises} / {total.capacite}</strong>
+          <span>place{total.prises === 1 ? "" : "s"} prise{total.prises === 1 ? "" : "s"}</span>
+        </p>
+        <p className="abo-admin-test-capacity-available">
+          <strong>{total.disponibles}</strong>
+          <span>place{total.disponibles === 1 ? "" : "s"} disponible{total.disponibles === 1 ? "" : "s"}</span>
+        </p>
+      </div>
+
+      {tranches.length === 0 ? (
+        <p className="abo-admin-empty">
+          Aucun créneau futur : ajoutez une disponibilité pour ouvrir des places.
+        </p>
+      ) : (
+        <div className="abo-admin-list">
+          {[...jours.values()].map((j) => (
+            <div key={j.label}>
+              <h4 className="abo-admin-subheading">{j.label}</h4>
+              <div className="abo-admin-test-capacity-grid">
+                {j.tranches.map((tranche) => (
+                  <div
+                    key={tranche.tranche_debut}
+                    className="abo-admin-card abo-admin-test-capacity-card"
+                  >
+                    <div className="abo-admin-test-capacity-card-heading">
+                      <strong>{formatTranche(tranche.tranche_debut, tranche.tranche_fin)}</strong>
+                      <div
+                        className="abo-admin-test-capacity-counts"
+                        role="group"
+                        aria-label={`${libellePrises(tranche.prises)} sur ${libellePlaces(tranche.capacite)}, ${libellePlaces(tranche.disponibles)} disponible${tranche.disponibles === 1 ? "" : "s"}`}
+                      >
+                        <span className="abo-admin-test-capacity-taken">
+                          <strong>{tranche.prises} / {tranche.capacite}</strong> prise{tranche.prises === 1 ? "" : "s"}
                         </span>
-                      </li>
-                    );
-                  })}
-                </ul>
+                        <span className="abo-admin-test-capacity-free">
+                          <strong>{tranche.disponibles}</strong> disponible{tranche.disponibles === 1 ? "" : "s"}
+                        </span>
+                      </div>
+                    </div>
+                    {tranche.inscrits.length === 0 ? (
+                      <p className="abo-admin-test-capacity-empty">Aucune personne inscrite.</p>
+                    ) : (
+                      <ul className="abo-admin-attendee-list">
+                        {tranche.inscrits.map((g) => {
+                          const confirmation = etatConfirmationReservation(g);
+                          return (
+                            <li key={g.reservationId}>
+                              {`${g.prenom ?? ""} ${g.nom ?? ""}`.trim() || "—"}{" "}
+                              <span className="abo-admin-meta">({g.email})</span>
+                              {g.licence && <span className="abo-admin-meta"> — licence {g.licence}</span>}
+                              <span
+                                className={`abo-admin-badge abo-admin-badge--confirmation-${confirmation}`}
+                                aria-label={`Réservation ${confirmation === "confirmee" ? "confirmée" : "provisoire"}`}
+                              >
+                                {confirmation === "confirmee" ? "Confirmé" : "Provisoire"}
+                              </span>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </div>
+          ))}
         </div>
-      ))}
+      )}
     </div>
   );
 }
