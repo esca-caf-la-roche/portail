@@ -21,7 +21,6 @@ import { api, internal } from "../_generated/api";
 import { requireAboAdmin } from "./auth";
 import { canoniserLicence, normaliserNomPrenom, similarite } from "./lib";
 import { champsPersonneDepuisScrap } from "./matching";
-import { canoniserEmailUnique } from "../emailValidation";
 import { champsModifies } from "../dbUtils";
 import { ANNUAIRE_ATTEMPT_KEY } from "./syncConstants";
 import { invaliderCompteurPublic, programmerRafraichissementCompteurPublic } from "./compteur";
@@ -110,8 +109,8 @@ export const getLicencesAValider = authenticatedQuery({
   },
 });
 
-// Pose uniquement la licence et son statut. L'identité saisie dans la demande
-// reste la source de vérité et n'est jamais remplacée par l'annuaire.
+// Aligne nom/prénom d'une personne sur la fiche annuaire d'une licence, et pose
+// la licence + son statut. Recalcule nom_prenom_normalise (ex-trigger).
 async function autrePorteuseLicence(
   ctx: MutationCtx,
   personneId: Doc<"abo_personnes">["_id"],
@@ -129,13 +128,19 @@ async function poserLicence(
   personne: Doc<"abo_personnes">,
   licence: string,
   statut: "annuaire_auto" | "annuaire_valide",
+  fiche: Doc<"abo_licences"> | null,
 ): Promise<"conflit" | "inchange" | "modifie"> {
   if (await autrePorteuseLicence(ctx, personne._id, licence)) {
     return "conflit";
   }
+  const nom = fiche?.nom ?? personne.nom;
+  const prenom = fiche?.prenom ?? personne.prenom;
   const patch = {
     licence,
     licence_statut: statut,
+    nom,
+    prenom,
+    nom_prenom_normalise: normaliserNomPrenom(nom, prenom),
   };
   if (!champsModifies(personne, patch)) return "inchange";
   await ctx.db.patch(personne._id, patch);
@@ -163,6 +168,7 @@ export const resoudreLicencesPersonnes = authenticatedMutation({
 
       // Licences distinctes de l'annuaire correspondant à l'une des deux clés.
       const distinctes = new Set<string>();
+      const fiches = new Map<string, Doc<"abo_licences">>();
       const cles = cleInverse === cleDirecte ? [cleDirecte] : [cleDirecte, cleInverse];
       for (const cle of cles) {
         const rows = await ctx.db
@@ -173,13 +179,14 @@ export const resoudreLicencesPersonnes = authenticatedMutation({
           .collect();
         for (const r of rows) {
           distinctes.add(r.licence);
+          fiches.set(r.licence, r);
         }
       }
 
       // Résolue SSI l'annuaire contient EXACTEMENT une licence correspondante.
       if (distinctes.size === 1) {
         const licence = [...distinctes][0];
-        if (await poserLicence(ctx, p, licence, "annuaire_auto") === "modifie") {
+        if (await poserLicence(ctx, p, licence, "annuaire_auto", fiches.get(licence) ?? null) === "modifie") {
           resolues++;
         }
       }
@@ -191,19 +198,9 @@ export const resoudreLicencesPersonnes = authenticatedMutation({
 
 // ── validerLicence : association manuelle (admin) ────────────────────
 export const validerLicence = authenticatedMutation({
-  args: {
-    personneId: v.id("abo_personnes"),
-    licence: v.string(),
-    confirmerIdentite: v.optional(v.boolean()),
-  },
+  args: { personneId: v.id("abo_personnes"), licence: v.string() },
   returns: v.union(
     v.object({ statut: v.literal("attribue"), licence: v.string() }),
-    v.object({
-      statut: v.literal("confirmation_requise"),
-      licence: v.string(),
-      nomAnnuaire: v.string(),
-      prenomAnnuaire: v.string(),
-    }),
     v.object({
       statut: v.literal("conflit"),
       licence: v.string(),
@@ -247,23 +244,7 @@ export const validerLicence = authenticatedMutation({
         personneExistanteEmail: dossierPorteuse?.email ?? null,
       };
     }
-    const annuaireNom = fiche?.nom?.trim();
-    const annuairePrenom = fiche?.prenom?.trim();
-    const identiteAnnuaire = annuaireNom && annuairePrenom
-      ? normaliserNomPrenom(annuaireNom, annuairePrenom)
-      : null;
-    const identiteCorrespond = identiteAnnuaire === null
-      || identiteAnnuaire === personne.nom_prenom_normalise
-      || identiteAnnuaire === normaliserNomPrenom(personne.prenom, personne.nom);
-    if (!identiteCorrespond && !args.confirmerIdentite) {
-      return {
-        statut: "confirmation_requise" as const,
-        licence,
-        nomAnnuaire: annuaireNom!,
-        prenomAnnuaire: annuairePrenom!,
-      };
-    }
-    const resultat = await poserLicence(ctx, personne, licence, "annuaire_valide");
+    const resultat = await poserLicence(ctx, personne, licence, "annuaire_valide", fiche);
     if (resultat === "conflit") {
       throw new ConvexError({
         code: "LICENCE_CONCURRENTE",
@@ -275,95 +256,75 @@ export const validerLicence = authenticatedMutation({
   },
 });
 
-// Réparation ponctuelle d'une personne après correction de sa licence sur le
-// site du club. Cette fonction reste interne : chaque donnée attendue doit
-// correspondre à l'état relu dans la même transaction avant toute écriture.
-export const reparerLicencePersonneInterne = internalMutation({
+// Réparation ponctuelle, strictement bornée, d'une identité qui a été écrasée
+// par erreur. Le mail du dossier n'est volontairement jamais utilisé comme
+// preuve d'identité. Cette mutation sera retirée après la réparation PROD.
+export const restaurerIdentitePersonneInterne = internalMutation({
   args: {
     personneId: v.id("abo_personnes"),
     dossierId: v.id("abo_dossiers"),
-    emailDossierAttendu: v.string(),
-    ancienneLicence: v.string(),
-    nouvelleLicence: v.string(),
+    licenceActuelleAttendue: v.string(),
+    identiteActuelleAttendue: v.string(),
+    licenceCible: v.string(),
+    identiteCibleAttendue: v.string(),
   },
-  returns: v.object({ statut: v.literal("repare"), modifie: v.boolean() }),
+  returns: v.object({ statut: v.literal("restaure"), modifie: v.boolean() }),
   handler: async (ctx, args) => {
-    const ancienneLicence = canoniserLicence(args.ancienneLicence);
-    const nouvelleLicence = canoniserLicence(args.nouvelleLicence);
-    if (!ancienneLicence || !nouvelleLicence || ancienneLicence === nouvelleLicence) {
-      throw new ConvexError({
-        code: "REPARATION_LICENCE_INVALIDE",
-        message: "Les numéros de licence attendus ne permettent pas cette réparation.",
-      });
+    const licenceActuelle = canoniserLicence(args.licenceActuelleAttendue);
+    const licenceCible = canoniserLicence(args.licenceCible);
+    if (!licenceActuelle || !licenceCible || licenceActuelle === licenceCible) {
+      throw new ConvexError("Licences de restauration invalides.");
     }
-    const [personne, dossier, ancienScrap, scrap] = await Promise.all([
+
+    const [personne, dossier, scrapCible] = await Promise.all([
       ctx.db.get(args.personneId),
       ctx.db.get(args.dossierId),
-      ctx.db
-        .query("abo_abonnes_scrap")
-        .withIndex("by_licence", (q) => q.eq("licence", ancienneLicence))
-        .unique(),
-      ctx.db
-        .query("abo_abonnes_scrap")
-        .withIndex("by_licence", (q) => q.eq("licence", nouvelleLicence))
+      ctx.db.query("abo_abonnes_scrap")
+        .withIndex("by_licence", (q) => q.eq("licence", licenceCible))
         .unique(),
     ]);
-    const emailAttendu = canoniserEmailUnique(args.emailDossierAttendu);
+    if (!personne || !dossier || personne.dossier_id !== dossier._id) {
+      throw new ConvexError("Personne ou dossier inattendu.");
+    }
+
+    const identiteActuelle = normaliserNomPrenom(personne.nom, personne.prenom);
+    const dejaRestauree = personne.licence === licenceCible
+      && identiteActuelle === args.identiteCibleAttendue;
+    if (dejaRestauree) {
+      return { statut: "restaure" as const, modifie: false };
+    }
     if (
-      !personne
-      || !dossier
-      || personne.dossier_id !== dossier._id
-      || (personne.licence !== ancienneLicence && personne.licence !== nouvelleLicence)
-      || canoniserEmailUnique(dossier.email) !== emailAttendu
+      personne.licence !== licenceActuelle
+      || identiteActuelle !== args.identiteActuelleAttendue
     ) {
-      throw new ConvexError({
-        code: "REPARATION_LICENCE_ETAT_INATTENDU",
-        message: "Le dossier ou la personne ne correspond plus à l'état attendu.",
-      });
+      throw new ConvexError("L'identité actuelle ne correspond plus à l'état à réparer.");
     }
-    if (ancienScrap) {
-      throw new ConvexError({
-        code: "REPARATION_ANCIENNE_LICENCE_ACTIVE",
-        message: "L'ancienne licence existe encore dans le snapshot du site.",
-      });
+    if (await autrePorteuseLicence(ctx, personne._id, licenceCible)) {
+      throw new ConvexError("La licence cible est déjà portée par une autre personne.");
     }
-    if (await autrePorteuseLicence(ctx, personne._id, nouvelleLicence)) {
-      throw new ConvexError({
-        code: "REPARATION_LICENCE_DEJA_PORTEE",
-        message: "La nouvelle licence est déjà rattachée à une autre personne.",
-      });
-    }
-    const nom = scrap?.nom?.trim();
-    const prenom = scrap?.prenom?.trim();
-    const emailScrap = scrap?.email ? canoniserEmailUnique(scrap.email) : null;
+
+    const nom = scrapCible?.nom?.trim();
+    const prenom = scrapCible?.prenom?.trim();
     if (
-      !scrap
+      !scrapCible
       || !nom
       || !prenom
-      || !emailScrap
-      || emailScrap !== emailAttendu
-      || normaliserNomPrenom(nom, prenom) !== scrap.nom_prenom_normalise
+      || normaliserNomPrenom(nom, prenom) !== args.identiteCibleAttendue
     ) {
-      throw new ConvexError({
-        code: "REPARATION_LICENCE_SNAPSHOT_INVALIDE",
-        message: "Le snapshot du site ne confirme pas précisément cette réparation.",
-      });
+      throw new ConvexError("Le snapshot ne confirme pas l'identité cible.");
     }
-    const patch = {
+
+    await ctx.db.patch(personne._id, {
       nom,
       prenom,
-      nom_prenom_normalise: scrap.nom_prenom_normalise,
-      licence: nouvelleLicence,
-      licence_statut: "annuaire_valide" as const,
-      ...champsPersonneDepuisScrap(scrap),
-    };
-    const modifie = champsModifies(personne, patch);
-    if (modifie) {
-      await ctx.db.patch(personne._id, patch);
-      await invaliderCompteurPublic(ctx);
-      await programmerRafraichissementCompteurPublic(ctx);
-    }
-    return { statut: "repare" as const, modifie };
+      nom_prenom_normalise: args.identiteCibleAttendue,
+      licence: licenceCible,
+      licence_statut: "annuaire_valide",
+      ...champsPersonneDepuisScrap(scrapCible),
+    });
+    await invaliderCompteurPublic(ctx);
+    await programmerRafraichissementCompteurPublic(ctx);
+    return { statut: "restaure" as const, modifie: true };
   },
 });
 

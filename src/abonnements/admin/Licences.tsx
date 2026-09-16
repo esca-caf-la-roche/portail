@@ -259,31 +259,19 @@ function CartePersonne({ personne, onOuvrirFusion }: { personne: PersonneAValide
     personneCibleDossierId: Id<"abo_dossiers">;
     personneExistanteDossierId: Id<"abo_dossiers">;
   } | null>(null);
-  const [confirmationIdentite, setConfirmationIdentite] = useState<{
-    licence: string;
-    nomAnnuaire: string | null;
-    prenomAnnuaire: string | null;
-  } | null>(null);
 
-  async function associer(licence: string, confirmerIdentite = false) {
+  async function associer(licence: string) {
     setMsg("Association…");
     try {
       const resultat = await validerLicence({
         personneId: personne.personne_id as Id<"abo_personnes">,
         licence: licence.trim(),
-        confirmerIdentite,
       });
       if (resultat.statut === "conflit") {
         setConflit(resultat);
-        setConfirmationIdentite(null);
-        setMsg(null);
-      } else if (resultat.statut === "confirmation_requise") {
-        setConflit(null);
-        setConfirmationIdentite(resultat);
         setMsg(null);
       } else {
         setConflit(null);
-        setConfirmationIdentite(null);
         // La personne résolue disparaît de la liste (query réactive).
       }
     } catch (err) {
@@ -367,37 +355,6 @@ function CartePersonne({ personne, onOuvrirFusion }: { personne: PersonneAValide
               Ouvrir la répartition des deux dossiers
             </button>
           )}
-        </div>
-      )}
-      {confirmationIdentite && (
-        <div className="abo-admin-notice abo-admin-notice--warning" role="alert">
-          <strong>Vérifiez l&apos;identité avant d&apos;associer la licence {confirmationIdentite.licence}</strong>
-          <p>
-            <strong>Identité du dossier :</strong> {nom}
-          </p>
-          <p>
-            <strong>Identité de l&apos;annuaire :</strong>{" "}
-            {`${confirmationIdentite.prenomAnnuaire ?? ""} ${confirmationIdentite.nomAnnuaire ?? ""}`.trim() || "Non renseignée"}
-          </p>
-          <p>
-            Confirmez uniquement s&apos;il s&apos;agit bien de la même personne. Le nom et le prénom du dossier ne seront pas remplacés automatiquement.
-          </p>
-          <div className="abo-admin-toolbar">
-            <button
-              type="button"
-              className="abo-admin-link-button"
-              onClick={() => setConfirmationIdentite(null)}
-            >
-              Annuler
-            </button>
-            <button
-              type="button"
-              className="abo-admin-link-button abo-admin-link-button--danger"
-              onClick={() => associer(confirmationIdentite.licence, true)}
-            >
-              Confirmer l&apos;association
-            </button>
-          </div>
         </div>
       )}
       {msg && (
