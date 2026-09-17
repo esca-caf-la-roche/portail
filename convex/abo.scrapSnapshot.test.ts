@@ -33,7 +33,7 @@ describe("snapshot des abonnés du site club", () => {
       });
       await ctx.db.insert("abo_abonnes_scrap", {
         licence: "748020279190", nom: "GUIGO", prenom: "OLIVIA",
-        nom_prenom_normalise: "GUIGO OLIVIA", age: 18, autonomie: "Doit passer le test",
+        nom_prenom_normalise: "GUIGO OLIVIA", age: 18, autonomie: "Non autonome",
         adhesion: "OK", abonnement_valide: "oui",
       });
       const reservationId = await ctx.db.insert("abo_test_reservations", {
@@ -53,10 +53,40 @@ describe("snapshot des abonnés du site club", () => {
       nom_prenom_normalise: "GUIGO OLIVIA",
       licence: "748020279190",
       licence_statut: "annuaire_auto",
+      etape_test_autonomie: "requis",
     });
     expect(await t.run((ctx) => ctx.db.get(reservationId))).toMatchObject({
       statut: "active",
-      etat_confirmation: "confirmee",
+      etat_confirmation: "provisoire",
+    });
+  });
+
+  test("traite « Non précisée » comme un test requis", async () => {
+    const t = convexTest(schema, modules);
+    const personneId = await t.run(async (ctx) => {
+      const ownerId = await ctx.db.insert("users", { email: "non-precisee@example.test" });
+      const dossierId = await ctx.db.insert("abo_dossiers", {
+        email: "non-precisee@example.test", owner_id: ownerId,
+        statut_dossier: "validee", date_soumission: "2026-09-16T00:00:00.000Z",
+      });
+      const id = await ctx.db.insert("abo_personnes", {
+        dossier_id: dossierId, nom: "Dupont", prenom: "Camille", nom_prenom_normalise: "DUPONT CAMILLE",
+        licence: "748020279191", licence_statut: "saisie", etape_demande: true,
+        etape_validation: "validee", etape_licence: false, etape_inscription_site: false,
+        etape_photo: false, etape_paiement: false, etape_abonnement_valide: false,
+      });
+      await ctx.db.insert("abo_abonnes_scrap", {
+        licence: "748020279191", nom: "DUPONT", prenom: "CAMILLE",
+        nom_prenom_normalise: "DUPONT CAMILLE", autonomie: "Non précisée",
+        abonnement_valide: "oui",
+      });
+      return id;
+    });
+
+    await t.mutation(internal.abo.matching.matcherScrapPersonnes, {});
+
+    expect(await t.run((ctx) => ctx.db.get(personneId))).toMatchObject({
+      etape_test_autonomie: "requis",
     });
   });
 

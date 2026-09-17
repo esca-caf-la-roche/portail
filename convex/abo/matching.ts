@@ -167,6 +167,8 @@ function testAutonomieDepuisScrap(
       return "non_requis";
     case "Doit passer le test":
     case "Recherche du test en cours":
+    case "Non autonome":
+    case "Non précisée":
       return "requis";
     default:
       return undefined;

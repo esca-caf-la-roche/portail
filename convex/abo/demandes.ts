@@ -940,6 +940,8 @@ function mapAutonomie(v?: string): "valide" | "non_requis" | "requis" | null {
       return "non_requis";
     case "Doit passer le test":
     case "Recherche du test en cours":
+    case "Non autonome":
+    case "Non précisée":
       return "requis";
     default:
       return null;
