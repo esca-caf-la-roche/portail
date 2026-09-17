@@ -557,7 +557,14 @@ futurs ; les rendez-vous terminés ne sont pas mélangés à ce total. Un candid
 n'apparaît dans **Résultats des créneaux terminés** qu'à la fin de son créneau,
 y compris pour une ancienne réservation d'une durée différente. Le staff peut
 alors qualifier la tentative comme **Validée**, **Non validée** ou **Absente** ;
-une absence ou une non-validation permet de reprendre un rendez-vous.
+une absence ou une non-validation permet de reprendre un rendez-vous. Une
+absence ne demande aucun justificatif. En revanche, le formulaire du test doit
+être déposé dans Drive avant d'enregistrer un résultat validé ou non validé.
+Le nom historique `NOM Prénom` est conservé pour un test validé ; un test non
+validé est nommé `NOM Prénom KO` afin que son résultat soit identifiable sans
+ouvrir le fichier. Chaque nouveau dépôt est lié à la réservation concernée :
+un ancien document de la même licence ne peut donc pas valider une nouvelle
+tentative. Les archives antérieures à cette liaison restent consultables.
 
 Le suivi global est intégré à cette même section afin de ne pas dupliquer les
 personnes à tester. Il répartit chaque personne dans un seul statut : créneau

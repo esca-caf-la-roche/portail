@@ -11,7 +11,7 @@ import {
   dossierInitiale,
   echapperRequeteDrive,
   initialeNom,
-  prenomTitre,
+  nomFichierTestAutonomie,
   rechercherFichiersDrive,
   verifierAccesRacine,
 } from "./driveArchives";
@@ -19,7 +19,11 @@ import {
 const MAX_LONGUEUR_NOM = 100;
 
 export const envoyerVersDrive = authenticatedAction({
-  args: { archiveId: v.id("abo_tests_autonomie_archive"), uploadToken: v.string(), storageId: v.id("_storage") },
+  args: {
+    archiveId: v.id("abo_tests_autonomie_archive"),
+    uploadToken: v.string(),
+    storageId: v.id("_storage"),
+  },
   returns: v.object({
     archiveId: v.id("abo_tests_autonomie_archive"),
     driveUrl: v.string(),
@@ -95,7 +99,11 @@ export const envoyerVersDrive = authenticatedAction({
     if (!parentId) {
       throw new ConvexError({ code: "DRIVE_DOSSIER", message: "Impossible de déterminer le dossier Drive du candidat." });
     }
-    const nomFichier = `${contexte.nom.trim().toLocaleUpperCase("fr-FR")} ${prenomTitre(contexte.prenom)}`;
+    const nomFichier = nomFichierTestAutonomie(
+      contexte.nom,
+      contexte.prenom,
+      contexte.resultatTest ?? undefined,
+    );
     const bytes = Buffer.from(await source.arrayBuffer());
     const estPdf = bytes.length >= 5 && bytes.subarray(0, 5).toString("ascii") === "%PDF-";
     const estJpeg = bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;

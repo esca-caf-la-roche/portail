@@ -12,7 +12,12 @@ import {
   preparerRechercheDrive,
 } from "./driveArchivesRecherche";
 
-export { echapperRequeteDrive, initialeNom, prenomTitre } from "./driveArchivesRecherche";
+export {
+  echapperRequeteDrive,
+  initialeNom,
+  nomFichierTestAutonomie,
+  prenomTitre,
+} from "./driveArchivesRecherche";
 
 export type FichierDriveTrouve = {
   driveFileId: string;

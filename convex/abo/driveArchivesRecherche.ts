@@ -16,6 +16,15 @@ export function prenomTitre(prenom: string): string {
     );
 }
 
+export function nomFichierTestAutonomie(
+  nom: string,
+  prenom: string,
+  resultat?: "valide" | "non_valide",
+): string {
+  const base = `${nom.trim().toLocaleUpperCase("fr-FR")} ${prenomTitre(prenom)}`;
+  return resultat === "non_valide" ? `${base} KO` : base;
+}
+
 export function initialeNom(nom: string): string {
   const initiale = nom.trim().normalize("NFD").replace(/\p{Diacritic}/gu, "")[0];
   return initiale ? initiale.toLocaleUpperCase("fr-FR") : "#";

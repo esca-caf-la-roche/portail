@@ -790,6 +790,10 @@ export default defineSchema({
   // saison comptable. Les fichiers restent dans Drive après le reset ; leurs
   // métadonnées et statut Convex sont purgés avec la campagne.
   abo_tests_autonomie_archive: defineTable({
+    reservation_id: v.optional(v.id("abo_test_reservations")),
+    resultat_test: v.optional(
+      v.union(v.literal("valide"), v.literal("non_valide")),
+    ),
     licence: v.string(),
     nom: v.string(),
     prenom: v.string(),
@@ -798,6 +802,7 @@ export default defineSchema({
     drive_url: v.string(),
     statut: v.union(v.literal("a_traiter"), v.literal("traite")),
   })
+    .index("by_reservation_id", ["reservation_id"])
     .index("by_licence", ["licence"])
     .index("by_statut", ["statut"])
     .index("by_nom_prenom_normalise", ["nom_prenom_normalise"]),

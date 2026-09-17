@@ -229,7 +229,8 @@ export const rechercherCandidatParLicence = authenticatedQuery({
       Promise.all(licencesRecherchees.map((licence) => ctx.db
         .query("abo_tests_autonomie_archive")
         .withIndex("by_licence", (q) => q.eq("licence", licence))
-        .unique())),
+        .order("desc")
+        .first())),
     ]);
     const personnesTrouvees = personnes.flat();
     const entreesAnnuaire = annuaire.filter((entree) => entree !== null);
@@ -320,7 +321,7 @@ export const listeReservationsPassees = authenticatedQuery({
         vus.add(cleCandidat);
         const archive = await ctx.db
           .query("abo_tests_autonomie_archive")
-          .withIndex("by_licence", (q) => q.eq("licence", licence))
+          .withIndex("by_reservation_id", (q) => q.eq("reservation_id", reservation._id))
           .unique();
         candidats.push({
           reservationId: reservation._id,
@@ -343,12 +344,10 @@ export const listeReservationsPassees = authenticatedQuery({
       const cleCandidat = cleCandidatPasse(licence, personne._id);
       if (vus.has(cleCandidat)) continue;
       vus.add(cleCandidat);
-      const archive = licence
-        ? await ctx.db
-            .query("abo_tests_autonomie_archive")
-            .withIndex("by_licence", (q) => q.eq("licence", licence))
-            .unique()
-        : null;
+      const archive = await ctx.db
+        .query("abo_tests_autonomie_archive")
+        .withIndex("by_reservation_id", (q) => q.eq("reservation_id", reservation._id))
+        .unique();
       candidats.push({
         reservationId: reservation._id,
         personneId: personne._id,
@@ -402,6 +401,24 @@ export const renseignerResultatTest = authenticatedMutation({
         message: "Annulez d'abord le nouveau créneau avant de corriger cette tentative en test validé.",
       });
     }
+    if (args.resultat !== "absent") {
+      const archive = await ctx.db
+        .query("abo_tests_autonomie_archive")
+        .withIndex("by_reservation_id", (q) => q.eq("reservation_id", reservation._id))
+        .unique();
+      if (!archive?.drive_file_id || !archive.drive_url) {
+        throw new ConvexError({
+          code: "TEST_DOCUMENT_REQUIS",
+          message: "Déposez le formulaire du test avant de l'indiquer comme validé ou non validé.",
+        });
+      }
+      if (archive.resultat_test !== args.resultat) {
+        throw new ConvexError({
+          code: "TEST_RESULTAT_DOCUMENT_INCOHERENT",
+          message: "Ce résultat ne peut pas être modifié car le nom du document Drive correspond au résultat déjà enregistré.",
+        });
+      }
+    }
     if (reservation.resultat_test !== args.resultat) {
       const miseAJour = {
         resultat_test: args.resultat,
@@ -418,7 +435,11 @@ export const renseignerResultatTest = authenticatedMutation({
 
 // Crée (ou retrouve) le point d'ancrage d'une archive avant l'envoi du fichier.
 export const preparerDepot = authenticatedMutation({
-  args: { licence: v.string() },
+  args: {
+    licence: v.string(),
+    reservationId: v.optional(v.id("abo_test_reservations")),
+    resultat: v.optional(v.union(v.literal("valide"), v.literal("non_valide"))),
+  },
   returns: v.object({
     archiveId: v.id("abo_tests_autonomie_archive"),
     licence: v.string(),
@@ -436,15 +457,56 @@ export const preparerDepot = authenticatedMutation({
         message: "Une licence est requise pour archiver le test.",
       });
     }
-    const dejaArchive = await ctx.db
-      .query("abo_tests_autonomie_archive")
-      .withIndex("by_licence", (q) => q.eq("licence", licence))
-      .unique();
+    const reservation = args.reservationId ? await ctx.db.get(args.reservationId) : null;
+    if (args.reservationId && (!reservation || reservation.statut !== "active")) {
+      throw new ConvexError({
+        code: "TEST_RESERVATION_INTROUVABLE",
+        message: "Cette réservation de test est introuvable ou annulée.",
+      });
+    }
+    if (reservation && !reservationEstPassee(reservation, new Date().toISOString())) {
+      throw new ConvexError({
+        code: "TEST_RESULTAT_TROP_TOT",
+        message: "Le document ne peut être déposé qu'après la fin du créneau.",
+      });
+    }
+    if (reservation && !args.resultat) {
+      throw new ConvexError({
+        code: "TEST_RESULTAT_REQUIS",
+        message: "Choisissez Validé ou Non validé avant de déposer le formulaire.",
+      });
+    }
+    const licenceReservation = reservation
+      ? reservation.candidat_licence
+        ?? (reservation.personne_id ? (await ctx.db.get(reservation.personne_id))?.licence : undefined)
+      : undefined;
+    if (reservation && licenceReservation?.trim() !== licence) {
+      throw new ConvexError({
+        code: "TEST_LICENCE_INCOHERENTE",
+        message: "La licence ne correspond pas à cette réservation.",
+      });
+    }
+    const dejaArchive = args.reservationId
+      ? await ctx.db
+        .query("abo_tests_autonomie_archive")
+        .withIndex("by_reservation_id", (q) => q.eq("reservation_id", args.reservationId))
+        .unique()
+      : await ctx.db
+        .query("abo_tests_autonomie_archive")
+        .withIndex("by_licence", (q) => q.eq("licence", licence))
+        .order("desc")
+        .first();
     if (dejaArchive) {
       if (dejaArchive.drive_file_id && dejaArchive.drive_url) {
         throw new ConvexError({
           code: "TEST_DEJA_ARCHIVE",
           message: "Un document est déjà archivé pour cette licence et ne peut pas être remplacé.",
+        });
+      }
+      if (reservation && dejaArchive.resultat_test !== args.resultat) {
+        throw new ConvexError({
+          code: "TEST_RESULTAT_DOCUMENT_INCOHERENT",
+          message: "Le résultat choisi ne correspond pas au document déjà préparé pour cette tentative.",
         });
       }
     }
@@ -477,6 +539,8 @@ export const preparerDepot = authenticatedMutation({
     const archiveId = dejaArchive
       ? dejaArchive._id
       : await ctx.db.insert("abo_tests_autonomie_archive", {
+        reservation_id: args.reservationId,
+        resultat_test: args.resultat,
         licence, nom, prenom, nom_prenom_normalise: nomPrenomNormalise,
         drive_file_id: "", drive_url: "", statut: "a_traiter",
       });
@@ -607,6 +671,7 @@ export const contexteUploadInterne = internalQuery({
     nom: v.string(),
     prenom: v.string(),
     driveFileId: v.string(),
+    resultatTest: v.union(v.literal("valide"), v.literal("non_valide"), v.null()),
     storageExists: v.boolean(),
     storageContentType: v.union(v.string(), v.null()),
     storageSize: v.union(v.number(), v.null()),
@@ -623,6 +688,7 @@ export const contexteUploadInterne = internalQuery({
       nom: archive.nom,
       prenom: archive.prenom,
       driveFileId: archive.drive_file_id,
+      resultatTest: archive.resultat_test ?? null,
       storageExists: metadata !== null,
       storageContentType: metadata?.contentType ?? null,
       storageSize: metadata?.size ?? null,
@@ -643,7 +709,7 @@ export const contexteRechercheHistorique = internalQuery({
     const archive = await ctx.db
       .query("abo_tests_autonomie_archive")
       .withIndex("by_licence", (q) => q.eq("licence", licence))
-      .unique();
+      .first();
     if (archive) {
       throw new ConvexError({ code: "TEST_DEJA_ARCHIVE", message: "Un document est déjà archivé pour cette licence." });
     }
@@ -672,7 +738,7 @@ export const creerArchiveHistoriqueInterne = internalMutation({
     const existante = await ctx.db
       .query("abo_tests_autonomie_archive")
       .withIndex("by_licence", (q) => q.eq("licence", args.licence))
-      .unique();
+      .first();
     if (existante) {
       throw new ConvexError({ code: "TEST_DEJA_ARCHIVE", message: "Un document est déjà archivé pour cette licence." });
     }

@@ -303,18 +303,14 @@ function ListePersonnesAEnregistrer({
                 )}
               </span>
               <div className="abo-admin-test-result-actions">
-                <ResultatTestActions candidat={reservation} />
-                {reservation.resultatTest !== "absent" && (
-                  <DepotTest
-                    candidat={reservation}
-                    archiveExistante={
-                      reservation.archiveId
-                        ? toutesArchives?.find((archive) => archive.id === reservation.archiveId) ?? null
-                        : null
-                    }
-                    compact
-                  />
-                )}
+                <ResultatTestActions
+                  candidat={reservation}
+                  archiveExistante={
+                    reservation.archiveId
+                      ? toutesArchives?.find((archive) => archive.id === reservation.archiveId) ?? null
+                      : null
+                  }
+                />
               </div>
             </li>
           ))}
@@ -330,9 +326,16 @@ const LIBELLES_RESULTAT_TEST = {
   absent: "Absent",
 } as const;
 
-function ResultatTestActions({ candidat }: { candidat: CandidatTest }) {
+function ResultatTestActions({
+  candidat,
+  archiveExistante,
+}: {
+  candidat: CandidatTest;
+  archiveExistante: ArchiveTest | null;
+}) {
   const renseignerResultat = useMutation(api.abo.testDocuments.renseignerResultatTest);
   const [enCours, setEnCours] = useState<keyof typeof LIBELLES_RESULTAT_TEST | null>(null);
+  const [resultatAArchiver, setResultatAArchiver] = useState<"valide" | "non_valide" | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
 
   if (!candidat.reservationId) return null;
@@ -346,6 +349,11 @@ function ResultatTestActions({ candidat }: { candidat: CandidatTest }) {
           : "Confirmer que ce test n'est pas validé ?",
       )
     ) return;
+    if (resultat !== "absent" && !candidat.driveUrl && !archiveExistante?.driveUrl) {
+      setResultatAArchiver(resultat);
+      setErreur("Ajoutez le formulaire du test ci-dessous pour enregistrer ce résultat.");
+      return;
+    }
     setEnCours(resultat);
     setErreur(null);
     try {
@@ -379,6 +387,22 @@ function ResultatTestActions({ candidat }: { candidat: CandidatTest }) {
         ))}
       </div>
       {erreur && <p className="abo-admin-status abo-admin-status--error" role="alert">Échec : {erreur}</p>}
+      {resultatAArchiver && (
+        <DepotTest
+          candidat={candidat}
+          archiveExistante={archiveExistante}
+          compact
+          resultat={resultatAArchiver}
+          onDepotTermine={async () => {
+            await renseignerResultat({
+              reservationId: candidat.reservationId!,
+              resultat: resultatAArchiver,
+            });
+            setResultatAArchiver(null);
+            setErreur(null);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -499,10 +523,14 @@ function DepotTest({
   candidat,
   archiveExistante,
   compact = false,
+  resultat,
+  onDepotTermine,
 }: {
   candidat: CandidatTest;
   archiveExistante: ArchiveTest | null;
   compact?: boolean;
+  resultat?: "valide" | "non_valide";
+  onDepotTermine?: () => Promise<void>;
 }) {
   const preparerDepot = useMutation(api.abo.testDocuments.preparerDepot);
   const genererUrlUpload = useMutation(api.abo.testDocuments.genererUrlUpload);
@@ -545,7 +573,11 @@ function DepotTest({
     setEnCours(true);
     setMessage(null);
     try {
-      const archive = await preparerDepot({ licence: candidat.licence });
+      const archive = await preparerDepot({
+        licence: candidat.licence,
+        reservationId: candidat.reservationId ?? undefined,
+        resultat,
+      });
       const { uploadUrl } = await genererUrlUpload({
         archiveId: archive.archiveId,
         uploadToken: archive.uploadToken,
@@ -562,9 +594,16 @@ function DepotTest({
         uploadToken: archive.uploadToken,
         storageId: storageId as Id<"_storage">,
       });
+      await onDepotTermine?.();
       setFichier(null);
       if (inputRef.current) inputRef.current.value = "";
-      setMessage("Document déposé et envoyé dans Drive. Il est maintenant à traiter.");
+      setMessage(
+        resultat === "non_valide"
+          ? "Test non validé enregistré et document envoyé dans Drive avec le suffixe KO."
+          : resultat === "valide"
+            ? "Test validé et document envoyé dans Drive."
+            : "Document déposé et envoyé dans Drive. Il est maintenant à traiter.",
+      );
     } catch (err) {
       setMessage(`Échec : ${aboError(err).message}`);
     } finally {
