@@ -16,7 +16,6 @@ import type { MutationCtx } from "../_generated/server";
 import { canoniserLicence, normaliserNomPrenom } from "./lib";
 import { champsModifies } from "../dbUtils";
 import { abonnementEstValide } from "./statutAbonnement";
-import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
 import { invaliderCompteurPublic } from "./compteur";
 
@@ -283,35 +282,10 @@ export const matcherScrapPersonnes = internalMutation({
         maj++;
       }
 
-      // Après l'attribution strictement non ambiguë ci-dessus, la licence
-      // désormais effective peut confirmer ou invalider la réservation sans
-      // attendre la synchronisation suivante.
-      const licenceEffective = licenceResolue ?? p.licence;
-      if (!licenceEffective || s.licence !== licenceEffective) continue;
-      const autonomie = testAutonomieDepuisScrap(s.autonomie);
-      const age = s.age;
-      if (autonomie === undefined || age === undefined) continue;
-      const reservations = await ctx.db
-        .query("abo_test_reservations")
-        .withIndex("by_personne", (q) => q.eq("personne_id", p._id))
-        .collect();
-      for (const reservation of reservations) {
-        if (reservation.statut !== "active") continue;
-        if (autonomie === "requis" && age >= 16) {
-          if (reservation.etat_confirmation !== "confirmee") {
-            await ctx.db.patch(reservation._id, { etat_confirmation: "confirmee" });
-          }
-          continue;
-        }
-        await ctx.db.patch(reservation._id, {
-          statut: "annulee",
-          annulee_le: new Date().toISOString(),
-          annulee_raison: "conditions_test_non_remplies",
-        });
-        await ctx.scheduler.runAfter(0, internal.abo.emails.envoyerAnnulationConditionsTest, {
-          reservationId: reservation._id,
-        });
-      }
+      // L'éligibilité au test est vérifiée uniquement par `reserverTest`.
+      // Une synchronisation ultérieure peut refléter un test qui vient juste
+      // d'être passé ; elle ne doit donc ni annuler ni modifier un rendez-vous
+      // déjà accepté.
     }
 
     if (maj > 0) await invaliderCompteurPublic(ctx);

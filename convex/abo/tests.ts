@@ -972,6 +972,12 @@ export const reserverTest = authenticatedMutation({
         message: "La réservation du test est réservée aux demandes validées.",
       });
     }
+    if (personne.etape_test_autonomie !== "requis" || (personne.age ?? -1) < 16) {
+      throw new ConvexError({
+        code: "TEST_CONDITIONS_NON_REMPLIES",
+        message: "Le test d'autonomie est réservé aux personnes de 16 ans ou plus pour lesquelles il est requis.",
+      });
+    }
     if (personne.vague_depot === "vague_2") {
       throw new ConvexError({
         code: "TEST_ELEVE_EN_COURS",

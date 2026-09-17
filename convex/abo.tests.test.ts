@@ -1223,7 +1223,7 @@ describe("réservation de test d'autonomie", () => {
     })).rejects.toThrow("doit être dans le futur");
   });
 
-  test("autorise provisoirement une personne sans licence", async () => {
+  test("refuse une personne pour laquelle le test n'est pas requis", async () => {
     const t = convexTest(schema, modules);
     const { userId, personneId } = await creerPersonne(t, { testAutonomie: "non_requis" });
     const caller = t.withIdentity({ subject: userId });
@@ -1232,12 +1232,9 @@ describe("réservation de test d'autonomie", () => {
     await expect(caller.mutation(api.abo.tests.reserverTest, {
       personneId,
       tranche: await trancheDisponible(caller),
-    })).resolves.toBeNull();
-    const reservations = await caller.query(api.abo.tests.getMesReservationsParPersonne, {});
-    expect(reservations[0]?.active?.etat_confirmation).toBe("provisoire");
-    expect(reservations[0]?.active?.annulation_autorisee).toBe(true);
-    expect(Date.parse(reservations[0]!.active!.tranche_fin!)
-      - Date.parse(reservations[0]!.active!.tranche)).toBe(20 * 60 * 1_000);
+    })).rejects.toThrow("16 ans ou plus");
+    await expect(caller.query(api.abo.tests.getMesReservationsParPersonne, {}))
+      .resolves.toEqual([]);
   });
 
   test("affiche sur la personne une réservation directe de même licence sans transférer son annulation", async () => {
@@ -1429,7 +1426,7 @@ describe("réservation de test d'autonomie", () => {
       .resolves.toEqual([]);
   });
 
-  test("autorise provisoirement une personne de moins de 16 ans", async () => {
+  test("refuse une personne de moins de 16 ans", async () => {
     const t = convexTest(schema, modules);
     const { userId, personneId } = await creerPersonne(t, { age: 15 });
     const caller = t.withIdentity({ subject: userId });
@@ -1438,7 +1435,9 @@ describe("réservation de test d'autonomie", () => {
     await expect(caller.mutation(api.abo.tests.reserverTest, {
       personneId,
       tranche: await trancheDisponible(caller),
-    })).resolves.toBeNull();
+    })).rejects.toThrow("16 ans ou plus");
+    await expect(caller.query(api.abo.tests.getMesReservationsParPersonne, {}))
+      .resolves.toEqual([]);
   });
 
   test("refuse une personne dont l'âge n'est pas encore connu", async () => {
@@ -1450,7 +1449,7 @@ describe("réservation de test d'autonomie", () => {
     await expect(caller.mutation(api.abo.tests.reserverTest, {
       personneId,
       tranche: await trancheDisponible(caller),
-    })).resolves.toBeNull();
+    })).rejects.toThrow("16 ans ou plus");
   });
 
   test("refuse une personne dont le test est déjà validé", async () => {
@@ -1462,7 +1461,7 @@ describe("réservation de test d'autonomie", () => {
     await expect(caller.mutation(api.abo.tests.reserverTest, {
       personneId,
       tranche: await trancheDisponible(caller),
-    })).resolves.toBeNull();
+    })).rejects.toThrow("16 ans ou plus");
   });
 
   test("refuse une tranche passée", async () => {
@@ -1530,9 +1529,9 @@ describe("réservation de test d'autonomie", () => {
     })).rejects.toThrow("demandez à votre moniteur");
   });
 
-  test("confirme après un scrap par licence exact, avec autonomie requise et 16 ans", async () => {
+  test("conserve une réservation active après une synchronisation ultérieure", async () => {
     const t = convexTest(schema, modules);
-    const { userId, personneId } = await creerPersonne(t, { age: null, licence: "L-123" });
+    const { userId, personneId } = await creerPersonne(t, { age: 16, licence: "L-123" });
     const caller = t.withIdentity({ subject: userId });
     await creerCreneau(t, "2099-06-02");
     await caller.mutation(api.abo.tests.reserverTest, {
@@ -1551,12 +1550,12 @@ describe("réservation de test d'autonomie", () => {
       await ctx.runMutation(internal.abo.matching.matcherScrapPersonnes, {});
     });
     const reservations = await caller.query(api.abo.tests.getMesReservationsParPersonne, {});
-    expect(reservations[0]?.active?.etat_confirmation).toBe("confirmee");
+    expect(reservations[0]?.active?.etat_confirmation).toBe("provisoire");
   });
 
-  test("annule après scrap exact complet si les conditions de test ne sont pas remplies", async () => {
+  test("ne révoque pas une réservation quand le scrap ultérieur rend le test non requis", async () => {
     const t = convexTest(schema, modules);
-    const { userId, personneId } = await creerPersonne(t, { age: null, licence: "L-456" });
+    const { userId, personneId } = await creerPersonne(t, { age: 16, licence: "L-456" });
     const caller = t.withIdentity({ subject: userId });
     await creerCreneau(t, "2099-06-02");
     await caller.mutation(api.abo.tests.reserverTest, {
@@ -1567,16 +1566,18 @@ describe("réservation de test d'autonomie", () => {
       await ctx.db.insert("abo_abonnes_scrap", {
         licence: "L-456",
         nom_prenom_normalise: "candidate test",
-        age: 15,
-        autonomie: "Doit passer le test",
+        age: 16,
+        autonomie: "OK",
         abonnement_valide: "oui",
         last_scrap_at: new Date().toISOString(),
       });
       await ctx.runMutation(internal.abo.matching.matcherScrapPersonnes, {});
     });
     const reservations = await caller.query(api.abo.tests.getMesReservationsParPersonne, {});
-    expect(reservations[0]?.active).toBeNull();
-    expect(reservations[0]?.annulee?.annulee_raison).toBe("conditions_test_non_remplies");
+    expect(reservations[0]?.active).toEqual(expect.objectContaining({
+      etat_confirmation: "provisoire",
+    }));
+    expect(reservations[0]?.annulee).toBeNull();
   });
 
   test("rend une réservation directe visible au staff, archivable et rappelable", async () => {
