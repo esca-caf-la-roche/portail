@@ -547,25 +547,26 @@ sécurisé du demandeur. Ce mécanisme utilise une tâche différée attachée �
 réservation, jamais un cron périodique. Ces créneaux, réservations, rappels et
 réévaluations relèvent de la campagne courante et sont purgés à son reset.
 
-Dans l'onglet staff **Tests**, le bloc **Personnes à tester** affiche en temps
-réel le nombre de créneaux réservés sur le nombre de personnes devant encore
-passer le test. Un clic ouvre la liste consolidée des dossiers validés dont le test
-est requis, des candidats directs éligibles, des réservations actives et des
-tests archivés pendant la campagne. Chaque personne apparaît une seule fois,
-avec le statut **En attente de créneau**, **Créneau réservé** ou **Test passé**.
-Une réservation dont la fin est atteinte est considérée comme passée ; ce
-statut décrit le rendez-vous et ne vaut pas validation du résultat sur le site
-du club. La vue est réservée au staff Abonnements, hors saison comptable.
-
 La section **Inscrits par créneau de 20 min** présente tous les créneaux fixes
 futurs de 20 minutes, y compris ceux qui n'ont encore aucune réservation. Chaque
 encadrant présent ouvre 2 places sur le créneau ; les capacités se cumulent quand
 plusieurs encadrants sont disponibles au même horaire. Pour chaque créneau,
-l'interface affiche les places prises, la capacité calculée et les places encore
-disponibles. Un résumé additionne ces mêmes valeurs sur l'ensemble des créneaux
+l'interface affiche les noms des encadrants, les places prises, la capacité
+calculée et les places encore disponibles. Un résumé additionne ces mêmes valeurs sur l'ensemble des créneaux
 futurs ; les rendez-vous terminés ne sont pas mélangés à ce total. Un candidat
-n'apparaît dans **Tests d'autonomie à enregistrer** qu'à la fin de son créneau,
-y compris pour une ancienne réservation d'une durée différente.
+n'apparaît dans **Résultats des créneaux terminés** qu'à la fin de son créneau,
+y compris pour une ancienne réservation d'une durée différente. Le staff peut
+alors qualifier la tentative comme **Validée**, **Non validée** ou **Absente** ;
+une absence ou une non-validation permet de reprendre un rendez-vous.
+
+Le suivi global est intégré à cette même section afin de ne pas dupliquer les
+personnes à tester. Il répartit chaque personne dans un seul statut : créneau
+réservé, test pendant son cours d'escalade, sans réservation, validé, non validé,
+absent ou résultat à qualifier. La somme de ces catégories est toujours égale au
+total. Le bouton de détail ouvre une fenêtre filtrable par statut. Les anciennes
+tentatives sans résultat explicite restent **À qualifier** ; une archive Drive
+marquée **Traitée** conserve sa convention historique de test validé. Cette vue
+est réservée au staff Abonnements et reste hors saison comptable.
 
 Les destinataires sont validés comme adresses uniques à l'entrée de
 l'authentification puis de nouveau dans les actions SMTP. Les listes de
@@ -604,9 +605,12 @@ déploiement `npx.cmd convex dev` actif.
 - [ ] **Test d'autonomie** : créer un créneau avec un premier membre du staff,
   vérifier qu'un second voit son nom puis peut s'ajouter depuis la liste
   partagée ; contrôler que chaque créneau fixe de 20 min ouvre 2 places par
-  encadrant, puis les compteurs pris/capacité/disponibles de chaque créneau
+  encadrant, affiche les noms du staff, puis les compteurs
+  pris/capacité/disponibles de chaque créneau
   (dont un créneau vide)
-  et leur total. Une
+  et leur total. Vérifier le résumé exclusif des statuts, les filtres de la
+  fenêtre de détail et les actions Validé / Non validé / Absent après la fin du
+  créneau. Une
   demande validée, sans licence, âge ni autonomie connus, réserve un RDV
   provisoire ; réserver/annuler ; retirer un encadrant d'un créneau surbooké →
   délogement LIFO + email `test_annule`. Vérifier qu'un staff sans la tuile

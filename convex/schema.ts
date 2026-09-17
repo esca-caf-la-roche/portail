@@ -1189,8 +1189,11 @@ export default defineSchema({
     .index("by_date", ["date_jour"])
     .index("by_notification_lot_id", ["notification_lot_id"]),
 
+  // SAISON-EXEMPT: les réservations du test d'autonomie suivent la campagne
+  // Abonnements, indépendamment de la saison comptable du portail staff.
   // Réservation d'une tranche horaire de test par une personne (anonyme côté
-  // encadrant). Une seule réservation "active" par personne (contrôlé en mutation).
+  // encadrant). Une seule réservation bloquante par personne ; les tentatives
+  // terminées non validées ou absentes restent actives comme historique.
   abo_test_reservations: defineTable({
     // WIDEN: les réservations directes depuis une inscription club n'ont pas de
     // dossier de demande. Une réservation contient soit personne_id, soit les
@@ -1204,6 +1207,15 @@ export default defineSchema({
     tranche: v.string(), // début de tranche, instant ISO (Europe/Paris)
     tranche_fin: v.optional(v.string()),
     statut: v.union(v.literal("active"), v.literal("annulee")),
+    resultat_test: v.optional(
+      v.union(
+        v.literal("valide"),
+        v.literal("non_valide"),
+        v.literal("absent"),
+      ),
+    ),
+    resultat_renseigne_le: v.optional(v.string()),
+    resultat_renseigne_par: v.optional(v.id("users")),
     annulee_le: v.optional(v.string()),
     annulee_raison: v.optional(
       v.union(

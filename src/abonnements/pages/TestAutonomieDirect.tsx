@@ -3,6 +3,7 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { aboError } from "../lib/errors";
 import { cleJour, formatJour, formatTranche } from "../lib/tests";
+import { useMaintenantMinute } from "../lib/useMaintenantMinute";
 
 export default function TestAutonomieDirect({ demande }: { demande: React.ReactNode }) {
   const [mode, setMode] = useState<"choix" | "demande" | "test">("choix");
@@ -33,6 +34,7 @@ export default function TestAutonomieDirect({ demande }: { demande: React.ReactN
 }
 
 function ReservationDirecte() {
+  const maintenantMs = useMaintenantMinute();
   const [licence, setLicence] = useState("");
   const [recherche, setRecherche] = useState<{
     licence: string;
@@ -49,7 +51,7 @@ function ReservationDirecte() {
   const verificationId = useRef(0);
   const synchronisationId = useRef<number | null>(null);
   const eligibility = useQuery(api.abo.tests.eligibiliteReservationDirecteTest, recherche ?? "skip");
-  const reservations = useQuery(api.abo.tests.getMesReservationsDirectes);
+  const reservations = useQuery(api.abo.tests.getMesReservationsDirectes, { maintenantMs });
   const creneaux = useQuery(api.abo.tests.testCreneauxDisponibles);
   const synchroniser = useAction(api.abo.scrap.synchroniserPourTestAutonomieDirect);
   const reserver = useMutation(api.abo.tests.reserverTestDirect);
@@ -125,7 +127,7 @@ function ReservationDirecte() {
   const jours = new Map<string, { label: string; tranches: NonNullable<typeof creneaux> }>();
   for (const c of creneaux ?? []) { const key = cleJour(c.tranche_debut); if (!jours.has(key)) jours.set(key, { label: formatJour(c.tranche_debut), tranches: [] }); jours.get(key)!.tranches.push(c); }
   return <div className="abo-content"><h1>Réserver un test d'autonomie</h1>
-    {active ? <section className="abo-carte"><h2>{active.prenom} {active.nom}</h2><p><strong>Votre RDV :</strong> {formatJour(active.tranche)}, {formatTranche(active.tranche, active.tranche_fin)}</p><button className="abo-link" type="button" disabled={busy} onClick={async () => { setBusy(true); try { await annuler({ reservationId: active.id }); } catch (err) { setErreur(aboError(err).message); } finally { setBusy(false); } }}>Annuler ce RDV</button></section> : <>
+    {active ? <section className="abo-carte"><h2>{active.prenom} {active.nom}</h2><p><strong>Votre RDV :</strong> {formatJour(active.tranche)}, {formatTranche(active.tranche, active.tranche_fin)}</p>{active.annulation_autorisee ? <button className="abo-link" type="button" disabled={busy} onClick={async () => { setBusy(true); try { await annuler({ reservationId: active.id }); } catch (err) { setErreur(aboError(err).message); } finally { setBusy(false); } }}>Annuler ce RDV</button> : <p><strong>Résultat en attente de saisie par le club.</strong></p>}</section> : <>
       <section className="abo-carte abo-verification-licence">
         <p>Indiquez le numéro de licence utilisé sur le site du club.</p>
         <form onSubmit={(e) => { e.preventDefault(); void verifierLicence(); }}>

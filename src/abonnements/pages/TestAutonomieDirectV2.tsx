@@ -4,6 +4,7 @@ import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { aboError } from "../lib/errors";
 import { cleJour, formatJour, formatTranche } from "../lib/tests";
+import { useMaintenantMinute } from "../lib/useMaintenantMinute";
 import NotificationDisponibilitesTest from "../NotificationDisponibilitesTest";
 
 export default function TestAutonomieDirectV2({ demande, initialMode = "choix" }: { demande: React.ReactNode; initialMode?: "choix" | "test" }) {
@@ -14,6 +15,7 @@ export default function TestAutonomieDirectV2({ demande, initialMode = "choix" }
 }
 
 function ReservationDirecte() {
+  const maintenantMs = useMaintenantMinute();
   const [licence, setLicence] = useState("");
   const [ajout, setAjout] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -21,7 +23,7 @@ function ReservationDirecte() {
   const [busy, setBusy] = useState(false);
   const verificationId = useRef(0);
   const candidats = useQuery(api.abo.tests.mesCandidatsDirects);
-  const reservations = useQuery(api.abo.tests.getMesReservationsDirectes);
+  const reservations = useQuery(api.abo.tests.getMesReservationsDirectes, { maintenantMs });
   const creneaux = useQuery(api.abo.tests.testCreneauxDisponibles);
   const synchroniser = useAction(api.abo.scrap.synchroniserPourTestAutonomieDirect);
   const memoriser = useMutation(api.abo.tests.verifierEtMemoriserCandidatDirect);
@@ -52,11 +54,11 @@ function ReservationDirecte() {
   const reservationsOrphelines = (reservations ?? []).filter((reservation) => !licencesMemorisees.has(reservation.licence));
 
   return <div className="abo-content"><h1>Réserver un test d'autonomie</h1>
-    {reservationsOrphelines.map((reservation) => <section className="abo-carte" key={reservation.id}><h2>{reservation.prenom} {reservation.nom}</h2><p>Licence {reservation.licence}</p><div className="abo-resa-active"><p><strong>Votre RDV :</strong> {formatJour(reservation.tranche)}, {formatTranche(reservation.tranche, reservation.tranche_fin)}</p><button className="abo-link" type="button" disabled={busy} onClick={async () => { setBusy(true); setErreur(null); try { await annuler({ reservationId: reservation.id }); } catch (error) { setErreur(aboError(error).message); } finally { setBusy(false); } }}>Annuler ce RDV</button></div></section>)}
+    {reservationsOrphelines.map((reservation) => <section className="abo-carte" key={reservation.id}><h2>{reservation.prenom} {reservation.nom}</h2><p>Licence {reservation.licence}</p><div className="abo-resa-active"><p><strong>Votre RDV :</strong> {formatJour(reservation.tranche)}, {formatTranche(reservation.tranche, reservation.tranche_fin)}</p>{reservation.annulation_autorisee ? <button className="abo-link" type="button" disabled={busy} onClick={async () => { setBusy(true); setErreur(null); try { await annuler({ reservationId: reservation.id }); } catch (error) { setErreur(aboError(error).message); } finally { setBusy(false); } }}>Annuler ce RDV</button> : <p><strong>Résultat en attente de saisie par le club.</strong></p>}</div></section>)}
     {candidats === undefined ? <p>Chargement…</p> : candidats.map((candidat) => {
       const reservation = reservations?.find((ligne) => ligne.licence === candidat.licence);
       return <section className="abo-carte abo-candidat-test" key={candidat._id}><div className="abo-candidat-test__entete"><div><h2>{candidat.prenom} {candidat.nom}</h2><p>Licence {candidat.licence}</p></div>{!reservation && <button className="abo-link" type="button" disabled={busy} onClick={async () => { setBusy(true); setErreur(null); try { await retirer({ candidatId: candidat._id }); } catch (error) { setErreur(aboError(error).message); } finally { setBusy(false); } }}>Retirer de ce compte</button>}</div>
-        {reservation ? <div className="abo-resa-active"><p><strong>Votre RDV :</strong> {formatJour(reservation.tranche)}, {formatTranche(reservation.tranche, reservation.tranche_fin)}</p><button className="abo-link" type="button" disabled={busy} onClick={async () => { setBusy(true); setErreur(null); try { await annuler({ reservationId: reservation.id }); } catch (error) { setErreur(aboError(error).message); } finally { setBusy(false); } }}>Annuler ce RDV</button></div>
+        {reservation ? <div className="abo-resa-active"><p><strong>Votre RDV :</strong> {formatJour(reservation.tranche)}, {formatTranche(reservation.tranche, reservation.tranche_fin)}</p>{reservation.annulation_autorisee ? <button className="abo-link" type="button" disabled={busy} onClick={async () => { setBusy(true); setErreur(null); try { await annuler({ reservationId: reservation.id }); } catch (error) { setErreur(aboError(error).message); } finally { setBusy(false); } }}>Annuler ce RDV</button> : <p><strong>Résultat en attente de saisie par le club.</strong></p>}</div>
           : candidat.statut === "ineligible" ? <p className="abo-resa-information">{candidat.motif_ineligibilite ?? "Cette personne n'est plus éligible au test."}</p>
           : jours.size === 0 ? <><p>Aucun créneau disponible pour l'instant.</p><NotificationDisponibilitesTest cible={{ type: "direct", candidatId: candidat._id }} /></>
           : <><div className="abo-resa-jours">{[...jours.values()].map((jour) => <div key={jour.label} className="abo-resa-jour"><h3>{jour.label}</h3><div className="abo-resa-tranches">{jour.tranches.map((tranche) => <button key={tranche.tranche_debut} className="abo-resa-tranche" type="button" disabled={busy} onClick={() => choisir(candidat._id, tranche.tranche_debut)}><span>{formatTranche(tranche.tranche_debut, tranche.tranche_fin)}</span><span className="abo-resa-places">{tranche.disponible} place{tranche.disponible > 1 ? "s" : ""}</span></button>)}</div></div>)}</div><NotificationDisponibilitesTest masquerSiInactif cible={{ type: "direct", candidatId: candidat._id }} /></>}

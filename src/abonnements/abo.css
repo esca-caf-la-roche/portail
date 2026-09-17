@@ -965,8 +965,15 @@ textarea.abo-input {
 .abo-admin-tests-followup-badge--en_attente { background: var(--warning); }
 .abo-admin-tests-followup-badge--reserve { background: var(--info); }
 .abo-admin-tests-followup-badge--avec_moniteur { background: var(--success); }
-.abo-admin-tests-followup-badge--passe { background: var(--success); }
+.abo-admin-tests-followup-badge--a_qualifier { background: var(--warning); }
+.abo-admin-tests-followup-badge--valide { background: var(--success); }
+.abo-admin-tests-followup-badge--non_valide { background: color-mix(in srgb, var(--danger) 24%, var(--card)); }
+.abo-admin-tests-followup-badge--absent { background: color-mix(in srgb, var(--foreground) 12%, var(--card)); }
 .abo-admin-tests-followup-slot { font-size: 0.78rem; font-weight: 800; }
+.abo-admin-tests-status-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr)); gap: 0.55rem; margin: 1rem 0 0; }
+.abo-admin-tests-status-summary > div { display: grid; place-items: center; min-width: 0; padding: 0.55rem; border: 2px solid var(--border-color); background: var(--card); text-align: center; }
+.abo-admin-tests-status-summary dt { font-size: 0.68rem; font-weight: 900; text-transform: uppercase; }
+.abo-admin-tests-status-summary dd { margin: 0; font-size: 1.55rem; font-weight: 900; line-height: 1; }
 .abo-admin-staff-slots { grid-template-columns: repeat(auto-fit, minmax(min(100%, 21rem), 1fr)); }
 .abo-admin-staff-slot { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 1rem; }
 .abo-admin-staff-slot--joined { background: var(--success); }
@@ -1031,6 +1038,9 @@ textarea.abo-input {
 .abo-admin-test-capacity-card { display: grid; align-content: start; gap: 0.6rem; }
 .abo-admin-test-capacity-card-heading { display: grid; gap: 0.65rem; }
 .abo-admin-test-capacity-card-heading > strong { font-size: 1.1rem; }
+.abo-admin-test-slot-staff { display: grid; gap: 0.15rem; margin: 0; padding: 0.45rem 0.55rem; border: 2px solid var(--border-color); background: var(--warning); overflow-wrap: anywhere; }
+.abo-admin-test-slot-staff span { font-size: 0.68rem; font-weight: 900; text-transform: uppercase; }
+.abo-admin-test-result-actions { display: grid; gap: 0.55rem; width: min(100%, 42rem); }
 .abo-admin-test-capacity-counts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; }
 .abo-admin-test-capacity-counts > span { display: grid; place-items: center; min-width: 0; padding: 0.5rem; border: 2px solid var(--border-color); font-size: 0.72rem; font-weight: 900; text-align: center; text-transform: uppercase; }
 .abo-admin-test-capacity-counts strong { font-size: 1.3rem; line-height: 1; }

@@ -193,4 +193,153 @@ describe("archive des tests d'autonomie", () => {
       licence: "123456789012",
     })).rejects.toThrow("Réservé aux administrateurs");
   });
+
+  test("qualifie une réservation terminée de façon idempotente et autorise une correction", async () => {
+    const t = convexTest(schema, modules);
+    const { userId, admin } = await creerAdmin(t);
+    const reservationId = await t.run((ctx) =>
+      ctx.db.insert("abo_test_reservations", {
+        candidat_licence: "748020260099",
+        candidat_nom: "RESULTAT",
+        candidat_prenom: "Test",
+        candidat_email: "resultat@example.test",
+        tranche: "2020-01-01T08:00:00.000Z",
+        tranche_fin: "2020-01-01T08:20:00.000Z",
+        statut: "active",
+      }),
+    );
+
+    await admin.mutation(api.abo.testDocuments.renseignerResultatTest, {
+      reservationId,
+      resultat: "non_valide",
+    });
+    const premiere = await t.run((ctx) => ctx.db.get(reservationId));
+    expect(premiere).toMatchObject({
+      resultat_test: "non_valide",
+      resultat_renseigne_par: userId,
+    });
+
+    await admin.mutation(api.abo.testDocuments.renseignerResultatTest, {
+      reservationId,
+      resultat: "non_valide",
+    });
+    const identique = await t.run((ctx) => ctx.db.get(reservationId));
+    expect(identique?.resultat_renseigne_le).toBe(premiere?.resultat_renseigne_le);
+
+    await admin.mutation(api.abo.testDocuments.renseignerResultatTest, {
+      reservationId,
+      resultat: "absent",
+    });
+    const corrigee = await t.run((ctx) => ctx.db.get(reservationId));
+    expect(corrigee?.resultat_test).toBe("absent");
+
+    await t.run((ctx) => ctx.db.insert("abo_test_reservations", {
+      candidat_licence: "748020260099",
+      candidat_nom: "RESULTAT",
+      candidat_prenom: "Test",
+      candidat_email: "resultat@example.test",
+      tranche: "2099-01-01T08:00:00.000Z",
+      tranche_fin: "2099-01-01T08:20:00.000Z",
+      statut: "active",
+    }));
+    await expect(admin.mutation(api.abo.testDocuments.renseignerResultatTest, {
+      reservationId,
+      resultat: "valide",
+    })).rejects.toThrow("Annulez d'abord le nouveau créneau");
+  });
+
+  test("refuse un résultat avant la fin du créneau et sans accès Abonnements", async () => {
+    const t = convexTest(schema, modules);
+    const { admin } = await creerAdmin(t);
+    const reservationId = await t.run((ctx) =>
+      ctx.db.insert("abo_test_reservations", {
+        candidat_licence: "748020260098",
+        candidat_nom: "FUTUR",
+        candidat_prenom: "Test",
+        candidat_email: "futur@example.test",
+        tranche: "2099-01-01T08:00:00.000Z",
+        tranche_fin: "2099-01-01T08:20:00.000Z",
+        statut: "active",
+      }),
+    );
+    await expect(admin.mutation(api.abo.testDocuments.renseignerResultatTest, {
+      reservationId,
+      resultat: "valide",
+    })).rejects.toThrow("après la fin du créneau");
+
+    const sansAccesId = await t.run(async (ctx) => {
+      const id = await ctx.db.insert("users", {
+        email: "sans-acces-resultat@example.test",
+      });
+      await ctx.db.insert("abo_profiles", {
+        userId: id,
+        email: "sans-acces-resultat@example.test",
+        role: "utilisateur",
+      });
+      return id;
+    });
+    await expect(t.withIdentity({ subject: sansAccesId }).mutation(
+      api.abo.testDocuments.renseignerResultatTest,
+      { reservationId, resultat: "absent" },
+    )).rejects.toThrow("Réservé aux administrateurs");
+  });
+
+  test("déduplique les tentatives dossier et directe par licence en gardant la plus récente", async () => {
+    const t = convexTest(schema, modules);
+    const { admin } = await creerAdmin(t);
+    const ids = await t.run(async (ctx) => {
+      const ownerId = await ctx.db.insert("users", { email: "transition@example.test" });
+      const dossierId = await ctx.db.insert("abo_dossiers", {
+        email: "transition@example.test",
+        statut_dossier: "validee",
+        date_soumission: "2020-01-01T00:00:00.000Z",
+        owner_id: ownerId,
+      });
+      const personneId = await ctx.db.insert("abo_personnes", {
+        dossier_id: dossierId,
+        nom: "TENTATIVE",
+        prenom: "Test",
+        nom_prenom_normalise: "tentative test",
+        licence: "748020260097",
+        licence_statut: "annuaire_valide",
+        etape_demande: true,
+        etape_validation: "validee",
+        etape_licence: true,
+        etape_test_autonomie: "requis",
+        etape_inscription_site: false,
+        etape_photo: false,
+        etape_paiement: false,
+        etape_abonnement_valide: false,
+      });
+      const ancienne = await ctx.db.insert("abo_test_reservations", {
+        personne_id: personneId,
+        tranche: "2020-01-01T08:00:00.000Z",
+        tranche_fin: "2020-01-01T08:20:00.000Z",
+        statut: "active",
+        resultat_test: "non_valide",
+      });
+      const recente = await ctx.db.insert("abo_test_reservations", {
+        candidat_licence: "748020260097",
+        candidat_nom: "TENTATIVE",
+        candidat_prenom: "Test",
+        candidat_email: "tentative@example.test",
+        tranche: "2020-02-01T08:00:00.000Z",
+        tranche_fin: "2020-02-01T08:20:00.000Z",
+        statut: "active",
+        resultat_test: "valide",
+      });
+      return { ancienne, recente };
+    });
+
+    const liste = await admin.query(api.abo.testDocuments.listeReservationsPassees, {
+      avant: "2026-09-17T00:00:00.000Z",
+    });
+    expect(liste).toEqual([
+      expect.objectContaining({
+        reservationId: ids.recente,
+        resultatTest: "valide",
+      }),
+    ]);
+    expect(liste[0]?.reservationId).not.toBe(ids.ancienne);
+  });
 });

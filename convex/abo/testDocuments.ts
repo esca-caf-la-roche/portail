@@ -6,9 +6,31 @@ import { ConvexError, v } from "convex/values";
 import { authenticatedMutation, authenticatedQuery } from "../customFunctions";
 import { internalMutation, internalQuery } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
+import { champsModifies } from "../dbUtils";
 import { requireAboAdmin } from "./auth";
+import { canoniserLicence } from "./lib";
 
 const DUREE_LEGACY_MS = 60 * 60 * 1000;
+const MAX_RESERVATIONS_PAR_PERSONNE = 100;
+const MAX_PERSONNES_PAR_LICENCE = 50;
+
+function verifierBorne<T>(lignes: T[], maximum: number, libelle: string): T[] {
+  if (lignes.length > maximum) {
+    throw new ConvexError({
+      code: "TEST_VOLUME_DEPASSE",
+      message: `${libelle} dépasse la limite de sécurité (${maximum}). Contactez un administrateur.`,
+    });
+  }
+  return lignes;
+}
+
+function cleCandidatPasse(
+  licence: string,
+  personneId?: Id<"abo_personnes">,
+): string {
+  const licenceCanonique = canoniserLicence(licence) ?? licence.trim().toUpperCase();
+  return licenceCanonique ? `licence:${licenceCanonique}` : `personne:${personneId ?? "inconnue"}`;
+}
 
 function reservationEstPassee(
   reservation: { tranche: string; tranche_fin?: string },
@@ -23,6 +45,11 @@ function reservationEstPassee(
 }
 
 const statutValidator = v.union(v.literal("a_traiter"), v.literal("traite"));
+const resultatTestValidator = v.union(
+  v.literal("valide"),
+  v.literal("non_valide"),
+  v.literal("absent"),
+);
 const uploadStatutValidator = v.union(
   v.literal("autorise"),
   v.literal("en_cours"),
@@ -45,6 +72,7 @@ const archiveValidator = v.object({
 });
 
 const candidatValidator = v.object({
+  reservationId: v.union(v.id("abo_test_reservations"), v.null()),
   personneId: v.union(v.id("abo_personnes"), v.null()),
   licence: v.string(),
   nom: v.string(),
@@ -54,6 +82,7 @@ const candidatValidator = v.object({
   archiveId: v.union(v.id("abo_tests_autonomie_archive"), v.null()),
   statut: v.union(statutValidator, v.null()),
   driveUrl: v.union(v.string(), v.null()),
+  resultatTest: v.union(resultatTestValidator, v.null()),
 });
 
 function vueArchive(archive: {
@@ -88,6 +117,56 @@ async function reservationPasseePourPersonne(
   return reservations.some(
     (reservation) =>
       reservation.statut === "active" && reservationEstPassee(reservation, avant),
+  );
+}
+
+async function aUneAutreReservationFuture(
+  ctx: Parameters<typeof requireAboAdmin>[0],
+  reservation: {
+    _id: Id<"abo_test_reservations">;
+    personne_id?: Id<"abo_personnes">;
+    candidat_licence?: string;
+  },
+  maintenantIso: string,
+): Promise<boolean> {
+  const reservations = new Map<Id<"abo_test_reservations">, {
+    _id: Id<"abo_test_reservations">;
+    tranche: string;
+    tranche_fin?: string;
+    statut: "active" | "annulee";
+  }>();
+  let licence = reservation.candidat_licence?.trim() ?? "";
+  if (reservation.personne_id) {
+    const personne = await ctx.db.get(reservation.personne_id);
+    licence = personne?.licence?.trim() ?? licence;
+    const liees = verifierBorne(await ctx.db
+      .query("abo_test_reservations")
+      .withIndex("by_personne", (q) => q.eq("personne_id", reservation.personne_id))
+      .take(MAX_RESERVATIONS_PAR_PERSONNE + 1), MAX_RESERVATIONS_PAR_PERSONNE, "Les réservations de cette personne");
+    for (const ligne of liees) reservations.set(ligne._id, ligne);
+  }
+  if (licence) {
+    const directes = verifierBorne(await ctx.db
+      .query("abo_test_reservations")
+      .withIndex("by_candidat_licence", (q) => q.eq("candidat_licence", licence))
+      .take(MAX_RESERVATIONS_PAR_PERSONNE + 1), MAX_RESERVATIONS_PAR_PERSONNE, "Les réservations directes de cette licence");
+    for (const ligne of directes) reservations.set(ligne._id, ligne);
+    const personnes = verifierBorne(await ctx.db
+      .query("abo_personnes")
+      .withIndex("by_licence", (q) => q.eq("licence", licence))
+      .take(MAX_PERSONNES_PAR_LICENCE + 1), MAX_PERSONNES_PAR_LICENCE, "Les personnes liées à cette licence");
+    for (const personne of personnes) {
+      const liees = verifierBorne(await ctx.db
+        .query("abo_test_reservations")
+        .withIndex("by_personne", (q) => q.eq("personne_id", personne._id))
+        .take(MAX_RESERVATIONS_PAR_PERSONNE + 1), MAX_RESERVATIONS_PAR_PERSONNE, "Les réservations de cette personne");
+      for (const ligne of liees) reservations.set(ligne._id, ligne);
+    }
+  }
+  return [...reservations.values()].some((autre) =>
+    autre._id !== reservation._id
+    && autre.statut === "active"
+    && !reservationEstPassee(autre, maintenantIso)
   );
 }
 
@@ -186,6 +265,7 @@ export const rechercherCandidatParLicence = authenticatedQuery({
       const entreeAnnuaire = annuaireParLicence.get(licence);
       const archive = archivesParLicence.get(licence);
       return {
+        reservationId: null,
         personneId: personne?._id ?? null,
         licence,
         nom: personne?.nom ?? entreeAnnuaire?.nom ?? archive?.nom ?? "",
@@ -197,6 +277,7 @@ export const rechercherCandidatParLicence = authenticatedQuery({
         archiveId: archive?._id ?? null,
         statut: archive?.statut ?? null,
         driveUrl: archive?.drive_url || null,
+        resultatTest: null,
       };
     }));
   },
@@ -215,6 +296,7 @@ export const listeReservationsPassees = authenticatedQuery({
       .order("desc")
       .take(100);
     const candidats = [] as Array<{
+      reservationId: Id<"abo_test_reservations"> | null;
       personneId: Id<"abo_personnes"> | null;
       licence: string;
       nom: string;
@@ -224,6 +306,7 @@ export const listeReservationsPassees = authenticatedQuery({
       archiveId: Id<"abo_tests_autonomie_archive"> | null;
       statut: "a_traiter" | "traite" | null;
       driveUrl: string | null;
+      resultatTest: "valide" | "non_valide" | "absent" | null;
     }>;
     const vus = new Set<string>();
 
@@ -232,13 +315,15 @@ export const listeReservationsPassees = authenticatedQuery({
       if (!reservationEstPassee(reservation, args.avant)) continue;
       if (!reservation.personne_id) {
         const licence = reservation.candidat_licence?.trim() ?? "";
-        if (!licence || !reservation.candidat_nom || !reservation.candidat_prenom || vus.has(licence)) continue;
-        vus.add(licence);
+        const cleCandidat = cleCandidatPasse(licence);
+        if (!licence || !reservation.candidat_nom || !reservation.candidat_prenom || vus.has(cleCandidat)) continue;
+        vus.add(cleCandidat);
         const archive = await ctx.db
           .query("abo_tests_autonomie_archive")
           .withIndex("by_licence", (q) => q.eq("licence", licence))
           .unique();
         candidats.push({
+          reservationId: reservation._id,
           personneId: null,
           licence,
           nom: reservation.candidat_nom,
@@ -248,13 +333,16 @@ export const listeReservationsPassees = authenticatedQuery({
           archiveId: archive?._id ?? null,
           statut: archive?.statut ?? null,
           driveUrl: archive?.drive_url || null,
+          resultatTest: reservation.resultat_test ?? null,
         });
         continue;
       }
       const personne = await ctx.db.get(reservation.personne_id);
-      if (!personne || vus.has(personne._id)) continue;
-      vus.add(personne._id);
+      if (!personne) continue;
       const licence = personne.licence?.trim() ?? "";
+      const cleCandidat = cleCandidatPasse(licence, personne._id);
+      if (vus.has(cleCandidat)) continue;
+      vus.add(cleCandidat);
       const archive = licence
         ? await ctx.db
             .query("abo_tests_autonomie_archive")
@@ -262,6 +350,7 @@ export const listeReservationsPassees = authenticatedQuery({
             .unique()
         : null;
       candidats.push({
+        reservationId: reservation._id,
         personneId: personne._id,
         licence,
         nom: personne.nom,
@@ -271,9 +360,59 @@ export const listeReservationsPassees = authenticatedQuery({
         archiveId: archive?._id ?? null,
         statut: archive?.statut ?? null,
         driveUrl: archive?.drive_url || null,
+        resultatTest: reservation.resultat_test ?? null,
       });
     }
     return candidats;
+  },
+});
+
+export const renseignerResultatTest = authenticatedMutation({
+  args: {
+    reservationId: v.id("abo_test_reservations"),
+    resultat: resultatTestValidator,
+  },
+  returns: v.object({
+    reservationId: v.id("abo_test_reservations"),
+    resultat: resultatTestValidator,
+  }),
+  handler: async (ctx, args) => {
+    await requireAboAdmin(ctx);
+    const reservation = await ctx.db.get(args.reservationId);
+    if (!reservation || reservation.statut !== "active") {
+      throw new ConvexError({
+        code: "TEST_RESERVATION_INTROUVABLE",
+        message: "Cette réservation de test est introuvable ou annulée.",
+      });
+    }
+    if (!reservationEstPassee(reservation, new Date().toISOString())) {
+      throw new ConvexError({
+        code: "TEST_RESULTAT_TROP_TOT",
+        message: "Le résultat ne peut être renseigné qu'après la fin du créneau.",
+      });
+    }
+    const maintenantIso = new Date().toISOString();
+    if (
+      args.resultat === "valide"
+      && reservation.resultat_test !== "valide"
+      && await aUneAutreReservationFuture(ctx, reservation, maintenantIso)
+    ) {
+      throw new ConvexError({
+        code: "TEST_RESERVATION_FUTURE_EXISTANTE",
+        message: "Annulez d'abord le nouveau créneau avant de corriger cette tentative en test validé.",
+      });
+    }
+    if (reservation.resultat_test !== args.resultat) {
+      const miseAJour = {
+        resultat_test: args.resultat,
+        resultat_renseigne_le: maintenantIso,
+        resultat_renseigne_par: ctx.userId,
+      };
+      if (champsModifies(reservation, miseAJour)) {
+        await ctx.db.patch(reservation._id, miseAJour);
+      }
+    }
+    return { reservationId: reservation._id, resultat: args.resultat };
   },
 });
 

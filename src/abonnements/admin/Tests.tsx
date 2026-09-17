@@ -80,44 +80,9 @@ export default function Tests({ licenceInitiale }: { licenceInitiale: string | n
         au même horaire, leurs capacités se cumulent.
       </p>
 
-      <section className="abo-admin-tests-followup" aria-labelledby="suivi-tests-heading">
-        <div className="abo-admin-tests-followup-heading">
-          <div>
-            <h3 id="suivi-tests-heading" className="abo-admin-subheading">Personnes à tester</h3>
-            <p>Visualisez en un clic qui attend encore un créneau, qui a réservé et qui a déjà passé son test.</p>
-          </div>
-          <button
-            type="button"
-            className="abo-admin-tests-followup-button"
-            disabled={suiviCandidats === undefined}
-            onClick={() => setSuiviOuvert(true)}
-            aria-haspopup="dialog"
-          >
-            {suiviCandidats === undefined ? (
-              <span>Chargement du suivi…</span>
-            ) : (
-              <>
-                <span className="abo-admin-tests-followup-main-count">
-                  <strong>{suiviCandidats.reserves}</strong> personne{suiviCandidats.reserves === 1 ? "" : "s"} {suiviCandidats.reserves === 1 ? "a" : "ont"} réservé
-                </span>
-                <span>
-                  sur {suiviCandidats.aPlanifier} personne{suiviCandidats.aPlanifier === 1 ? "" : "s"} devant encore passer le test
-                </span>
-                <span className="abo-admin-tests-followup-passed">
-                  {suiviCandidats.passes} test{suiviCandidats.passes === 1 ? "" : "s"} passé{suiviCandidats.passes === 1 ? "" : "s"}
-                </span>
-              </>
-            )}
-          </button>
-        </div>
-      </section>
-
       {suiviOuvert && suiviCandidats && (
         <SuiviTestsModal
           candidats={suiviCandidats.candidats}
-          aPlanifier={suiviCandidats.aPlanifier}
-          reserves={suiviCandidats.reserves}
-          passes={suiviCandidats.passes}
           onFermer={() => setSuiviOuvert(false)}
         />
       )}
@@ -146,7 +111,11 @@ export default function Tests({ licenceInitiale }: { licenceInitiale: string | n
 
       <section>
         <h3 className="abo-admin-subheading">Inscrits par créneau de 20 min</h3>
-        <Inscrits vue={vueCreneaux} />
+        <Inscrits
+          vue={vueCreneaux}
+          suivi={suiviCandidats}
+          onOuvrirSuivi={() => setSuiviOuvert(true)}
+        />
       </section>
 
       <hr className="abo-admin-separator" />
@@ -165,6 +134,8 @@ type ArchiveTest = NonNullable<
 >[number];
 type CandidatTest = NonNullable<
   ReturnType<typeof useQuery<typeof api.abo.testDocuments.rechercherCandidatParLicence>>
+>[number] | NonNullable<
+  ReturnType<typeof useQuery<typeof api.abo.testDocuments.listeReservationsPassees>>
 >[number];
 
 function ArchiveTests({
@@ -313,9 +284,9 @@ function ListePersonnesAEnregistrer({
 }) {
   return (
     <section className="abo-admin-subsection abo-admin-tests-step">
-      <h4 className="abo-admin-subheading">Tests d'autonomie à enregistrer</h4>
+      <h4 className="abo-admin-subheading">Résultats des créneaux terminés</h4>
       <p className="abo-admin-meta">
-        Les candidats apparaissent à la fin de leur créneau et restent ensuite affichés.
+        À la fin du créneau, indiquez si le test est validé, non validé ou si la personne était absente.
       </p>
       {reservations === undefined ? (
         <p>Chargement…</p>
@@ -331,20 +302,84 @@ function ListePersonnesAEnregistrer({
                   <span className="abo-admin-meta">Licence {reservation.licence}</span>
                 )}
               </span>
-              <DepotTest
-                candidat={reservation}
-                archiveExistante={
-                  reservation.archiveId
-                    ? toutesArchives?.find((archive) => archive.id === reservation.archiveId) ?? null
-                    : null
-                }
-                compact
-              />
+              <div className="abo-admin-test-result-actions">
+                <ResultatTestActions candidat={reservation} />
+                {reservation.resultatTest !== "absent" && (
+                  <DepotTest
+                    candidat={reservation}
+                    archiveExistante={
+                      reservation.archiveId
+                        ? toutesArchives?.find((archive) => archive.id === reservation.archiveId) ?? null
+                        : null
+                    }
+                    compact
+                  />
+                )}
+              </div>
             </li>
           ))}
         </ul>
       )}
     </section>
+  );
+}
+
+const LIBELLES_RESULTAT_TEST = {
+  valide: "Validé",
+  non_valide: "Non validé",
+  absent: "Absent",
+} as const;
+
+function ResultatTestActions({ candidat }: { candidat: CandidatTest }) {
+  const renseignerResultat = useMutation(api.abo.testDocuments.renseignerResultatTest);
+  const [enCours, setEnCours] = useState<keyof typeof LIBELLES_RESULTAT_TEST | null>(null);
+  const [erreur, setErreur] = useState<string | null>(null);
+
+  if (!candidat.reservationId) return null;
+
+  async function choisir(resultat: keyof typeof LIBELLES_RESULTAT_TEST) {
+    if (
+      resultat !== "valide"
+      && !window.confirm(
+        resultat === "absent"
+          ? "Confirmer que cette personne était absente ?"
+          : "Confirmer que ce test n'est pas validé ?",
+      )
+    ) return;
+    setEnCours(resultat);
+    setErreur(null);
+    try {
+      await renseignerResultat({ reservationId: candidat.reservationId!, resultat });
+    } catch (err) {
+      setErreur(aboError(err).message);
+    } finally {
+      setEnCours(null);
+    }
+  }
+
+  return (
+    <div>
+      {candidat.resultatTest && (
+        <p className={`abo-admin-tests-followup-badge abo-admin-tests-followup-badge--${candidat.resultatTest}`}>
+          {LIBELLES_RESULTAT_TEST[candidat.resultatTest]}
+        </p>
+      )}
+      <div className="abo-admin-toolbar" role="group" aria-label={`Résultat du test de ${candidat.prenom} ${candidat.nom}`}>
+        {(Object.keys(LIBELLES_RESULTAT_TEST) as Array<keyof typeof LIBELLES_RESULTAT_TEST>).map((resultat) => (
+          <button
+            key={resultat}
+            type="button"
+            className="abo-admin-button abo-admin-button--secondary"
+            aria-pressed={candidat.resultatTest === resultat}
+            disabled={enCours !== null}
+            onClick={() => void choisir(resultat)}
+          >
+            {enCours === resultat ? "Enregistrement…" : LIBELLES_RESULTAT_TEST[resultat]}
+          </button>
+        ))}
+      </div>
+      {erreur && <p className="abo-admin-status abo-admin-status--error" role="alert">Échec : {erreur}</p>}
+    </div>
   );
 }
 
@@ -830,6 +865,9 @@ function etatConfirmationReservation(reservation: object): "provisoire" | "confi
 type VueCreneauxAdmin = NonNullable<
   ReturnType<typeof useQuery<typeof api.abo.tests.vueCreneauxAdmin>>
 >;
+type SuiviCandidatsAdmin = NonNullable<
+  ReturnType<typeof useQuery<typeof api.abo.tests.suiviCandidatsAdmin>>
+>;
 
 function libellePlaces(nombre: number) {
   return `${nombre} place${nombre === 1 ? "" : "s"}`;
@@ -839,7 +877,15 @@ function libellePrises(nombre: number) {
   return `${libellePlaces(nombre)} prise${nombre === 1 ? "" : "s"}`;
 }
 
-function Inscrits({ vue }: { vue: VueCreneauxAdmin | undefined }) {
+function Inscrits({
+  vue,
+  suivi,
+  onOuvrirSuivi,
+}: {
+  vue: VueCreneauxAdmin | undefined;
+  suivi: SuiviCandidatsAdmin | undefined;
+  onOuvrirSuivi: () => void;
+}) {
   if (vue === undefined) return <p>Chargement des places et des inscriptions…</p>;
 
   const { tranches, total } = vue;
@@ -862,6 +908,36 @@ function Inscrits({ vue }: { vue: VueCreneauxAdmin | undefined }) {
 
   return (
     <div className="abo-admin-test-capacities">
+      <section className="abo-admin-tests-followup" aria-labelledby="suivi-tests-heading">
+        <div className="abo-admin-tests-followup-heading">
+          <div>
+            <h4 id="suivi-tests-heading" className="abo-admin-subheading">Suivi global des personnes</h4>
+            <p>Chaque personne apparaît dans un seul statut. Ouvrez le détail pour filtrer la liste.</p>
+          </div>
+          <button
+            type="button"
+            className="abo-admin-button abo-admin-button--secondary"
+            disabled={suivi === undefined}
+            onClick={onOuvrirSuivi}
+            aria-haspopup="dialog"
+          >
+            {suivi === undefined ? "Chargement du suivi…" : "Voir et filtrer les personnes"}
+          </button>
+        </div>
+        {suivi && (
+          <dl className="abo-admin-tests-status-summary">
+            <div><dt>En tout</dt><dd>{suivi.total}</dd></div>
+            <div><dt>Créneau réservé</dt><dd>{suivi.reserves}</dd></div>
+            <div><dt>Pendant leur cours</dt><dd>{suivi.avecMoniteur}</dd></div>
+            <div><dt>Sans réservation</dt><dd>{suivi.sansReservation}</dd></div>
+            <div><dt>Validés</dt><dd>{suivi.valides}</dd></div>
+            <div><dt>Non validés</dt><dd>{suivi.nonValides}</dd></div>
+            <div><dt>Absents</dt><dd>{suivi.absents}</dd></div>
+            <div><dt>À qualifier</dt><dd>{suivi.aQualifier}</dd></div>
+          </dl>
+        )}
+      </section>
+
       <div
         className="abo-admin-test-capacity-summary"
         role="group"
@@ -895,6 +971,10 @@ function Inscrits({ vue }: { vue: VueCreneauxAdmin | undefined }) {
                   >
                     <div className="abo-admin-test-capacity-card-heading">
                       <strong>{formatTranche(tranche.tranche_debut, tranche.tranche_fin)}</strong>
+                      <p className="abo-admin-test-slot-staff">
+                        <span>Encadrant{tranche.staff.length === 1 ? "" : "s"}</span>
+                        <strong>{tranche.staff.join(", ") || "Aucun encadrant"}</strong>
+                      </p>
                       <div
                         className="abo-admin-test-capacity-counts"
                         role="group"

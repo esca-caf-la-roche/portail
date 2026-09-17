@@ -195,6 +195,23 @@ describe("réservation de test d'autonomie", () => {
     }]);
     expect(JSON.stringify(creneaux)).not.toContain("@example.test");
     expect(JSON.stringify(creneaux)).not.toContain(aliceId);
+
+    const vue = await t.withIdentity({ subject: bobId }).query(
+      api.abo.tests.vueCreneauxAdmin,
+      {
+        dateDebut: "2099-01-01",
+        instantReference: "2099-01-01T00:00:00.000Z",
+      },
+    );
+    expect(vue.tranches.every((tranche) =>
+      JSON.stringify(tranche.staff) === JSON.stringify([
+        "Alice Martin",
+        "Bob Dupont",
+        "Nom à compléter",
+      ])
+    )).toBe(true);
+    expect(JSON.stringify(vue.tranches)).not.toContain("@example.test");
+    expect(JSON.stringify(vue.tranches)).not.toContain(aliceId);
   });
 
   test("consolide les places prises et disponibles par tranche et au total", async () => {
@@ -680,9 +697,13 @@ describe("réservation de test d'autonomie", () => {
 
     expect(suivi).toMatchObject({
       total: 4,
-      aPlanifier: 1,
       reserves: 1,
-      passes: 2,
+      avecMoniteur: 1,
+      sansReservation: 0,
+      valides: 1,
+      nonValides: 0,
+      absents: 0,
+      aQualifier: 1,
     });
     expect(suivi.candidats).toEqual(expect.arrayContaining([
       expect.objectContaining({
@@ -701,13 +722,13 @@ describe("réservation de test d'autonomie", () => {
       }),
       expect.objectContaining({
         licence: "748000000003",
-        statut: "passe",
+        statut: "valide",
         trancheDebut: "2098-06-02T08:00:00.000Z",
         trancheFin: "2098-06-02T08:40:00.000Z",
       }),
       expect.objectContaining({
         licence: "748000000004",
-        statut: "passe",
+        statut: "a_qualifier",
         trancheDebut: null,
         trancheFin: null,
       }),
@@ -741,12 +762,123 @@ describe("réservation de test d'autonomie", () => {
     const aLaFin = await admin.query(api.abo.tests.suiviCandidatsAdmin, {
       instantReference: "2099-06-02T08:20:00.000Z",
     });
-    expect(aLaFin.candidats.find((c) => c.licence === "748000000021")?.statut).toBe("passe");
+    expect(aLaFin.candidats.find((c) => c.licence === "748000000021")?.statut).toBe("a_qualifier");
     expect(aLaFin.candidats.find((c) => c.licence === "748000000022")?.statut).toBe("reserve");
     const finLegacy = await admin.query(api.abo.tests.suiviCandidatsAdmin, {
       instantReference: "2099-06-02T09:00:00.000Z",
     });
-    expect(finLegacy.candidats.find((c) => c.licence === "748000000022")?.statut).toBe("passe");
+    expect(finLegacy.candidats.find((c) => c.licence === "748000000022")?.statut).toBe("a_qualifier");
+  });
+
+  test.each(["non_valide", "absent"] as const)(
+    "autorise une nouvelle réservation après un résultat %s",
+    async (resultat) => {
+      const t = convexTest(schema, modules);
+      const { userId, personneId } = await creerPersonne(t, { licence: "748000000031" });
+      await creerCreneau(t, "2099-06-02");
+      await t.run((ctx) => ctx.db.insert("abo_test_reservations", {
+        personne_id: personneId,
+        tranche: "2020-01-01T08:00:00.000Z",
+        tranche_fin: "2020-01-01T08:20:00.000Z",
+        statut: "active",
+        resultat_test: resultat,
+      }));
+      const caller = t.withIdentity({ subject: userId });
+
+      await expect(caller.mutation(api.abo.tests.reserverTest, {
+        personneId,
+        tranche: await trancheDisponible(caller),
+      })).resolves.toBeNull();
+      const actives = await t.run(async (ctx) =>
+        (await ctx.db.query("abo_test_reservations")
+          .withIndex("by_personne", (q) => q.eq("personne_id", personneId))
+          .collect())
+          .filter((reservation) => reservation.statut === "active"),
+      );
+      expect(actives).toHaveLength(2);
+      expect(actives.some((reservation) => reservation.tranche.startsWith("2099-"))).toBe(true);
+    },
+  );
+
+  test("refuse une nouvelle réservation après un test validé", async () => {
+    const t = convexTest(schema, modules);
+    const { userId, personneId } = await creerPersonne(t, { licence: "748000000032" });
+    await creerCreneau(t, "2099-06-02");
+    await t.run((ctx) => ctx.db.insert("abo_test_reservations", {
+      personne_id: personneId,
+      tranche: "2020-01-01T08:00:00.000Z",
+      tranche_fin: "2020-01-01T08:20:00.000Z",
+      statut: "active",
+      resultat_test: "valide",
+    }));
+    const caller = t.withIdentity({ subject: userId });
+
+    await expect(caller.mutation(api.abo.tests.reserverTest, {
+      personneId,
+      tranche: await trancheDisponible(caller),
+    })).rejects.toThrow("réservation active");
+  });
+
+  test("répartit chaque personne dans un statut exclusif dont la somme égale le total", async () => {
+    const t = convexTest(schema, modules);
+    const adminId = await creerAdminAbo(t);
+    const licences = Array.from({ length: 7 }, (_, index) => `74800000004${index}`);
+    await t.run(async (ctx) => {
+      for (const [index, licence] of licences.entries()) {
+        await ctx.db.insert("abo_test_candidats_directs", {
+          user_id: `direct-${index}`,
+          licence,
+          nom: `Candidat ${index}`,
+          prenom: "Test",
+          statut: "eligible",
+          valide_le: 1,
+        });
+      }
+      await ctx.db.insert("abo_eleves_en_cours", {
+        licence: licences[2],
+        nom: "Candidat 2",
+        prenom: "Test",
+        nom_prenom_normalise: "candidat 2 test",
+        imported_at: "2099-01-01T00:00:00.000Z",
+      });
+      await ctx.db.insert("abo_test_reservations", {
+        candidat_licence: licences[1], candidat_nom: "Candidat 1", candidat_prenom: "Test",
+        candidat_email: "reserve@example.test", tranche: "2099-06-02T08:00:00.000Z",
+        tranche_fin: "2099-06-02T08:20:00.000Z", statut: "active",
+      });
+      for (const [index, resultat] of [
+        [3, undefined],
+        [4, "valide"],
+        [5, "non_valide"],
+        [6, "absent"],
+      ] as const) {
+        await ctx.db.insert("abo_test_reservations", {
+          candidat_licence: licences[index], candidat_nom: `Candidat ${index}`,
+          candidat_prenom: "Test", candidat_email: `passe-${index}@example.test`,
+          tranche: "2098-06-02T08:00:00.000Z", tranche_fin: "2098-06-02T08:20:00.000Z",
+          statut: "active", ...(resultat ? { resultat_test: resultat } : {}),
+        });
+      }
+    });
+
+    const suivi = await t.withIdentity({ subject: adminId }).query(
+      api.abo.tests.suiviCandidatsAdmin,
+      { instantReference: "2099-01-01T00:00:00.000Z" },
+    );
+    expect(suivi).toMatchObject({
+      total: 7,
+      reserves: 1,
+      avecMoniteur: 1,
+      sansReservation: 1,
+      valides: 1,
+      nonValides: 1,
+      absents: 1,
+      aQualifier: 1,
+    });
+    expect(
+      suivi.reserves + suivi.avecMoniteur + suivi.sansReservation + suivi.valides
+      + suivi.nonValides + suivi.absents + suivi.aQualifier,
+    ).toBe(suivi.total);
   });
 
   test("exige un nom configuré pour proposer ou rejoindre un créneau", async () => {
@@ -1148,6 +1280,99 @@ describe("réservation de test d'autonomie", () => {
         }),
       }),
     ]);
+  });
+
+  test("empêche le candidat direct d'annuler une tentative déjà qualifiée", async () => {
+    const t = convexTest(schema, modules);
+    const userId = await creerCandidatDirect(t);
+    const reservationId = await t.run((ctx) => ctx.db.insert("abo_test_reservations", {
+      candidat_user_id: userId,
+      candidat_licence: "748012345678",
+      candidat_nom: "DIRECT",
+      candidat_prenom: "Camille",
+      candidat_email: "direct@example.test",
+      tranche: "2020-06-02T08:00:00.000Z",
+      tranche_fin: "2020-06-02T08:20:00.000Z",
+      statut: "active",
+      resultat_test: "absent",
+    }));
+    const caller = t.withIdentity({ subject: userId });
+
+    await expect(caller.query(api.abo.tests.getMesReservationsDirectes, {}))
+      .resolves.toEqual([]);
+    await expect(caller.mutation(api.abo.tests.annulerMaReservationDirecte, {
+      reservationId,
+    })).rejects.toThrow("ne peut plus être annulée");
+    await expect(t.run(async (ctx) => ctx.db.get(reservationId))).resolves.toMatchObject({
+      statut: "active",
+      resultat_test: "absent",
+    });
+  });
+
+  test("ne propose plus d'annuler un créneau direct terminé avant sa qualification", async () => {
+    const t = convexTest(schema, modules);
+    const userId = await creerCandidatDirect(t);
+    const reservationId = await t.run((ctx) => ctx.db.insert("abo_test_reservations", {
+      candidat_user_id: userId,
+      candidat_licence: "748012345678",
+      candidat_nom: "DIRECT",
+      candidat_prenom: "Camille",
+      candidat_email: "direct@example.test",
+      tranche: "2020-06-02T08:00:00.000Z",
+      tranche_fin: "2020-06-02T08:20:00.000Z",
+      statut: "active",
+    }));
+    const caller = t.withIdentity({ subject: userId });
+
+    await expect(caller.query(api.abo.tests.getMesReservationsDirectes, {
+      maintenantMs: Date.parse("2020-06-02T08:21:00.000Z"),
+    })).resolves.toEqual([
+      expect.objectContaining({
+        id: reservationId,
+        annulation_autorisee: false,
+      }),
+    ]);
+    await expect(caller.mutation(api.abo.tests.annulerMaReservationDirecte, {
+      reservationId,
+    })).rejects.toThrow("ne peut plus être annulée");
+  });
+
+  test("préserve la tentative qualifiée quand le titulaire demande une annulation", async () => {
+    const t = convexTest(schema, modules);
+    const { userId, personneId } = await creerPersonne(t);
+    const reservationId = await t.run((ctx) => ctx.db.insert("abo_test_reservations", {
+      personne_id: personneId,
+      tranche: "2020-06-02T08:00:00.000Z",
+      tranche_fin: "2020-06-02T08:20:00.000Z",
+      statut: "active",
+      resultat_test: "non_valide",
+    }));
+
+    await expect(t.withIdentity({ subject: userId }).mutation(
+      api.abo.tests.annulerMaReservation,
+      { personneId },
+    )).resolves.toBeNull();
+    await expect(t.run(async (ctx) => ctx.db.get(reservationId))).resolves.toMatchObject({
+      statut: "active",
+      resultat_test: "non_valide",
+    });
+  });
+
+  test("affiche un créneau dossier terminé comme non annulable avant sa qualification", async () => {
+    const t = convexTest(schema, modules);
+    const { userId, personneId } = await creerPersonne(t);
+    await t.run((ctx) => ctx.db.insert("abo_test_reservations", {
+      personne_id: personneId,
+      tranche: "2020-06-02T08:00:00.000Z",
+      tranche_fin: "2020-06-02T08:20:00.000Z",
+      statut: "active",
+    }));
+
+    const reservations = await t.withIdentity({ subject: userId }).query(
+      api.abo.tests.getMesReservationsParPersonne,
+      { maintenantMs: Date.parse("2020-06-02T08:21:00.000Z") },
+    );
+    expect(reservations[0]?.active?.annulation_autorisee).toBe(false);
   });
 
   test("n'expose pas une réservation directe sur une licence seulement saisie", async () => {

@@ -47,7 +47,7 @@ export default function Suivi({ dossier }: { dossier: DossierVue }) {
   const cfg = useQuery(api.abo.config.vaguesConfig, { maintenantMs });
   const liens = useQuery(api.abo.config.liensFinalisation);
   const checks = useQuery(api.abo.demandes.monSuivi);
-  const reservations = useQuery(api.abo.tests.getMesReservationsParPersonne);
+  const reservations = useQuery(api.abo.tests.getMesReservationsParPersonne, { maintenantMs });
   const ajouterPersonne = useAction(api.abo.demandes.ajouterPersonne);
   const supprimerPersonne = useMutation(api.abo.demandes.supprimerPersonne);
 

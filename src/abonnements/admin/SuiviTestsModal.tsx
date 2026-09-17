@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { formatJour, formatTranche } from "../lib/tests";
 
 export type CandidatSuiviTest = {
@@ -7,7 +7,7 @@ export type CandidatSuiviTest = {
   prenom: string;
   licence: string | null;
   estEleveEnCours: boolean;
-  statut: "en_attente" | "reserve" | "avec_moniteur" | "passe";
+  statut: "en_attente" | "reserve" | "avec_moniteur" | "a_qualifier" | "valide" | "non_valide" | "absent";
   trancheDebut: string | null;
   trancheFin: string | null;
 };
@@ -16,22 +16,33 @@ const LIBELLES_STATUT: Record<CandidatSuiviTest["statut"], string> = {
   en_attente: "En attente de créneau",
   reserve: "Créneau réservé",
   avec_moniteur: "Élève en cours — test avec son moniteur",
-  passe: "Test passé",
+  a_qualifier: "Résultat à qualifier",
+  valide: "Test validé",
+  non_valide: "Test non validé",
+  absent: "Absent",
 };
+
+type FiltreStatut = "tous" | CandidatSuiviTest["statut"];
+
+const FILTRES: Array<{ valeur: FiltreStatut; label: string }> = [
+  { valeur: "tous", label: "Tous" },
+  { valeur: "en_attente", label: "Sans réservation" },
+  { valeur: "reserve", label: "Réservés" },
+  { valeur: "avec_moniteur", label: "En cours d’escalade" },
+  { valeur: "a_qualifier", label: "À qualifier" },
+  { valeur: "valide", label: "Validés" },
+  { valeur: "non_valide", label: "Non validés" },
+  { valeur: "absent", label: "Absents" },
+];
 
 export default function SuiviTestsModal({
   candidats,
-  aPlanifier,
-  reserves,
-  passes,
   onFermer,
 }: {
   candidats: CandidatSuiviTest[];
-  aPlanifier: number;
-  reserves: number;
-  passes: number;
   onFermer: () => void;
 }) {
+  const [filtre, setFiltre] = useState<FiltreStatut>("tous");
   const titreId = useId();
   const descriptionId = useId();
   const modalRef = useRef<HTMLElement>(null);
@@ -85,6 +96,10 @@ export default function SuiviTestsModal({
     };
   }, []);
 
+  const candidatsFiltres = filtre === "tous"
+    ? candidats
+    : candidats.filter((candidat) => candidat.statut === filtre);
+
   return (
     <div
       className="abo-admin-modal-backdrop"
@@ -119,26 +134,29 @@ export default function SuiviTestsModal({
           Retrouvez les personnes qui doivent passer un test et l&apos;avancement de leur réservation.
         </p>
 
-        <dl className="abo-admin-tests-followup-summary">
-          <div>
-            <dt>En attente</dt>
-            <dd>{aPlanifier - reserves}</dd>
-          </div>
-          <div>
-            <dt>Réservés</dt>
-            <dd>{reserves}</dd>
-          </div>
-          <div>
-            <dt>Passés</dt>
-            <dd>{passes}</dd>
-          </div>
-        </dl>
+        <div className="abo-admin-toolbar abo-admin-tests-filter-tabs" role="group" aria-label="Filtrer les personnes par statut">
+          {FILTRES.map((option) => (
+            <button
+              key={option.valeur}
+              type="button"
+              className="abo-admin-button"
+              aria-pressed={filtre === option.valeur}
+              onClick={() => setFiltre(option.valeur)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
 
-        {candidats.length === 0 ? (
-          <p className="abo-admin-empty">Aucune personne n&apos;a de test d&apos;autonomie à suivre.</p>
+        <p className="abo-admin-meta" aria-live="polite">
+          {candidatsFiltres.length} personne{candidatsFiltres.length === 1 ? "" : "s"} affichée{candidatsFiltres.length === 1 ? "" : "s"}
+        </p>
+
+        {candidatsFiltres.length === 0 ? (
+          <p className="abo-admin-empty">Aucune personne ne correspond à ce filtre.</p>
         ) : (
           <ul className="abo-admin-tests-followup-list">
-            {candidats.map((candidat) => (
+            {candidatsFiltres.map((candidat) => (
               <li key={candidat.cle} className="abo-admin-tests-followup-person">
                 <div className="abo-admin-tests-followup-identity">
                   <strong>{`${candidat.prenom} ${candidat.nom}`.trim() || "Personne sans nom"}</strong>

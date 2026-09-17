@@ -111,6 +111,23 @@ function estReservationActive(r: Doc<"abo_test_reservations">): boolean {
   return r.statut === "active";
 }
 
+function estReservationBloquante(r: Doc<"abo_test_reservations">): boolean {
+  return r.statut === "active"
+    && r.resultat_test !== "non_valide"
+    && r.resultat_test !== "absent";
+}
+
+function estReservationAnnulable(
+  reservation: Doc<"abo_test_reservations">,
+  maintenantMs: number,
+): boolean {
+  const fin = finReservationMs(reservation);
+  return reservation.statut === "active"
+    && reservation.resultat_test === undefined
+    && fin !== null
+    && fin > maintenantMs;
+}
+
 // ── Slots atomiques de 20 min ────────────────────────────────────────
 // Une clé de slot ne dépend que de son instant de début. Ajouter, chevaucher ou
 // retirer une disponibilité ne redécoupe donc jamais les autres propositions.
@@ -118,13 +135,14 @@ interface Tranche {
   tranche_debut: string; // ISO UTC (début)
   tranche_fin: string; // ISO UTC (fin)
   capacite: number;
+  encadrantIds: Id<"users">[];
 }
 
 async function calculerTranchesDepuisCreneaux(
   creneaux: Doc<"abo_test_creneaux">[],
 ): Promise<Tranche[]> {
   // 1. Capacité par slot de 20 min : Map<instant utc ms, Set<adminId>>.
-  const parSlot = new Map<number, Set<string>>();
+  const parSlot = new Map<number, Set<Id<"users">>>();
   for (const c of creneaux) {
     const debut = parisWallToUtcMs(`${c.date_jour}T${c.heure_debut}`);
     const fin = parisWallToUtcMs(`${c.date_jour}T${c.heure_fin}`);
@@ -133,7 +151,7 @@ async function calculerTranchesDepuisCreneaux(
     for (let t = debut; t <= fin - SLOT_MS; t += SLOT_MS) {
       let set = parSlot.get(t);
       if (!set) {
-        set = new Set<string>();
+        set = new Set<Id<"users">>();
         parSlot.set(t, set);
       }
       set.add(c.admin_id);
@@ -145,6 +163,7 @@ async function calculerTranchesDepuisCreneaux(
       tranche_debut: new Date(debut).toISOString(),
       tranche_fin: new Date(debut + SLOT_MS).toISOString(),
       capacite: 2 * encadrants.size,
+      encadrantIds: [...encadrants],
     }));
 }
 
@@ -578,7 +597,7 @@ async function reservationActive(
     .query("abo_test_reservations")
     .withIndex("by_personne", (q) => q.eq("personne_id", personneId))
     .collect();
-  return rows.find((r) => r.statut === "active") ?? null;
+  return rows.find(estReservationBloquante) ?? null;
 }
 
 type EligibiliteDirecte = {
@@ -795,7 +814,7 @@ async function reservationActivePourLicence(
     .query("abo_test_reservations")
     .withIndex("by_candidat_licence", (q) => q.eq("candidat_licence", licence))
     .collect();
-  if (directes.some(estReservationActive)) return true;
+  if (directes.some(estReservationBloquante)) return true;
   const personnes = await ctx.db
     .query("abo_personnes")
     .withIndex("by_licence", (q) => q.eq("licence", licence))
@@ -805,7 +824,7 @@ async function reservationActivePourLicence(
       .query("abo_test_reservations")
       .withIndex("by_personne", (q) => q.eq("personne_id", personne._id))
       .collect();
-    if (reservations.some(estReservationActive)) return true;
+    if (reservations.some(estReservationBloquante)) return true;
   }
   return false;
 }
@@ -833,12 +852,23 @@ export const retirerCandidatDirect = authenticatedMutation({
 });
 
 export const getMesReservationsDirectes = authenticatedQuery({
-  args: {},
-  handler: async (ctx) => {
+  args: { maintenantMs: v.optional(v.number()) },
+  handler: async (ctx, args) => {
     const id = await requireAboIdentity(ctx);
+    const maintenantMs = args.maintenantMs ?? Date.now();
     const rows = await ctx.db.query("abo_test_reservations")
       .withIndex("by_candidat_user_id", (q) => q.eq("candidat_user_id", id.userId)).collect();
-    return rows.filter(estReservationActive).map((r) => ({ id: r._id, licence: r.candidat_licence ?? "", nom: r.candidat_nom ?? "", prenom: r.candidat_prenom ?? "", tranche: r.tranche, tranche_fin: r.tranche_fin ?? null }));
+    return rows
+      .filter((reservation) => estReservationActive(reservation) && reservation.resultat_test === undefined)
+      .map((r) => ({
+        id: r._id,
+        licence: r.candidat_licence ?? "",
+        nom: r.candidat_nom ?? "",
+        prenom: r.candidat_prenom ?? "",
+        tranche: r.tranche,
+        tranche_fin: r.tranche_fin ?? null,
+        annulation_autorisee: estReservationAnnulable(r, maintenantMs),
+      }));
   },
 });
 
@@ -919,7 +949,13 @@ export const annulerMaReservationDirecte = authenticatedMutation({
     const id = await requireAboIdentity(ctx);
     const reservation = await ctx.db.get(args.reservationId);
     if (!reservation || reservation.candidat_user_id !== id.userId) throw new ConvexError({ code: "P0002", message: "Réservation introuvable." });
-    if (estReservationActive(reservation)) await ctx.db.patch(reservation._id, { statut: "annulee", annulee_le: new Date().toISOString(), annulee_raison: "candidat" });
+    if (!estReservationAnnulable(reservation, Date.now())) {
+      throw new ConvexError({
+        code: "TEST_ANNULATION_INTERDITE",
+        message: "Cette tentative terminée ou déjà qualifiée ne peut plus être annulée.",
+      });
+    }
+    await ctx.db.patch(reservation._id, { statut: "annulee", annulee_le: new Date().toISOString(), annulee_raison: "candidat" });
     return null;
   },
 });
@@ -1008,6 +1044,12 @@ export const annulerMaReservation = authenticatedMutation({
     await personneDuCaller(ctx, args.personneId);
     const active = await reservationActive(ctx, args.personneId);
     if (active) {
+      if (!estReservationAnnulable(active, Date.now())) {
+        throw new ConvexError({
+          code: "TEST_ANNULATION_INTERDITE",
+          message: "Cette tentative terminée ou déjà qualifiée ne peut plus être annulée.",
+        });
+      }
       await ctx.db.patch(active._id, {
         statut: "annulee",
         annulee_le: new Date().toISOString(),
@@ -1070,9 +1112,10 @@ function reservationDirecteCorrespondPersonne(
 }
 
 export const getMesReservationsParPersonne = authenticatedQuery({
-  args: {},
-  handler: async (ctx) => {
+  args: { maintenantMs: v.optional(v.number()) },
+  handler: async (ctx, args) => {
     const id = await requireAboIdentity(ctx);
+    const maintenantMs = args.maintenantMs ?? Date.now();
     const dossiers = await ctx.db
       .query("abo_dossiers")
       .withIndex("by_owner", (q) => q.eq("owner_id", id.userId))
@@ -1133,7 +1176,13 @@ export const getMesReservationsParPersonne = authenticatedQuery({
         if (active || annulee) {
           out.push({
             personne_id: p._id,
-            active: active ? reservationVue(active, active.personne_id === p._id) : null,
+            active: active
+              ? reservationVue(
+                  active,
+                  active.personne_id === p._id
+                    && estReservationAnnulable(active, maintenantMs),
+                )
+              : null,
             annulee: annulee ? reservationVue(annulee, false) : null,
           });
         }
@@ -1193,6 +1242,7 @@ export const vueCreneauxAdmin = authenticatedQuery({
       capacite: v.number(),
       prises: v.number(),
       disponibles: v.number(),
+      staff: v.array(v.string()),
       inscrits: v.array(inscritTestAdminValidator),
     })),
     total: v.object({
@@ -1248,10 +1298,16 @@ export const vueCreneauxAdmin = authenticatedQuery({
     const tranches = tranchesCalculees.map((tranche) => {
       const inscritsTranche = inscritsParTranche.get(tranche.tranche_debut) ?? [];
       const prises = allocation.prisesParTranche.get(tranche.tranche_debut) ?? 0;
+      const staff = tranche.encadrantIds
+        .map((adminId) => staffActifs.get(adminId)?.name?.trim() || "Nom à compléter")
+        .sort((a, b) => a.localeCompare(b, "fr", { sensitivity: "base" }));
       return {
-        ...tranche,
+        tranche_debut: tranche.tranche_debut,
+        tranche_fin: tranche.tranche_fin,
+        capacite: tranche.capacite,
         prises,
         disponibles: tranche.capacite - prises,
+        staff,
         inscrits: inscritsTranche,
       };
     });
@@ -1512,7 +1568,10 @@ const suiviCandidatValidator = v.object({
     v.literal("en_attente"),
     v.literal("reserve"),
     v.literal("avec_moniteur"),
-    v.literal("passe"),
+    v.literal("a_qualifier"),
+    v.literal("valide"),
+    v.literal("non_valide"),
+    v.literal("absent"),
   ),
   trancheDebut: v.union(v.string(), v.null()),
   trancheFin: v.union(v.string(), v.null()),
@@ -1523,7 +1582,7 @@ type SuiviCandidatSource = {
   nom: string;
   prenom: string;
   licence: string | null;
-  archive: boolean;
+  archiveStatut: "a_traiter" | "traite" | null;
   reservationFuture: Doc<"abo_test_reservations"> | null;
   reservationPassee: Doc<"abo_test_reservations"> | null;
 };
@@ -1558,7 +1617,7 @@ function ajouterCandidatSuivi(
     nom: source.nom.trim(),
     prenom: source.prenom.trim(),
     licence,
-    archive: false,
+    archiveStatut: null,
     reservationFuture: null,
     reservationPassee: null,
   };
@@ -1586,9 +1645,13 @@ export const suiviCandidatsAdmin = authenticatedQuery({
   args: { instantReference: v.string() },
   returns: v.object({
     total: v.number(),
-    aPlanifier: v.number(),
     reserves: v.number(),
-    passes: v.number(),
+    avecMoniteur: v.number(),
+    sansReservation: v.number(),
+    valides: v.number(),
+    nonValides: v.number(),
+    absents: v.number(),
+    aQualifier: v.number(),
     candidats: v.array(suiviCandidatValidator),
   }),
   handler: async (ctx, args) => {
@@ -1726,7 +1789,9 @@ export const suiviCandidatsAdmin = authenticatedQuery({
         prenom: archive.prenom,
         licence: archive.licence,
       });
-      candidat.archive = true;
+      if (archive.statut === "traite" || candidat.archiveStatut === null) {
+        candidat.archiveStatut = archive.statut;
+      }
     }
 
     const licencesElevesEnCours = new Set<string>();
@@ -1746,29 +1811,39 @@ export const suiviCandidatsAdmin = authenticatedQuery({
       en_attente: 0,
       reserve: 1,
       avec_moniteur: 2,
-      passe: 3,
+      a_qualifier: 3,
+      non_valide: 4,
+      absent: 5,
+      valide: 6,
     } as const;
     const liste = [...candidats.values()]
       .map((candidat) => {
-        const estPasse = candidat.archive || candidat.reservationPassee !== null;
-        const reservation = estPasse
-          ? candidat.reservationPassee
-          : candidat.reservationFuture;
+        const reservation = candidat.reservationFuture ?? candidat.reservationPassee;
         const estEleveEnCours =
           candidat.licence !== null && licencesElevesEnCours.has(candidat.licence);
+        const resultat = candidat.reservationPassee?.resultat_test;
+        const statut = candidat.reservationFuture
+          ? ("reserve" as const)
+          : resultat === "valide"
+            ? ("valide" as const)
+            : resultat === "non_valide"
+              ? ("non_valide" as const)
+              : resultat === "absent"
+                ? ("absent" as const)
+                : candidat.archiveStatut === "traite"
+                  ? ("valide" as const)
+                  : candidat.reservationPassee || candidat.archiveStatut === "a_traiter"
+                    ? ("a_qualifier" as const)
+                    : estEleveEnCours
+                      ? ("avec_moniteur" as const)
+                      : ("en_attente" as const);
         return {
           cle: candidat.cle,
           nom: candidat.nom,
           prenom: candidat.prenom,
           licence: candidat.licence,
           estEleveEnCours,
-          statut: estPasse
-            ? ("passe" as const)
-            : candidat.reservationFuture
-              ? ("reserve" as const)
-              : estEleveEnCours
-                ? ("avec_moniteur" as const)
-                : ("en_attente" as const),
+          statut,
           trancheDebut: reservation?.tranche ?? null,
           trancheFin: reservation?.tranche_fin ?? null,
         };
@@ -1782,15 +1857,21 @@ export const suiviCandidatsAdmin = authenticatedQuery({
       );
 
     const reserves = liste.filter((candidat) => candidat.statut === "reserve").length;
-    const passes = liste.filter((candidat) => candidat.statut === "passe").length;
-    const aPlanifier = liste.filter(
-      (candidat) => candidat.statut === "en_attente" || candidat.statut === "reserve",
-    ).length;
+    const avecMoniteur = liste.filter((candidat) => candidat.statut === "avec_moniteur").length;
+    const sansReservation = liste.filter((candidat) => candidat.statut === "en_attente").length;
+    const valides = liste.filter((candidat) => candidat.statut === "valide").length;
+    const nonValides = liste.filter((candidat) => candidat.statut === "non_valide").length;
+    const absents = liste.filter((candidat) => candidat.statut === "absent").length;
+    const aQualifier = liste.filter((candidat) => candidat.statut === "a_qualifier").length;
     return {
       total: liste.length,
-      aPlanifier,
       reserves,
-      passes,
+      avecMoniteur,
+      sansReservation,
+      valides,
+      nonValides,
+      absents,
+      aQualifier,
       candidats: liste,
     };
   },
