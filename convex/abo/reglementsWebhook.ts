@@ -15,7 +15,7 @@ const TAILLE_LOT = 100;
 const MAX_LONGUEUR_IDENTITE = 100;
 const MAX_LONGUEUR_DRIVE_ID = 200;
 const MAX_TAILLE_REPONSE = 1_000_000;
-const TIMEOUT_WEBHOOK_MS = 15_000;
+const TIMEOUT_WEBHOOK_MS = 90_000;
 const WEBHOOK_URL_AUTORISEE =
   "https://n8n.jpcloudkit.fr/webhook/reglement-int-sae";
 
@@ -24,6 +24,77 @@ type ItemWebhook = {
   prenom: string;
   driveFileId: string;
 };
+
+type FetchWebhook = (
+  input: string | URL,
+  init?: RequestInit,
+) => Promise<Response>;
+
+export async function appelerWebhookReglements(
+  url: URL,
+  user: string,
+  password: string,
+  options: {
+    fetcher?: FetchWebhook;
+    timeoutMs?: number;
+  } = {},
+): Promise<string> {
+  const timeoutMs = options.timeoutMs ?? TIMEOUT_WEBHOOK_MS;
+  const timeoutSecondes = timeoutMs / 1_000;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await (options.fetcher ?? fetch)(url, {
+      method: "GET",
+      redirect: "error",
+      signal: controller.signal,
+      headers: {
+        Accept: "application/json",
+        Authorization: `Basic ${btoa(`${user}:${password}`)}`,
+      },
+    });
+    if (!response.ok) {
+      throw new ConvexError({
+        code: "REGLEMENT_WEBHOOK_HTTP",
+        message: `Le webhook des règlements a répondu avec le statut ${response.status}.`,
+      });
+    }
+    const longueurAnnoncee = Number(response.headers.get("content-length"));
+    if (
+      Number.isFinite(longueurAnnoncee) &&
+      longueurAnnoncee > MAX_TAILLE_REPONSE
+    ) {
+      erreurJson("La réponse du webhook est trop volumineuse.");
+    }
+    const texte = await response.text();
+    if (new TextEncoder().encode(texte).byteLength > MAX_TAILLE_REPONSE) {
+      erreurJson("La réponse du webhook est trop volumineuse.");
+    }
+    return texte;
+  } catch (error) {
+    if (error instanceof ConvexError) throw error;
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "name" in error &&
+      error.name === "AbortError"
+    ) {
+      throw new ConvexError({
+        code: "REGLEMENT_WEBHOOK_TIMEOUT",
+        message:
+          `La synchronisation des règlements a dépassé ${timeoutSecondes} secondes. ` +
+          "Le traitement n8n peut encore se terminer : patientez avant de relancer.",
+      });
+    }
+    throw new ConvexError({
+      code: "REGLEMENT_WEBHOOK_INDISPONIBLE",
+      message: "Le webhook des règlements est indisponible.",
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 const itemWebhookValidator = v.object({
   nom: v.string(),
@@ -236,55 +307,7 @@ export const synchroniser = authenticatedAction({
       });
     }
 
-    let response: Response;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), TIMEOUT_WEBHOOK_MS);
-    try {
-      response = await fetch(urlWebhook, {
-        method: "GET",
-        redirect: "error",
-        signal: controller.signal,
-        headers: {
-          Accept: "application/json",
-          Authorization: `Basic ${btoa(`${user}:${password}`)}`,
-        },
-      });
-    } catch {
-      clearTimeout(timeout);
-      throw new ConvexError({
-        code: "REGLEMENT_WEBHOOK_INDISPONIBLE",
-        message: "Le webhook des règlements est indisponible.",
-      });
-    }
-    if (!response.ok) {
-      clearTimeout(timeout);
-      throw new ConvexError({
-        code: "REGLEMENT_WEBHOOK_HTTP",
-        message: `Le webhook des règlements a répondu avec le statut ${response.status}.`,
-      });
-    }
-    const longueurAnnoncee = Number(response.headers.get("content-length"));
-    if (
-      Number.isFinite(longueurAnnoncee) &&
-      longueurAnnoncee > MAX_TAILLE_REPONSE
-    ) {
-      clearTimeout(timeout);
-      erreurJson("La réponse du webhook est trop volumineuse.");
-    }
-    let texte: string;
-    try {
-      texte = await response.text();
-    } catch {
-      throw new ConvexError({
-        code: "REGLEMENT_WEBHOOK_INDISPONIBLE",
-        message: "La réponse du webhook des règlements est incomplète.",
-      });
-    } finally {
-      clearTimeout(timeout);
-    }
-    if (new TextEncoder().encode(texte).byteLength > MAX_TAILLE_REPONSE) {
-      erreurJson("La réponse du webhook est trop volumineuse.");
-    }
+    const texte = await appelerWebhookReglements(urlWebhook, user, password);
     const items = validerReponseWebhook(texte);
     const total = { crees: 0, actualises: 0, ignores: 0 };
     const synchroniseLe = new Date().toISOString();

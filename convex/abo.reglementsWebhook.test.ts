@@ -1,14 +1,91 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { internal } from "./_generated/api";
 import schema from "./schema";
-import { validerReponseWebhook } from "./abo/reglementsWebhook";
+import {
+  appelerWebhookReglements,
+  validerReponseWebhook,
+} from "./abo/reglementsWebhook";
 import { REGLEMENT_VERSION } from "./abo/reglementsConstants";
 
 const modules = import.meta.glob("./**/*.ts");
 
 describe("webhook n8n des règlements", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  test("distingue le timeout d'une indisponibilité sans retenter l'appel", async () => {
+    vi.useFakeTimers();
+    const fetcher = vi.fn((_input: string | URL, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () =>
+          reject(new DOMException("Aborted", "AbortError")),
+        );
+      }),
+    );
+
+    const appel = appelerWebhookReglements(
+      new URL("https://example.test/webhook"),
+      "user",
+      "password",
+      { fetcher, timeoutMs: 10 },
+    );
+    const verification = expect(appel).rejects.toMatchObject({
+      data: {
+        code: "REGLEMENT_WEBHOOK_TIMEOUT",
+        message: expect.stringContaining("patientez avant de relancer"),
+      },
+    });
+    await vi.advanceTimersByTimeAsync(10);
+    await verification;
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+
+    const erreurReseau = appelerWebhookReglements(
+      new URL("https://example.test/webhook"),
+      "user",
+      "password",
+      { fetcher: vi.fn().mockRejectedValue(new TypeError("network")) },
+    );
+    await expect(erreurReseau).rejects.toMatchObject({
+      data: { code: "REGLEMENT_WEBHOOK_INDISPONIBLE" },
+    });
+  });
+
+  test("annule aussi une lecture du corps qui dépasse le timeout", async () => {
+    vi.useFakeTimers();
+    const fetcher = vi.fn(async (_input: string | URL, init?: RequestInit) => ({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      text: () =>
+        new Promise<string>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () =>
+            reject(new DOMException("Aborted", "AbortError")),
+          );
+        }),
+    }) as Response);
+
+    const appel = appelerWebhookReglements(
+      new URL("https://example.test/webhook"),
+      "user",
+      "password",
+      { fetcher, timeoutMs: 50 },
+    );
+    const verification = expect(appel).rejects.toMatchObject({
+      data: {
+        code: "REGLEMENT_WEBHOOK_TIMEOUT",
+        message: expect.stringContaining("0.05 secondes"),
+      },
+    });
+    await vi.advanceTimersByTimeAsync(50);
+    await verification;
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   test("valide le contrat, null et une réponse JSON doublement encodée", () => {
     const item = {
       NOM: " DUPONT ",

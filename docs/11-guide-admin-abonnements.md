@@ -488,6 +488,10 @@ n'utilise l'administration. La recherche Drive manuelle reste disponible pour
 retrouver un ancien PDF déjà classé. Une panne du webhook est affichée
 immédiatement sans créer de faux règlement.
 
+La synchronisation peut patienter jusqu'à 90 secondes. Si ce délai est dépassé,
+le workflow n8n peut néanmoins continuer côté serveur : attendre avant de
+cliquer à nouveau, car le portail ne relance jamais automatiquement l'appel.
+
 ### Enregistrer sur le site du club
 
 1. Dans **À enregistrer**, cliquer **Ouvrir le règlement dans Drive**.

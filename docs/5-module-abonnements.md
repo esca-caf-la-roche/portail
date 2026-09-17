@@ -444,6 +444,11 @@ tableau léger `{ NOM, Prénom, id-drive }` pour les PDF déjà classés dans Dr
 Chaque identifiant Drive est enregistré de manière idempotente ; il n'y a ni
 stockage PDF dans Convex, ni cron, ni verrou temporel.
 
+Convex attend jusqu'à 90 secondes la réponse complète du webhook, lecture du
+corps comprise, sans relance automatique afin de ne pas exécuter deux fois le
+workflow n8n. Un dépassement de délai invite le staff à patienter avant une
+nouvelle tentative, car le traitement n8n peut encore se terminer côté serveur.
+
 Le nouveau fichier Drive apparaît dans **Nouveaux règlements à rapprocher**. Le portail
 propose des licences exactes ou proches, mais seul le choix confirmé par un
 membre du staff crée la liaison définitive. À cette confirmation, le nom
@@ -453,7 +458,8 @@ règlement trouvé peut ensuite être lié à une licence depuis ce même écran
 La recherche approchée ne lit l'annuaire qu'après un clic sur le règlement. Si
 les propositions ne suffisent pas, le staff peut rechercher avec un nom, un
 prénom ou un fragment. Une erreur HTTP ou JSON du webhook est affichée comme
-une erreur immédiate de synchronisation et ne crée aucune ligne métier.
+une erreur de synchronisation et ne crée aucune ligne métier. Un dépassement du
+délai et une indisponibilité réseau sont distingués dans le message affiché.
 
 Le règlement lié entre dans la file **À enregistrer** avec un lien vers son PDF
 Drive. Après l'avoir enregistré manuellement sur le site du club, le staff le
