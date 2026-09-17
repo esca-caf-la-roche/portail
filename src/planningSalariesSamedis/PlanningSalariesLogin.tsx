@@ -1,33 +1,64 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { KeyRound, Mail, Route } from "lucide-react";
+import {
+  OTP_VALIDITY_MS,
+  browserSessionStorage,
+  clearPendingOtp,
+  readPendingOtp,
+  remainingResendSeconds,
+  savePendingOtp,
+} from "./otpSession";
 
 export default function PlanningSalariesLogin() {
   const { signIn } = useAuthActions();
-  const [etape, setEtape] = useState<"email" | "code">("email");
-  const [email, setEmail] = useState("");
+  const [storage] = useState(browserSessionStorage);
+  const [demandeInitiale] = useState(() => readPendingOtp(storage));
+  const [etape, setEtape] = useState<"email" | "code">(demandeInitiale ? "code" : "email");
+  const [email, setEmail] = useState(demandeInitiale?.email ?? "");
+  const [envoyeA, setEnvoyeA] = useState(demandeInitiale?.sentAt ?? 0);
   const [code, setCode] = useState("");
   const [erreur, setErreur] = useState("");
   const [chargement, setChargement] = useState(false);
-  const [attente, setAttente] = useState(0);
+  const [attente, setAttente] = useState(() =>
+    demandeInitiale ? remainingResendSeconds(demandeInitiale.sentAt) : 0,
+  );
 
   useEffect(() => {
-    if (attente <= 0) return;
-    const timer = window.setInterval(() => setAttente((valeur) => Math.max(0, valeur - 1)), 1_000);
+    if (etape !== "code" || envoyeA === 0) return;
+    const actualiser = () => {
+      const maintenant = Date.now();
+      if (maintenant - envoyeA >= OTP_VALIDITY_MS) {
+        clearPendingOtp(storage);
+        setEtape("email");
+        setCode("");
+        setEnvoyeA(0);
+        setAttente(0);
+        return;
+      }
+      setAttente(remainingResendSeconds(envoyeA, maintenant));
+    };
+    actualiser();
+    const timer = window.setInterval(actualiser, 1_000);
     return () => window.clearInterval(timer);
-  }, [attente]);
+  }, [etape, envoyeA, storage]);
 
   async function envoyerCode() {
     if (chargement || attente > 0) return;
     setErreur("");
     setChargement(true);
+    const adresse = email.trim().toLowerCase();
     try {
-      await signIn("planning-salaries-otp", { email: email.trim() });
+      await signIn("planning-salaries-otp", { email: adresse });
     } catch {
       // Réponse volontairement identique pour ne pas révéler l'annuaire.
     } finally {
+      const maintenant = Date.now();
+      savePendingOtp(storage, { email: adresse, sentAt: maintenant });
+      setEmail(adresse);
+      setEnvoyeA(maintenant);
       setEtape("code");
-      setAttente(30);
+      setAttente(remainingResendSeconds(maintenant, maintenant));
       setChargement(false);
     }
   }
@@ -47,6 +78,7 @@ export default function PlanningSalariesLogin() {
     setErreur("");
     try {
       await signIn("planning-salaries-otp", { email: email.trim(), code: code.trim() });
+      clearPendingOtp(storage);
     } catch {
       setErreur("Code incorrect ou expiré. Utilisez le dernier code reçu.");
     } finally {
@@ -65,7 +97,7 @@ export default function PlanningSalariesLogin() {
         {etape === "email" ? (
           <form className="pss-form" onSubmit={demanderCode}>
             <label htmlFor="pss-email">Adresse e-mail professionnelle</label>
-            <div className="pss-input-icon"><Mail aria-hidden="true" /><input id="pss-email" type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} /></div>
+            <div className="pss-input-icon"><Mail aria-hidden="true" /><input id="pss-email" type="email" autoComplete="email" required value={email} onChange={(event) => { clearPendingOtp(storage); setEmail(event.target.value); }} /></div>
             <p className="pss-hint">Si cette adresse figure dans l’annuaire, elle recevra un code à 6 chiffres.</p>
             <button className="pss-button pss-button--primary" disabled={chargement}>{chargement ? "Envoi…" : "Recevoir mon code"}</button>
           </form>
@@ -75,7 +107,7 @@ export default function PlanningSalariesLogin() {
             <input id="pss-code" className="pss-code" inputMode="numeric" autoComplete="one-time-code" autoFocus required maxLength={6} value={code} onChange={(event) => setCode(event.target.value)} />
             <button className="pss-button pss-button--primary" disabled={chargement}>{chargement ? "Vérification…" : "Ouvrir le planning"}</button>
             <button type="button" className="pss-text-button" disabled={chargement || attente > 0} onClick={() => void envoyerCode()}>{attente > 0 ? `Renvoyer dans ${attente} s` : "Renvoyer un code"}</button>
-            <button type="button" className="pss-text-button" onClick={() => { setEtape("email"); setCode(""); setErreur(""); }}>Changer d’adresse</button>
+            <button type="button" className="pss-text-button" onClick={() => { clearPendingOtp(storage); setEtape("email"); setCode(""); setErreur(""); setEnvoyeA(0); setAttente(0); }}>Changer d’adresse</button>
           </form>
         )}
       </section>
