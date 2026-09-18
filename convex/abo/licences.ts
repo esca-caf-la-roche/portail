@@ -23,6 +23,7 @@ import { canoniserLicence, normaliserNomPrenom, similarite } from "./lib";
 import { champsModifies } from "../dbUtils";
 import { ANNUAIRE_ATTEMPT_KEY } from "./syncConstants";
 import { invaliderCompteurPublic, programmerRafraichissementCompteurPublic } from "./compteur";
+import { champsPersonneDepuisScrap } from "./matching";
 
 // Annuaire des licences du club (export JSON protégé par Basic Auth DÉDIÉE).
 const URL_ANNUAIRE =
@@ -282,6 +283,21 @@ export const validerLicence = authenticatedMutation({
         code: "LICENCE_CONCURRENTE",
         message: "Cette licence vient d'être affectée à une autre personne. Réessayez pour voir le conflit.",
       });
+    }
+    // Une correction manuelle peut enfin relier cette personne au snapshot du
+    // club déjà importé. Matérialiser immédiatement ses étapes évite d'attendre
+    // une nouvelle synchronisation complète pour mettre à jour le dossier.
+    const personneActualisee = await ctx.db.get(personne._id);
+    const scrap = await ctx.db
+      .query("abo_abonnes_scrap")
+      .withIndex("by_licence", (q) => q.eq("licence", licence))
+      .first();
+    if (personneActualisee && scrap) {
+      const patchDepuisScrap = champsPersonneDepuisScrap(scrap);
+      if (champsModifies(personneActualisee, patchDepuisScrap)) {
+        await ctx.db.patch(personneActualisee._id, patchDepuisScrap);
+        await invaliderCompteurPublic(ctx);
+      }
     }
     if (resultat === "modifie") await programmerRafraichissementCompteurPublic(ctx);
     return { statut: "attribue" as const, licence };

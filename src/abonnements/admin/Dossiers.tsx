@@ -433,10 +433,15 @@ export default function Dossiers({
 
       {detail && (
         <DetailModal
+          key={detail.personne.id}
           dossier={detail.dossier}
           personne={detail.personne}
           onClose={() => setDetail(null)}
           onVoirTests={onVoirTests}
+          onLicenceCorrigee={async () => {
+            await rechargerDossiers();
+            setDetail(null);
+          }}
         />
       )}
       {confirmationPlafond && (
@@ -613,13 +618,55 @@ function DetailModal({
   personne,
   onClose,
   onVoirTests,
+  onLicenceCorrigee,
 }: {
   dossier: Dossier;
   personne: Personne;
   onClose: () => void;
   onVoirTests: (licence: string) => void;
+  onLicenceCorrigee: () => Promise<void>;
 }) {
   const nom = `${personne.prenom} ${personne.nom}`.trim() || "—";
+  const validerLicence = useMutation(api.abo.licences.validerLicence);
+  const [licenceSaisie, setLicenceSaisie] = useState(personne.licence ?? "");
+  const [correctionEnCours, setCorrectionEnCours] = useState(false);
+  const [erreurLicence, setErreurLicence] = useState<string | null>(null);
+
+  async function corrigerLicence(confirmerIdentite = false) {
+    setCorrectionEnCours(true);
+    setErreurLicence(null);
+    try {
+      const resultat = await validerLicence({
+        personneId: personne.id as Id<"abo_personnes">,
+        licence: licenceSaisie,
+        confirmerIdentite,
+      });
+      if (resultat.statut === "conflit") {
+        setErreurLicence(
+          `La licence ${resultat.licence} est déjà attribuée à ${resultat.personneExistantePrenom} ${resultat.personneExistanteNom}.`,
+        );
+        return;
+      }
+      if (resultat.statut === "confirmation_requise") {
+        const identiteAnnuaire = `${resultat.prenomAnnuaire} ${resultat.nomAnnuaire}`.trim();
+        if (window.confirm(`L'annuaire indique « ${identiteAnnuaire} ». Confirmer que c'est bien ${nom} ?`)) {
+          await corrigerLicence(true);
+        }
+        return;
+      }
+      await onLicenceCorrigee();
+    } catch (err) {
+      setErreurLicence(aboError(err).message);
+    } finally {
+      setCorrectionEnCours(false);
+    }
+  }
+
+  function soumettreCorrection(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    void corrigerLicence();
+  }
+
   return (
     <div className="abo-admin-modal-backdrop" onClick={onClose}>
       <div className="abo-admin-modal" onClick={(e) => e.stopPropagation()}>
@@ -642,6 +689,24 @@ function DetailModal({
             {personne.licence_statut ? ` (${personne.licence_statut})` : ""}
           </p>
         )}
+        <form className="abo-admin-toolbar" onSubmit={soumettreCorrection}>
+          <label className="abo-admin-filter-field" htmlFor={`licence-${personne.id}`}>
+            <span>Numéro de licence</span>
+            <input
+              id={`licence-${personne.id}`}
+              className="abo-admin-input abo-admin-input--short"
+              type="text"
+              inputMode="numeric"
+              value={licenceSaisie}
+              onChange={(e) => setLicenceSaisie(e.target.value)}
+              disabled={correctionEnCours}
+            />
+          </label>
+          <button type="submit" className="abo-admin-button abo-admin-button--secondary" disabled={correctionEnCours}>
+            {correctionEnCours ? "Correction…" : "Corriger la licence"}
+          </button>
+        </form>
+        {erreurLicence && <p className="abo-admin-status abo-admin-status--error">{erreurLicence}</p>}
         {personne.licence ? (
           <button
             type="button"
