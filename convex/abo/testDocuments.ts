@@ -105,6 +105,46 @@ function vueArchive(archive: {
   };
 }
 
+// Le site du club est la source de vérité du résultat d'autonomie. Une archive
+// reste conservée dans Drive, mais n'a plus à être proposée au staff une fois
+// que le snapshot confirme « OK » pour cette licence.
+async function autonomieConfirmeeSurSite(
+  ctx: Parameters<typeof requireAboAdmin>[0],
+  licence: string,
+): Promise<boolean> {
+  const licenceCanonique = canoniserLicence(licence);
+  if (!licenceCanonique) return false;
+  const snapshot = await ctx.db
+    .query("abo_abonnes_scrap")
+    .withIndex("by_licence", (q) => q.eq("licence", licenceCanonique))
+    .first();
+  return snapshot?.autonomie === "OK";
+}
+
+async function archivesAffichables<T extends {
+  licence: string;
+  drive_file_id: string;
+  drive_url: string;
+}>(
+  ctx: Parameters<typeof requireAboAdmin>[0],
+  archives: T[],
+): Promise<T[]> {
+  const avecDocumentDrive = archives.filter(
+    (archive) => archive.drive_file_id && archive.drive_url,
+  );
+  const licencesAutonomes = await Promise.all(
+    [...new Set(avecDocumentDrive.map(
+      (archive) => canoniserLicence(archive.licence) ?? archive.licence,
+    ))].map(
+      async (licence) => [licence, await autonomieConfirmeeSurSite(ctx, licence)] as const,
+    ),
+  );
+  const autonomieParLicence = new Map(licencesAutonomes);
+  return avecDocumentDrive.filter(
+    (archive) => !autonomieParLicence.get(canoniserLicence(archive.licence) ?? archive.licence),
+  );
+}
+
 async function reservationPasseePourPersonne(
   ctx: Parameters<typeof requireAboAdmin>[0],
   personneId: Id<"abo_personnes">,
@@ -181,7 +221,7 @@ export const listArchives = authenticatedQuery({
         .query("abo_tests_autonomie_archive")
         .order("desc")
         .take(100);
-      return archives.filter((archive) => archive.drive_file_id && archive.drive_url).map(vueArchive);
+      return (await archivesAffichables(ctx, archives)).map(vueArchive);
     }
     const statut = args.filtre as "a_traiter" | "traite";
     const archives = await ctx.db
@@ -189,7 +229,7 @@ export const listArchives = authenticatedQuery({
       .withIndex("by_statut", (q) => q.eq("statut", statut))
       .order("desc")
       .take(100);
-    return archives.filter((archive) => archive.drive_file_id && archive.drive_url).map(vueArchive);
+    return (await archivesAffichables(ctx, archives)).map(vueArchive);
   },
 });
 

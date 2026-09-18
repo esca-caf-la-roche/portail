@@ -154,6 +154,51 @@ describe("archive des tests d'autonomie", () => {
       .resolves.toEqual([]);
   });
 
+  test("masque des archives la personne déjà autonome selon le snapshot du site club", async () => {
+    const t = convexTest(schema, modules);
+    const { admin } = await creerAdmin(t);
+    await t.run(async (ctx) => {
+      await ctx.db.insert("abo_tests_autonomie_archive", {
+        licence: "7480 2026 0010",
+        nom: "OK",
+        prenom: "Autonomie",
+        nom_prenom_normalise: "ok autonomie",
+        drive_file_id: "drive-ok",
+        drive_url: "https://drive.example/ok",
+        statut: "a_traiter",
+      });
+      await ctx.db.insert("abo_tests_autonomie_archive", {
+        licence: "748020260011",
+        nom: "A",
+        prenom: "Traiter",
+        nom_prenom_normalise: "a traiter",
+        drive_file_id: "drive-a-traiter",
+        drive_url: "https://drive.example/a-traiter",
+        statut: "a_traiter",
+      });
+      await ctx.db.insert("abo_abonnes_scrap", {
+        licence: "748020260010",
+        nom: "OK",
+        prenom: "Autonomie",
+        nom_prenom_normalise: "ok autonomie",
+        autonomie: "OK",
+        abonnement_valide: "non",
+      });
+    });
+
+    const archives = await admin.query(api.abo.testDocuments.listArchives, {
+      filtre: "a_traiter",
+    });
+
+    expect(archives).toEqual([
+      expect.objectContaining({ licence: "748020260011" }),
+    ]);
+    await expect(admin.query(api.abo.testDocuments.listArchives, { filtre: "tous" }))
+      .resolves.toEqual([
+        expect.objectContaining({ licence: "748020260011" }),
+      ]);
+  });
+
   test("refuse un second fichier lorsqu'une archive Drive existe déjà", async () => {
     const t = convexTest(schema, modules);
     const { admin } = await creerAdmin(t);
