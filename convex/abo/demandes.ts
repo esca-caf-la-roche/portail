@@ -184,7 +184,6 @@ const personneVueValidator = v.object({
   etape_photo: v.boolean(),
   etape_paiement: v.boolean(),
   etape_abonnement_valide: v.boolean(),
-  abonnement_site_valide: v.boolean(),
   vague_depot: v.union(
     v.literal("vague_2"),
     v.literal("vague_3"),
@@ -808,7 +807,6 @@ export function personneVue(p: Doc<"abo_personnes">) {
     etape_photo: p.etape_photo,
     etape_paiement: p.etape_paiement,
     etape_abonnement_valide: p.etape_abonnement_valide,
-    abonnement_site_valide: p.etape_abonnement_valide,
     vague_depot: p.vague_depot ?? "historique",
     deposee_le: p.deposee_le ?? new Date(p._creationTime).toISOString(),
   };
@@ -978,27 +976,7 @@ export const getDossiersAdmin = authenticatedQuery({
         date_soumission: d.date_soumission,
         date_validation: d.date_validation ?? null,
         commentaire: d.commentaire ?? null,
-      // IO-BOUNDED: au plus 500 dossiers et 10 personnes par dossier, avec
-      // une lecture indexée du snapshot club par personne ; ce contrôle évite
-      // de laisser apparaître une inscription déjà validée avant le prochain
-      // batch de matching.
-      personnes: await Promise.all(personnes.map(async (personne) => {
-        const scrap = personne.licence
-          ? await ctx.db
-              .query("abo_abonnes_scrap")
-              .withIndex("by_licence", (q) => q.eq("licence", personne.licence!))
-              .first()
-          : await ctx.db
-              .query("abo_abonnes_scrap")
-              .withIndex("by_nom_prenom_normalise", (q) =>
-                q.eq("nom_prenom_normalise", personne.nom_prenom_normalise),
-              )
-              .first();
-        return {
-          ...personneVue(personne),
-          abonnement_site_valide: abonnementEstValide(scrap?.abonnement_valide),
-        };
-      })),
+      personnes: personnes.map(personneVue),
       });
     }
     // Tri par date de soumission décroissante (fidèle à getDossiersAdmin).
