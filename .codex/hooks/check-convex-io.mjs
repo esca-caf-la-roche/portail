@@ -14,6 +14,11 @@ const event = lireStdin();
 const patch = event?.tool_input?.command ?? "";
 if (!patch.includes("*** Begin Patch")) process.exit(0);
 
+const endpointsCouteux = new Set([
+  "api.abo.licencesEnCours.getElevesLicenceInvalide",
+  "api.abo.compteur.getElevesEnCours",
+]);
+
 const lignes = patch.split(/\r?\n/);
 const erreurs = [];
 let fichier = null;
@@ -30,7 +35,7 @@ for (let i = 0; i < lignes.length; i++) {
 
   if (
     /(^|\/)convex\//.test(fichier) &&
-    /\.collect\s*\(/.test(ajout) &&
+    /\.(?:collect|take)\s*\(/.test(ajout) &&
     !/\.withIndex\s*\(/.test(contexte) &&
     !/\/\/\s*IO-BOUNDED\s*:/.test(contexte)
   ) {
@@ -49,6 +54,28 @@ for (let i = 0; i < lignes.length; i++) {
     erreurs.push(
       `${fichier}: Date.now() ne doit pas créer un nouvel argument useQuery à chaque rendu. ` +
       "Utilisez une valeur stable/arrondie ou justifiez `// IO-STABLE-TIME:`.",
+    );
+  }
+
+  if (/(^|\/)src\//.test(fichier) && /useQuery\s*\(/.test(ajout)) {
+    const fenetre = lignes.slice(i, Math.min(lignes.length, i + 8)).join("\n");
+    for (const endpoint of endpointsCouteux) {
+      if (fenetre.includes(endpoint)) {
+        erreurs.push(
+          `${fichier}: ${endpoint} est un endpoint coûteux ; utilisez ` +
+          "useQueryPonctuelle avec arguments stables et rafraîchissement explicite.",
+        );
+      }
+    }
+  }
+
+  if (
+    /(^|\/)src\/hooks\/useQueryPonctuelle\.ts$/.test(fichier) &&
+    /window\.addEventListener\(\"focus\"/.test(ajout) &&
+    !/refreshOnFocus/.test(contexte)
+  ) {
+    erreurs.push(
+      `${fichier}: un rafraîchissement au focus doit rester opt-in pour protéger les listes coûteuses.`,
     );
   }
 }

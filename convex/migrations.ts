@@ -14,6 +14,29 @@ export const migrations = new Migrations<DataModel, typeof schema>(
   { schema },
 );
 
+/**
+ * WIDEN -> MIGRATE (puis NARROW dans un déploiement ultérieur) : matérialise
+ * le périmètre de contrôle des licences dans la projection compacte.
+ *
+ * À exécuter après le déploiement du schéma élargi, d'abord en DEV puis en
+ * PROD avec accord explicite. Les nouveaux imports doivent écrire ce champ
+ * dès le déploiement WIDEN afin qu'aucune ligne créée pendant le backfill ne
+ * reste sans valeur.
+ */
+export const migrateAboElevesEnCoursLectureAVerifierLicence = migrations.define({
+  table: "abo_eleves_en_cours_lecture",
+  migrateOne: async (ctx, eleve) => {
+    if (eleve.a_verifier_licence !== undefined) return;
+    const licenceValide = (eleve.licence_saison ?? "")
+      .trim()
+      .toLocaleLowerCase("fr") === "ok";
+    await ctx.db.patch(eleve._id, {
+      a_verifier_licence:
+        eleve.horaire !== "Liste d'attente" && !licenceValide,
+    });
+  },
+});
+
 export const migrateSaisonsTransactions = migrations.define({
   table: "transactions",
   migrateOne: async (ctx, t) => {

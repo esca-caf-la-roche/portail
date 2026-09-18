@@ -1143,7 +1143,14 @@ export default defineSchema({
     saison_precedente: v.optional(v.string()),
     email_eleve: v.optional(v.string()),
     email_gestion: v.optional(v.string()),
-  }).index("by_source_eleve_id", ["source_eleve_id"]),
+    // WIDEN: drapeau calculé à l'import. Il permet aux écrans de licences de
+    // lire seulement les élèves réellement à vérifier, au lieu de reparcourir
+    // tout le snapshot à chaque abonnement temps réel. Il reste optionnel
+    // jusqu'au backfill DEV puis PROD des projections existantes.
+    a_verifier_licence: v.optional(v.boolean()),
+  })
+    .index("by_source_eleve_id", ["source_eleve_id"])
+    .index("by_a_verifier_licence", ["a_verifier_licence"]),
 
   // SAISON-EXEMPT: suivi manuel lié au snapshot courant des élèves en cours,
   // indépendant des saisons comptables et purgé avec ce snapshot opérationnel.

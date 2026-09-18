@@ -336,7 +336,8 @@ export const scraperAbonnes = internalAction({
       internal.abo.matching.matcherScrapPersonnes,
       { generation: args.generation },
     );
-    await ctx.runMutation(internal.abo.compteur.rafraichirCompteurPublic, { siNecessaire: true });
+    // Les lots précédents ont invalidé le compteur. On ne le recalcule jamais
+    // dans l'action d'import : le scheduler versionné attend la quiescence.
     console.log(
       `→ scrap : ${upsertees} upsertées, ${supprimees} supprimée(s), ${sansLicence} sans licence ; ${maj} personne(s) mise(s) à jour.`,
     );

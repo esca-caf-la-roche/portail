@@ -270,6 +270,9 @@ export default function LicencesEnCours() {
     api.abo.licencesEnCours.getElevesLicenceInvalide,
     argumentsEleves,
     maintenantJour,
+    // Le snapshot est très coûteux : la synchronisation initiale le précède,
+    // puis déclenche exactement un chargement explicite ci-dessous.
+    { autoLoad: false },
   );
   const rechercheCandidatsActive = afficherCandidats && !!data?.eleves.some((eleve) => !eleve.traite);
   const candidats = useQuery(
@@ -311,7 +314,10 @@ export default function LicencesEnCours() {
         } else {
           setSyncStatut("ok");
         }
-        if (resultat.eleves === "done") void recharger();
+        // Même si la source n'a pas changé, lire une fois le snapshot après la
+        // synchronisation permet d'afficher le cache existant sans lecture au
+        // montage concurrente.
+        void recharger({ force: true });
       })
       .catch((err) => {
         setSyncStatut("erreur");

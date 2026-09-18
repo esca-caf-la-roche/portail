@@ -8,7 +8,10 @@ import { champsModifies } from "../dbUtils";
 export const CLE_COMPTEUR_A_RECALCULER = "compteur_public_a_recalculer";
 // La version fait retomber automatiquement les lectures sur la source pendant
 // l'enrichissement d'une projection déjà remplie par une version antérieure.
-export const CLE_PROJECTION_ELEVES_COMPLETE = "projection_eleves_en_cours_complete_v3";
+// v4 ajoute `a_verifier_licence`. Tant que le backfill n'a pas validé cette
+// version, les lecteurs retombent sur la source : un index partiellement
+// rempli ne doit jamais faire disparaître un élève à contrôler.
+export const CLE_PROJECTION_ELEVES_COMPLETE = "projection_eleves_en_cours_complete_v4";
 const DELAI_REGROUPEMENT_COMPTEUR_MS = 5_000;
 const PLANIFICATION_COMPTEUR_PREFIXE = "planifie:";
 
@@ -25,6 +28,7 @@ export type EleveEnCoursLecture = {
   saison_precedente?: string;
   email_eleve?: string;
   email_gestion?: string;
+  a_verifier_licence?: boolean;
 };
 
 export function projeterEleveEnCours(
@@ -57,6 +61,9 @@ export function projeterEleveEnCours(
     saison_precedente: eleve.saison_precedente,
     email_eleve: eleve.email_eleve,
     email_gestion: eleve.email_gestion,
+    a_verifier_licence:
+      eleve.horaire !== "Liste d'attente" &&
+      (eleve.licence_saison ?? "").trim().toLocaleLowerCase("fr") !== "ok",
   };
 }
 
@@ -115,8 +122,13 @@ export async function invaliderCompteurPublic(ctx: MutationCtx): Promise<boolean
       valeur: "true",
       updated_at: new Date().toISOString(),
     });
+    await programmerRafraichissementCompteurPublic(ctx);
     return true;
   }
+  // Même si le cache est déjà marqué sale, chaque écriture repousse l'exécution
+  // à la fin de la rafale. Ainsi un import découpé en lots ne déclenche pas un
+  // calcul complet au milieu de ses propres écritures.
+  await programmerRafraichissementCompteurPublic(ctx);
   return false;
 }
 
@@ -125,22 +137,37 @@ export async function programmerRafraichissementCompteurPublic(
 ): Promise<void> {
   const marqueur = await ctx.db.query("abo_app_config")
     .withIndex("by_cle", (q) => q.eq("cle", CLE_COMPTEUR_A_RECALCULER)).first();
-  if (marqueur?.valeur?.startsWith(PLANIFICATION_COMPTEUR_PREFIXE)) {
-    const planificationId = marqueur.valeur.slice(
-      PLANIFICATION_COMPTEUR_PREFIXE.length,
-    ) as Id<"_scheduled_functions">;
+  const morceaux = marqueur?.valeur?.split(":") ?? [];
+  const versionPrecedente = morceaux[0] === "planifie" && /^\d+$/.test(morceaux[1] ?? "")
+    ? Number(morceaux[1])
+    : 0;
+  if (morceaux[0] === "planifie") {
+    const planificationId = (morceaux.length >= 3 ? morceaux[2] : morceaux[1]) as Id<"_scheduled_functions">;
     const planification = await ctx.db.system.get("_scheduled_functions", planificationId);
-    if (planification?.state.kind === "pending" || planification?.state.kind === "inProgress") {
+    if (planification?.state.kind === "pending" && marqueur) {
+      // Un seul callback reste en attente. Sa version deviendra obsolète et il
+      // reprogrammera exactement une exécution après la rafale si nécessaire.
+      const version = versionPrecedente + 1;
+      await ctx.db.patch(marqueur._id, {
+        valeur: `${PLANIFICATION_COMPTEUR_PREFIXE}${version}:${planificationId}`,
+        updated_at: new Date().toISOString(),
+      });
       return;
+    } else if (planification?.state.kind === "inProgress") {
+      // L'exécution en cours porte une version différente : elle verra le
+      // marqueur remplacé et s'arrêtera avant de vider une invalidation récente.
+    } else if (!planification) {
+      // Un marqueur historique malformé ne doit pas bloquer le prochain calcul.
     }
   }
+  const version = versionPrecedente + 1;
   const planificationId = await ctx.scheduler.runAfter(
     DELAI_REGROUPEMENT_COMPTEUR_MS,
     internal.abo.compteur.rafraichirCompteurPublic,
-    { siNecessaire: true },
+    { siNecessaire: true, version },
   );
   const planification = {
-    valeur: `${PLANIFICATION_COMPTEUR_PREFIXE}${planificationId}`,
+    valeur: `${PLANIFICATION_COMPTEUR_PREFIXE}${version}:${planificationId}`,
     updated_at: new Date().toISOString(),
   };
   if (marqueur) {

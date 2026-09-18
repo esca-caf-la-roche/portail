@@ -223,8 +223,11 @@ export default function Dossiers({
     <div className="abo-admin-section">
       <CompteurJauge />
       <SyncClub onTerminee={() => {
-        void rechargerDossiers();
-        void rechargerEleves();
+        // Une synchronisation est un changement confirmé : une lecture par
+        // source est nécessaire. Le hook déduplique les éventuels clics et
+        // rechargements de version concurrents.
+        void rechargerDossiers({ force: true });
+        void rechargerEleves({ force: true });
       }} />
       <button type="button" className="abo-admin-button" onClick={() => {
         void rechargerDossiers();

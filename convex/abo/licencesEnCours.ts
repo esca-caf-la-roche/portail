@@ -18,10 +18,13 @@ import {
   similariteTrigrammes,
 } from "./lib";
 import {
-  compterOccurrencesParNom,
   construireIdentiteLicenceCours,
 } from "./licencesCoursIdentite";
-import { lireElevesEnCoursCompacts } from "./compteurCache";
+import {
+  lireElevesEnCoursCompacts,
+  projectionElevesComplete,
+  type EleveEnCoursLecture,
+} from "./compteurCache";
 
 // Seuil relevé par rapport au défaut pg_trgm (0.3) : à 0.3 la liste remonte
 // beaucoup de candidats peu pertinents, peu utiles pour le suivi manuel.
@@ -29,7 +32,6 @@ const SEUIL_TRGM = 0.5;
 const MAX_CANDIDATS = 5;
 // Doit rester aligné avec MAX_ELEVES_SNAPSHOT dans abo/compteur.ts.
 const MAX_ELEVES_EN_COURS = 1_000;
-const MAX_TRAITEMENTS = 1_000;
 // L'annuaire FFCAM du club dépasse 2 000 fiches ; cette même borne est utilisée
 // pour l'import et la purge du snapshot dans `abo/licences.ts`.
 const MAX_LICENCES = 5_000;
@@ -145,39 +147,52 @@ export const getElevesLicenceInvalide = authenticatedQuery({
       });
     }
 
-    // IO-BOUNDED: les snapshots externes sont plafonnés par leurs imports
-    // (1 000 élèves et 5 000 licences). Les traitements sont purgés au
-    // remplacement du snapshot et ne peuvent donc pas dépasser 1 000 lignes.
-    const tous = await lireElevesEnCoursCompacts(ctx, MAX_ELEVES_EN_COURS + 1);
-    if (tous.length > MAX_ELEVES_EN_COURS) {
+    // WIDEN/MIGRATE : avant la validation du backfill v4, on lit la source
+    // complète pour préserver l'exhaustivité. Après bascule, l'index ne lit
+    // que les élèves marqués à contrôler au moment de l'import.
+    let invalides: EleveEnCoursLecture[];
+    let tous: EleveEnCoursLecture[] | null = null;
+    if (await projectionElevesComplete(ctx)) {
+      invalides = await ctx.db
+        .query("abo_eleves_en_cours_lecture")
+        .withIndex("by_a_verifier_licence", (q) => q.eq("a_verifier_licence", true))
+        .take(MAX_ELEVES_EN_COURS + 1);
+    } else {
+      tous = await lireElevesEnCoursCompacts(ctx, MAX_ELEVES_EN_COURS + 1);
+      invalides = tous.filter(
+        (eleve) => eleve.horaire !== "Liste d'attente" && !licenceValide(eleve),
+      );
+    }
+    if (invalides.length > MAX_ELEVES_EN_COURS || (tous?.length ?? 0) > MAX_ELEVES_EN_COURS) {
       throw new ConvexError({
         code: "54000",
         message: `Le snapshot élèves dépasse la limite de ${MAX_ELEVES_EN_COURS} lignes.`,
       });
     }
-    const enCours = tous.filter((e) => e.horaire !== "Liste d'attente");
-
-    const invalides = enCours.filter((e) => !licenceValide(e));
     if (invalides.length === 0) return { total: 0, eleves: [] };
 
-    const traitements = await ctx.db
-      .query("abo_licences_cours_traitements")
-      .take(MAX_TRAITEMENTS + 1);
-    if (traitements.length > MAX_TRAITEMENTS) {
-      throw new ConvexError({
-        code: "54000",
-        message: `Le suivi des traitements dépasse la limite de ${MAX_TRAITEMENTS} lignes.`,
-      });
-    }
-    const traitementsParCle = new Map(
-      traitements.map((traitement) => [traitement.cle_identite, traitement]),
-    );
-    const occurrencesParNom = compterOccurrencesParNom(tous);
-    const invalidesAvecTraitement = invalides.map((eleve) => {
-      const identite = construireIdentiteLicenceCours(eleve, occurrencesParNom);
-      const traitement = identite ? traitementsParCle.get(identite.cle) : undefined;
+    // IO-BOUNDED: l'écran lit au plus 1 000 élèves signalés. Chaque élève
+    // entraîne deux lookups indexés bornés (homonymes et traitement), sans
+    // jamais relire le snapshot ni la table de suivi en entier.
+    const invalidesAvecTraitement = await Promise.all(invalides.map(async (eleve) => {
+      const homonymes = await ctx.db
+        .query("abo_eleves_en_cours")
+        .withIndex("by_nom_prenom_normalise", (q) =>
+          q.eq("nom_prenom_normalise", eleve.nom_prenom_normalise),
+        )
+        .take(2);
+      const identite = construireIdentiteLicenceCours(
+        eleve,
+        new Map([[eleve.nom_prenom_normalise, homonymes.length]]),
+      );
+      const traitement = identite
+        ? await ctx.db
+          .query("abo_licences_cours_traitements")
+          .withIndex("by_cle_identite", (q) => q.eq("cle_identite", identite.cle))
+          .unique() ?? undefined
+        : undefined;
       return { eleve, identite, traitement };
-    });
+    }));
 
     const eleves = invalidesAvecTraitement.map(({ eleve: e, identite, traitement }) => {
       const raison: Raison =

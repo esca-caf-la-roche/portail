@@ -92,6 +92,9 @@ describe("projection compacte des élèves en cours", () => {
       { paginationOpts: { cursor: premiere.continueCursor, numItems: 10 } },
     );
     expect(derniere.isDone).toBe(true);
+    expect(await t.run(async (ctx) => ctx.db.query("abo_app_config")
+      .withIndex("by_cle", (q) => q.eq("cle", "projection_eleves_en_cours_complete_v4"))
+      .first())).not.toBeNull();
     expect(await admin.query(api.abo.compteur.getElevesEnCours, {})).toEqual(avant);
     expect(await admin.query(
       api.abo.licencesEnCours.getElevesLicenceInvalide,
@@ -107,6 +110,7 @@ describe("projection compacte des élèves en cours", () => {
     expect(projections[1]).toMatchObject({
       date_naissance: "2011-02-03",
       licence_saison: "Pas de licence",
+      a_verifier_licence: true,
     });
   });
 

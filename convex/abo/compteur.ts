@@ -835,7 +835,12 @@ export const repartitionGrimpeursAccueil = authenticatedQuery({
 // Invalidation durable : un scrap interrompu entre deux lots ne doit pas perdre
 // son besoin de recalcul au prochain essai, même si ce dernier est identique.
 export const rafraichirCompteurPublic = internalMutation({
-  args: { siNecessaire: v.optional(v.boolean()) },
+  args: {
+    siNecessaire: v.optional(v.boolean()),
+    // Les appels planifiés transportent la version de la rafale. Un callback
+    // annulé/tardif ne doit jamais recalculer ni effacer le marqueur récent.
+    version: v.optional(v.number()),
+  },
   returns: v.null(),
   handler: async (ctx, args) => {
     const cache = await ctx.db
@@ -844,6 +849,15 @@ export const rafraichirCompteurPublic = internalMutation({
       .first();
     const marqueur = await ctx.db.query("abo_app_config")
       .withIndex("by_cle", (q) => q.eq("cle", CLE_COMPTEUR_A_RECALCULER)).first();
+    if (
+      args.version !== undefined &&
+      !marqueur?.valeur?.startsWith(`planifie:${args.version}:`)
+    ) {
+      // La rafale a continué après la planification de ce callback. Le helper
+      // conserve un seul successeur et impose cinq secondes de quiescence.
+      await programmerRafraichissementCompteurPublic(ctx);
+      return null;
+    }
     // Un ancien singleton PROD ne contient que les valeurs publiques. Il doit
     // être enrichi même sans changement métier lors du premier déploiement.
     if (args.siNecessaire && cacheCompteurComplet(cache) && !marqueur) return null;
@@ -1213,7 +1227,11 @@ export const backfillProjectionElevesEnCours = internalMutation({
           );
           return projection !== undefined &&
             projection.date_naissance === source.date_naissance &&
-            projection.licence_saison === source.licence_saison;
+            projection.licence_saison === source.licence_saison &&
+            projection.a_verifier_licence === (
+              source.horaire !== "Liste d'attente" &&
+              (source.licence_saison ?? "").trim().toLocaleLowerCase("fr") !== "ok"
+            );
         })
       ) {
         throw new ConvexError({
