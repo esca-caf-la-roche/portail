@@ -92,7 +92,7 @@ describe("archive des tests d'autonomie", () => {
     expect(rechercheALaFin[0]).toMatchObject({ personneId, reservationPassee: true });
   });
 
-  test("masque un créneau terminé quand le site confirme l'abonnement", async () => {
+  test("masque un créneau terminé quand le site confirme l'autonomie", async () => {
     const t = convexTest(schema, modules);
     const { admin } = await creerAdmin(t);
     await t.run(async (ctx) => {
@@ -130,7 +130,8 @@ describe("archive des tests d'autonomie", () => {
         nom: "COURBIN",
         prenom: "Lucile",
         nom_prenom_normalise: "COURBIN LUCILE",
-        abonnement_valide: "oui",
+        abonnement_valide: "non",
+        autonomie: "OK",
       });
     });
 
