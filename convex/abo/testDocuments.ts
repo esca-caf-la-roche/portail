@@ -9,6 +9,7 @@ import type { Id } from "../_generated/dataModel";
 import { champsModifies } from "../dbUtils";
 import { requireAboAdmin } from "./auth";
 import { canoniserLicence } from "./lib";
+import { abonnementEstValide } from "./statutAbonnement";
 
 const DUREE_LEGACY_MS = 60 * 60 * 1000;
 const MAX_RESERVATIONS_PAR_PERSONNE = 100;
@@ -119,6 +120,22 @@ async function autonomieConfirmeeSurSite(
     .withIndex("by_licence", (q) => q.eq("licence", licenceCanonique))
     .first();
   return snapshot?.autonomie === "OK";
+}
+
+// La validation d'abonnement est également portée par le snapshot du club.
+// Elle clôt le suivi administratif du test, même si le résultat local n'a pas
+// encore été renseigné ou qu'une archive reste conservée dans Drive.
+async function abonnementConfirmeSurSite(
+  ctx: Parameters<typeof requireAboAdmin>[0],
+  licence: string,
+): Promise<boolean> {
+  const licenceCanonique = canoniserLicence(licence);
+  if (!licenceCanonique) return false;
+  const snapshot = await ctx.db
+    .query("abo_abonnes_scrap")
+    .withIndex("by_licence", (q) => q.eq("licence", licenceCanonique))
+    .first();
+  return abonnementEstValide(snapshot?.abonnement_valide);
 }
 
 async function archivesAffichables<T extends {
@@ -358,6 +375,7 @@ export const listeReservationsPassees = authenticatedQuery({
         const licence = reservation.candidat_licence?.trim() ?? "";
         const cleCandidat = cleCandidatPasse(licence);
         if (!licence || !reservation.candidat_nom || !reservation.candidat_prenom || vus.has(cleCandidat)) continue;
+        if (await abonnementConfirmeSurSite(ctx, licence)) continue;
         vus.add(cleCandidat);
         const archive = await ctx.db
           .query("abo_tests_autonomie_archive")
@@ -383,6 +401,7 @@ export const listeReservationsPassees = authenticatedQuery({
       const licence = personne.licence?.trim() ?? "";
       const cleCandidat = cleCandidatPasse(licence, personne._id);
       if (vus.has(cleCandidat)) continue;
+      if (await abonnementConfirmeSurSite(ctx, licence)) continue;
       vus.add(cleCandidat);
       const archive = await ctx.db
         .query("abo_tests_autonomie_archive")

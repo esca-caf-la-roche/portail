@@ -92,6 +92,53 @@ describe("archive des tests d'autonomie", () => {
     expect(rechercheALaFin[0]).toMatchObject({ personneId, reservationPassee: true });
   });
 
+  test("masque un créneau terminé quand le site confirme l'abonnement", async () => {
+    const t = convexTest(schema, modules);
+    const { admin } = await creerAdmin(t);
+    await t.run(async (ctx) => {
+      const ownerId = await ctx.db.insert("users", { email: "abonne-valide@example.test" });
+      const dossierId = await ctx.db.insert("abo_dossiers", {
+        email: "abonne-valide@example.test",
+        statut_dossier: "validee",
+        date_soumission: "2026-09-01T00:00:00.000Z",
+        owner_id: ownerId,
+      });
+      const personneId = await ctx.db.insert("abo_personnes", {
+        dossier_id: dossierId,
+        nom: "COURBIN",
+        prenom: "Lucile",
+        nom_prenom_normalise: "COURBIN LUCILE",
+        licence: "748020260003",
+        licence_statut: "annuaire_valide",
+        etape_demande: true,
+        etape_validation: "validee",
+        etape_licence: true,
+        etape_test_autonomie: "requis",
+        etape_inscription_site: true,
+        etape_photo: true,
+        etape_paiement: true,
+        etape_abonnement_valide: true,
+      });
+      await ctx.db.insert("abo_test_reservations", {
+        personne_id: personneId,
+        tranche: "2026-09-16T08:00:00.000Z",
+        tranche_fin: "2026-09-16T08:20:00.000Z",
+        statut: "active",
+      });
+      await ctx.db.insert("abo_abonnes_scrap", {
+        licence: "748020260003",
+        nom: "COURBIN",
+        prenom: "Lucile",
+        nom_prenom_normalise: "COURBIN LUCILE",
+        abonnement_valide: "oui",
+      });
+    });
+
+    await expect(admin.query(api.abo.testDocuments.listeReservationsPassees, {
+      avant: "2026-09-16T08:20:00.000Z",
+    })).resolves.toEqual([]);
+  });
+
   test("applique une fin conservatrice à début plus 60 minutes aux réservations legacy", async () => {
     const t = convexTest(schema, modules);
     const { admin } = await creerAdmin(t);

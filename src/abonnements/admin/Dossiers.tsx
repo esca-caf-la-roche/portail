@@ -122,7 +122,7 @@ export default function Dossiers({
       if (
         afficherValidesAInscrire &&
         !d.personnes.some(
-          (p) => p.etape_validation === "validee" && !p.etape_inscription_site,
+          (p) => p.etape_validation === "validee" && !p.abonnement_site_valide,
         )
       ) {
         return false;
@@ -152,7 +152,7 @@ export default function Dossiers({
         (d) =>
           d.statut_dossier === "validee" &&
           d.personnes.some(
-            (p) => p.etape_validation === "validee" && !p.etape_inscription_site,
+            (p) => p.etape_validation === "validee" && !p.abonnement_site_valide,
           ),
       ).length,
     [dossiers],
