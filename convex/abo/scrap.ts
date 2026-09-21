@@ -64,7 +64,7 @@ const ACCEPT_XLSX =
 
 // IDs encadrants de l'export cours (constante du script d'origine ; si la liste
 // change de saison le serveur renvoie 0 ligne → alerte). Surchargée par env.
-const ENCADRANTS_DEFAUT = "7507,4734,1594,9099,527,929,7233,9100,1007,8457,-9";
+const ENCADRANTS_DEFAUT = "7507,4734,1594,10379,9099,527,929,9100,1007,8457,-9";
 const COLUMNS = "0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17";
 
 // ── Configuration club (secrets d'environnement) ────────────────────────
