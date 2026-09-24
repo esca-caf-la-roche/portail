@@ -41,7 +41,7 @@ export function classifierPublicCibleCours(
     .trim();
 
   const mentionMineurs =
-    /\b(mineurs?|enfants?|jeunes?|ados?|adolescents?|baby|babies|poussins?|benjamins?|cadets?)\b/.test(
+    /\b(mineurs?|enfants?|jeunes?|ados?|adolescents?|baby|babies|poussins?|benjamins?|cadets?|primaires?|collegiens?|lyceens?)\b/.test(
       nomNormalise,
     );
   const mentionAdultes =

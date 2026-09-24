@@ -2,6 +2,7 @@
 import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
 import { api } from "./_generated/api";
+import { classifierPublicCibleCours } from "./migrations";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
@@ -20,6 +21,20 @@ async function creerStaffBudget(t: ReturnType<typeof convexTest>) {
 }
 
 describe("répartition des recettes du budget", () => {
+  test("classe les publics explicites sans inventer les libellés ambigus", () => {
+    expect(classifierPublicCibleCours("Primaires (confirmés)")).toMatchObject({
+      publicCible: "mineurs",
+    });
+    expect(classifierPublicCibleCours("Collégiens (débutants)")).toMatchObject({
+      publicCible: "mineurs",
+    });
+    expect(classifierPublicCibleCours("Lycéens")).toMatchObject({ publicCible: "mineurs" });
+    expect(classifierPublicCibleCours("Adultes (Loisir)")).toMatchObject({
+      publicCible: "adultes",
+    });
+    expect(classifierPublicCibleCours("Autonomie")).toEqual({ origine: "ambigu" });
+  });
+
   test("protège la lecture et l'écriture par la tuile budget", async () => {
     const t = convexTest(schema, modules);
     const userId = await t.run((ctx) => ctx.db.insert("users", { email: "sans-budget@test.fr" }));
