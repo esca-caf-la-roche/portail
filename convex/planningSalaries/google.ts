@@ -25,21 +25,7 @@ const rateLimiter = new RateLimiter(components.rateLimiter, {
   },
 });
 
-function calendrierGoogleLecture() {
-  const email = process.env.GOOGLE_DRIVE_SERVICE_ACCOUNT_EMAIL;
-  const key = process.env.GOOGLE_DRIVE_PRIVATE_KEY?.replace(/\\n/g, "\n");
-  if (!email || !key) {
-    throw new Error("Configuration du compte de service Google absente.");
-  }
-  const auth = new google.auth.JWT({
-    email,
-    key,
-    scopes: ["https://www.googleapis.com/auth/calendar.events"],
-  });
-  return google.calendar({ version: "v3", auth });
-}
-
-function calendrierGoogleEcriture() {
+function calendrierGoogle() {
   const clientId = process.env.GOOGLE_CALENDAR_OAUTH_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CALENDAR_OAUTH_CLIENT_SECRET;
   const refreshToken = process.env.GOOGLE_CALENDAR_OAUTH_REFRESH_TOKEN;
@@ -95,7 +81,7 @@ export const listerRessources = authenticatedAction({
       });
     }
     try {
-      const calendar = calendrierGoogleEcriture();
+      const calendar = calendrierGoogle();
       const ressources = new Map<string, string>();
       let pageToken: string | undefined;
       for (let page = 0; page < 5; page += 1) {
@@ -237,7 +223,7 @@ export const synchroniser = authenticatedAction({
         PLACEHOLDER_RESOURCE,
         ...contexte.resources.map((r) => r.resourceCalendarId.toLowerCase()),
       ].map((resource) => [resource.toLowerCase(), resource])).values()];
-      const calendar = calendrierGoogleLecture();
+      const calendar = calendrierGoogle();
       const parOccurrence = new Map<
         string,
         NonNullable<ReturnType<typeof lireEvenement>>
@@ -322,7 +308,7 @@ export const traiterOperation = internalAction({
       await ctx.runQuery(internal.planningSalaries.syncDb.contexteOperation, args);
     if (!operation) return null;
     try {
-      const calendar = calendrierGoogleEcriture();
+      const calendar = calendrierGoogle();
       const eventId = await resoudreEventIdOrganisateur(calendar, operation);
       const response = await calendar.events.get({ calendarId: operation.calendarId, eventId });
       const attendees = [...(response.data.attendees ?? [])];

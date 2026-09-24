@@ -185,16 +185,14 @@ d'une synchronisation du module pour mettre à jour les alertes.
 
 ## Configuration Convex et Google
 
-La lecture et l'écriture utilisent deux identités distinctes. Le compte de
-service existant lit les événements des calendriers de ressources ; un OAuth utilisateur
-autorisé par `escalade@caflarochebonneville.fr` modifie les participants avec
-les mêmes droits que cette boîte dans Google Calendar et liste ses calendriers
-de ressources visibles.
+La lecture et l'écriture utilisent la même identité OAuth autorisée par
+`escalade@caflarochebonneville.fr`. Elle lit les événements, modifie leurs
+participants et liste les calendriers de ressources visibles. Cette identité
+unique évite qu'une ressource sélectionnable par le compte du club reste
+invisible pour une seconde identité technique au moment de la synchronisation.
 
 | Variable | Usage |
 |---|---|
-| `GOOGLE_DRIVE_SERVICE_ACCOUNT_EMAIL` | Adresse du compte de service Google déjà utilisé pour Drive |
-| `GOOGLE_DRIVE_PRIVATE_KEY` | Clé privée de ce compte de service |
 | `GOOGLE_CALENDAR_OAUTH_CLIENT_ID` | Client OAuth du projet Google Cloud |
 | `GOOGLE_CALENDAR_OAUTH_CLIENT_SECRET` | Secret de ce client OAuth |
 | `GOOGLE_CALENDAR_OAUTH_REFRESH_TOKEN` | Autorisation hors-ligne accordée par la boîte du club |
@@ -204,7 +202,7 @@ de ressources visibles.
 Côté Google :
 
 1. l'API Google Calendar doit être activée dans le projet Google Cloud du
-   compte de service existant ;
+   client OAuth ;
 2. configurer l'écran de consentement OAuth avec une audience interne, puis
    créer un client OAuth de type « Application de bureau » ou un client Web
    possédant une URI de redirection HTTP locale ;
@@ -225,20 +223,20 @@ Côté Google :
    `https://www.googleapis.com/auth/calendar.calendarlist.readonly` ;
 5. supprimer ensuite le fichier JSON téléchargé ou le conserver dans un coffre
    à secrets hors du dépôt ;
-6. partager en lecture avec le compte de service la ressource **À déterminer**
-   et chaque ressource de l'annuaire ;
-7. vérifier que `escalade@caflarochebonneville.fr` peut modifier les événements
+6. vérifier que `escalade@caflarochebonneville.fr` voit la ressource **À
+   déterminer** et chaque ressource de l'annuaire ;
+7. vérifier que ce compte peut modifier les événements
    sur leur calendrier organisateur. Si un cours est organisé par un autre
    calendrier, cette boîte doit y avoir le droit « Modifier les événements » ;
 8. tester sur un événement non critique que le remplacement d'une ressource est
    accepté sans notification (`sendUpdates: none`).
 
-La lecture est faite directement par le compte de service, exclusivement dans
-les calendriers de ressources configurés dans l'annuaire et dans **À
+La lecture est faite par l'OAuth hors-ligne de la boîte du club, exclusivement
+dans les calendriers de ressources configurés dans l'annuaire et dans **À
 déterminer**. Pour modifier les participants, le module utilise la copie
-organisatrice de l'événement et l'OAuth hors-ligne de la boîte du club. Cette
-solution ne demande ni rôle super-administrateur ni délégation au niveau du
-domaine. Si l'autorisation est révoquée ou expire, il faut relancer le script de
+organisatrice de l'événement avec cette même identité. Cette solution ne demande
+ni rôle super-administrateur ni délégation au niveau du domaine. Si
+l'autorisation est révoquée ou expire, il faut relancer le script de
 configuration et remplacer uniquement le jeton de renouvellement.
 
 ## Limites et risques connus
