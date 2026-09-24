@@ -95,28 +95,32 @@ npm run build
 2. saisir plusieurs lignes de recettes positives sur une même analytique, une
    autre analytique, une dépense et une ligne nulle : le camembert doit regrouper
    les deux premières, ignorer les deux dernières et afficher un total exact ;
-3. créer un type de cours mineurs et un type adultes avec plusieurs créneaux ;
-   vérifier que la recette de chaque public est la somme, par créneau, de
-   `tarif annuel × capacité maximale` ;
-4. affecter un même salarié aux deux publics avec des volumes horaires
+3. créer plusieurs créneaux rattachés à l'analytique `ESC01`, plusieurs autres
+   à `ESC02` et au moins un cours sur une autre analytique ; vérifier que les
+   cartes mineurs et adultes utilisent exclusivement `ESC01` et `ESC02`, sans
+   classement ni saisie supplémentaires ;
+4. vérifier que la recette de chaque carte est la somme, par créneau, de
+   `tarif annuel × capacité maximale`, et que son nombre de participants est
+   la somme des capacités maximales ;
+5. affecter un même salarié aux deux analytiques avec des volumes horaires
    différents, puis ajouter des heures supplémentaires. Vérifier que le coût
    employeur complet inclut les heures de cours majorées par `1,25`, les cinq
-   heures de réunion et les heures supplémentaires, puis qu'il est ventilé entre
-   mineurs et adultes au prorata des heures de cours payées ;
-5. avec un membre du staff autorisé sur la tuile, saisir les effectifs réels
-   mineurs et adultes : le
-   résultat doit être `recette - dépense salariale` et le montant par participant
-   ce résultat divisé par l'effectif. Avec un effectif nul ou absent, le ratio ne
-   doit pas être affiché. Recharger puis changer de saison pour contrôler la
-   persistance et l'isolation saisonnière ;
-6. supprimer les paramètres de paie ou la masse salariale de la saison : les
+   heures de réunion et les heures supplémentaires, puis qu'il est ventilé au
+   prorata des heures de cours payées. Les heures d'une autre analytique doivent
+   rester dans le dénominateur de cette ventilation sans apparaître dans les
+   cartes `ESC01` et `ESC02` ;
+6. vérifier que le résultat vaut `recette - dépense salariale` et que le
+   résultat par participant utilise la capacité maximale cumulée. Une
+   analytique sans créneau doit afficher zéro participant et aucun ratio ;
+7. supprimer les paramètres de paie ou la masse salariale de la saison : les
    recettes doivent rester visibles, tandis que le coût et le résultat sont
    annoncés comme indisponibles et jamais remplacés par un faux zéro ;
-7. conserver un cours historique sans `publicCible` : un avertissement doit
-   donner son nombre de créneaux, ses heures et sa recette, sans l'intégrer aux
-   cartes mineurs/adultes. Le classer depuis « Planning des cours » doit mettre
-   à jour la répartition et tous les créneaux du même type ;
-8. contrôler le camembert, sa légende et les cartes au clavier, avec un lecteur
+8. changer la saison sélectionnée et vérifier que le planning, les recettes et
+   la paie de la saison précédente ne sont pas réutilisés ;
+9. après la migration de retrait, inspecter toutes les pages des tables
+   `cours` et `budgetEffectifs` : les compteurs de champs obsolètes doivent être
+   nuls, tandis que `budgetEffectifs.nbMembresLoisir` reste intact ;
+10. contrôler le camembert, sa légende et les cartes au clavier, avec un lecteur
    d'écran et sur mobile ; le texte accessible du graphique doit restituer les
    analytiques et leurs montants sans dépendre des couleurs.
 

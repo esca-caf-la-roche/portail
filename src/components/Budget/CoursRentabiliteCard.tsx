@@ -44,11 +44,11 @@ export default function CoursRentabiliteCard({
       <div className="cours-rentabilite-card__participant">
         <span>
           {nbParticipants === null
-            ? "Effectif non renseigné"
-            : `${nbParticipants.toLocaleString("fr-FR")} ${participantLabel}${nbParticipants > 1 ? "s" : ""} en cours`}
+            ? "Capacité non disponible"
+            : `${nbParticipants.toLocaleString("fr-FR")} place${nbParticipants > 1 ? "s" : ""} — cours supposés remplis`}
         </span>
         <strong>
-          {resultatParParticipant === null ? "—" : `${eur(resultatParParticipant)} / ${participantLabel} en cours`}
+          {resultatParParticipant === null ? "—" : `${eur(resultatParParticipant)} / ${participantLabel}`}
         </strong>
       </div>
     </article>

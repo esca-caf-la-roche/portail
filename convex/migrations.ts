@@ -14,131 +14,78 @@ export const migrations = new Migrations<DataModel, typeof schema>(
   { schema },
 );
 
-type PublicCibleCours = "mineurs" | "adultes";
-type OriginePublicCibleCours =
-  | "nom_mineurs"
-  | "nom_adultes"
-  | "ambigu";
-
-export type ClassificationPublicCibleCours = {
-  publicCible?: PublicCibleCours;
-  origine: OriginePublicCibleCours;
-};
-
-/**
- * Classe les noms explicites sans deviner à partir d'un horaire ou d'un tarif.
- * Les noms ambigus restent sans valeur : l'inspection ci-dessous les signale
- * afin qu'ils soient arbitrés dans l'UI.
- */
-export function classifierPublicCibleCours(
-  nom: string,
-): ClassificationPublicCibleCours {
-  const nomNormalise = nom
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLocaleLowerCase("fr")
-    .replace(/[^a-z0-9+]+/g, " ")
-    .trim();
-
-  const mentionMineurs =
-    /\b(mineurs?|enfants?|jeunes?|ados?|adolescents?|baby|babies|poussins?|benjamins?|cadets?|primaires?|collegiens?|lyceens?)\b/.test(
-      nomNormalise,
-    );
-  const mentionAdultes =
-    /\b(adultes?|seniors?|18\s*(ans)?\s*\+)\b/.test(nomNormalise);
-  const ages = [...nomNormalise.matchAll(/\b(\d{1,2})\s*ans?\b/g)].map(
-    (match) => Number(match[1]),
-  );
-  const trancheExclusivementMineure =
-    ages.length > 0 && Math.max(...ages) < 18;
-
-  if ((mentionMineurs || trancheExclusivementMineure) && !mentionAdultes) {
-    return { publicCible: "mineurs", origine: "nom_mineurs" };
-  }
-  if (mentionAdultes && !mentionMineurs && !trancheExclusivementMineure) {
-    return { publicCible: "adultes", origine: "nom_adultes" };
-  }
-
-  return { origine: "ambigu" };
-}
-
-/**
- * WIDEN -> MIGRATE (puis NARROW dans un déploiement ultérieur) : renseigne le
- * public des cours historiques. Définition uniquement ; exécution supervisée
- * d'abord en DEV, puis en PROD après accord explicite.
- *
- * Idempotence : un cours déjà classé, notamment corrigé depuis l'UI, n'est
- * jamais réécrit.
- */
-export const migrateCoursPublicCible = migrations.define({
+// MIGRATE avant NARROW : retire la classification par public devenue inutile.
+// Le champ reste temporairement optionnel dans le schéma jusqu'à vérification
+// de la migration en DEV puis en PROD.
+export const clearCoursPublicCible = migrations.define({
   table: "cours",
+  batchSize: 100,
   migrateOne: async (ctx, cours) => {
-    if (cours.publicCible !== undefined) return;
-    const { publicCible } = classifierPublicCibleCours(cours.nom);
-    if (publicCible === undefined) return;
-    await ctx.db.patch(cours._id, { publicCible });
+    if (cours.publicCible === undefined) return;
+    await ctx.db.patch(cours._id, { publicCible: undefined });
   },
 });
 
-const vInspectionPublicCibleCours = v.object({
+// MIGRATE avant NARROW : retire les effectifs par public saisis manuellement.
+export const clearBudgetEffectifsCours = migrations.define({
+  table: "budgetEffectifs",
+  batchSize: 100,
+  migrateOne: async (ctx, effectifs) => {
+    if (
+      effectifs.nbMineursCours === undefined &&
+      effectifs.nbAdultesCours === undefined
+    ) {
+      return;
+    }
+    await ctx.db.patch(effectifs._id, {
+      nbMineursCours: undefined,
+      nbAdultesCours: undefined,
+    });
+  },
+});
+
+const vInspectionChampsObsoletes = v.object({
   lus: v.number(),
-  sans_public_cible: v.number(),
-  mineurs: v.number(),
-  adultes: v.number(),
-  detectes_nom_mineurs: v.number(),
-  detectes_nom_adultes: v.number(),
-  noms_ambigus: v.number(),
-  ambigus_a_corriger: v.number(),
-  corrections_manuelles: v.number(),
+  avec_champs_obsoletes: v.number(),
   continueCursor: v.string(),
   isDone: v.boolean(),
 });
 
-// Rapport paginé non nominatif à lancer avant/après migration. Les lignes
-// `ambigus_a_corriger` sont les lignes à arbitrer dans l'UI.
-export const inspectCoursPublicCible = internalQuery({
+// Inspections internes paginées et non nominatives. Le compteur
+// `avec_champs_obsoletes` doit être nul sur toutes les pages avant le NARROW.
+export const inspectCoursPublicCibleObsolete = internalQuery({
   args: { paginationOpts: paginationOptsValidator },
-  returns: vInspectionPublicCibleCours,
+  returns: vInspectionChampsObsoletes,
   handler: async (ctx, args) => {
     const page = await ctx.db.query("cours").paginate(args.paginationOpts);
-    const resume = {
+    return {
       lus: page.page.length,
-      sans_public_cible: 0,
-      mineurs: 0,
-      adultes: 0,
-      detectes_nom_mineurs: 0,
-      detectes_nom_adultes: 0,
-      noms_ambigus: 0,
-      ambigus_a_corriger: 0,
-      corrections_manuelles: 0,
+      avec_champs_obsoletes: page.page.filter(
+        (cours) => cours.publicCible !== undefined,
+      ).length,
       continueCursor: page.continueCursor,
       isDone: page.isDone,
     };
+  },
+});
 
-    for (const cours of page.page) {
-      const classification = classifierPublicCibleCours(cours.nom);
-      if (cours.publicCible === undefined) resume.sans_public_cible++;
-      else resume[cours.publicCible]++;
-
-      if (classification.origine === "nom_mineurs") {
-        resume.detectes_nom_mineurs++;
-      } else if (classification.origine === "nom_adultes") {
-        resume.detectes_nom_adultes++;
-      } else {
-        resume.noms_ambigus++;
-        if (cours.publicCible === undefined) resume.ambigus_a_corriger++;
-      }
-
-      if (
-        classification.publicCible !== undefined &&
-        cours.publicCible !== undefined &&
-        cours.publicCible !== classification.publicCible
-      ) {
-        resume.corrections_manuelles++;
-      }
-    }
-
-    return resume;
+export const inspectBudgetEffectifsCoursObsoletes = internalQuery({
+  args: { paginationOpts: paginationOptsValidator },
+  returns: vInspectionChampsObsoletes,
+  handler: async (ctx, args) => {
+    const page = await ctx.db
+      .query("budgetEffectifs")
+      .paginate(args.paginationOpts);
+    return {
+      lus: page.page.length,
+      avec_champs_obsoletes: page.page.filter(
+        (effectifs) =>
+          effectifs.nbMineursCours !== undefined ||
+          effectifs.nbAdultesCours !== undefined,
+      ).length,
+      continueCursor: page.continueCursor,
+      isDone: page.isDone,
+    };
   },
 });
 

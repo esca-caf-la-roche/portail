@@ -57,8 +57,6 @@ export const getSynthese = query({
     return {
       nbMembresLoisir,
       nbMembresCompetition,
-      nbMineursCours: eff?.nbMineursCours ?? null,
-      nbAdultesCours: eff?.nbAdultesCours ?? null,
       depPrevLoisir,
       depPrevCompetition,
     };
@@ -81,36 +79,5 @@ export const setMembresLoisir = mutation({
     } else {
       await ctx.db.insert("budgetEffectifs", { saison: args.saison, nbMembresLoisir: nb });
     }
-  },
-});
-
-// Enregistre les effectifs réels des cours, utilisés pour calculer le résultat
-// par participant dans la répartition des recettes.
-export const setEffectifsCours = mutation({
-  args: {
-    saison: v.string(),
-    nbMineursCours: v.number(),
-    nbAdultesCours: v.number(),
-  },
-  handler: async (ctx, args) => {
-    await requireTile(ctx, ctx.userId, "budget");
-    const doc = {
-      nbMineursCours: normaliserEffectif(args.nbMineursCours, "Le nombre de mineurs en cours"),
-      nbAdultesCours: normaliserEffectif(args.nbAdultesCours, "Le nombre d'adultes en cours"),
-    };
-    const existing = await ctx.db
-      .query("budgetEffectifs")
-      .withIndex("by_saison", (q) => q.eq("saison", args.saison))
-      .first();
-    if (existing) {
-      if (champsModifies(existing, doc)) await ctx.db.patch(existing._id, doc);
-    } else {
-      await ctx.db.insert("budgetEffectifs", {
-        saison: args.saison,
-        nbMembresLoisir: 0,
-        ...doc,
-      });
-    }
-    return null;
   },
 });

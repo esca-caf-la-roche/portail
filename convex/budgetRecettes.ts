@@ -1,62 +1,52 @@
 import { v } from "convex/values";
-import type { Doc, Id } from "./_generated/dataModel";
+import type { Id } from "./_generated/dataModel";
 import { requireTile } from "./access";
 import { authenticatedQuery as query } from "./customFunctions";
 import { COEF_PREPARATION, HEURES_REUNION, toParametresPaie } from "./paie";
 import { computePaie } from "../src/utils/paieCompute";
 
-type PublicCible = "mineurs" | "adultes" | "nonClasses";
-type Ventilation = Record<PublicCible, number>;
+type CategorieCours = "mineurs" | "adultes" | "horsPerimetre";
+type Ventilation = Record<CategorieCours, number>;
 type HeuresPaie = { loisir: number; competition: number };
 
-const categories: PublicCible[] = ["mineurs", "adultes", "nonClasses"];
+const categories: CategorieCours[] = ["mineurs", "adultes", "horsPerimetre"];
 
 function zeroVentilation(): Ventilation {
-  return { mineurs: 0, adultes: 0, nonClasses: 0 };
+  return { mineurs: 0, adultes: 0, horsPerimetre: 0 };
 }
 
 function arrondirCentimes(valeur: number): number {
   return Math.round((valeur + Number.EPSILON) * 100) / 100;
 }
 
-function categorieCours(cours: Doc<"cours">): PublicCible {
-  return cours.publicCible ?? "nonClasses";
+function categorieAnalytique(nom: string | undefined): CategorieCours {
+  const code = nom?.trim().match(/^ESC0[12]\b/i)?.[0].toUpperCase();
+  if (code === "ESC01") return "mineurs";
+  if (code === "ESC02") return "adultes";
+  return "horsPerimetre";
 }
 
-/**
- * Répartition des recettes prévisionnelles et rentabilité des cours par public.
- * Les lectures sont bornées à la saison demandée via les index saisonniers.
- */
+/** Répartition des recettes et rentabilité des cours ESC01/ESC02 à capacité pleine. */
 export const getRepartition = query({
   args: { saison: v.string() },
   handler: async (ctx, args) => {
     await requireTile(ctx, ctx.userId, "budget");
 
-    const [previsionnels, cours, effectifs, parametres, salaires] = await Promise.all([
-      ctx.db
-        .query("previsionnels")
-        .withIndex("by_saison", (q) => q.eq("saison", args.saison))
-        .collect(),
-      ctx.db
-        .query("cours")
-        .withIndex("by_saison", (q) => q.eq("saison", args.saison))
-        .collect(),
-      ctx.db
-        .query("budgetEffectifs")
-        .withIndex("by_saison", (q) => q.eq("saison", args.saison))
-        .first(),
-      ctx.db
-        .query("parametresPaie")
-        .withIndex("by_saison", (q) => q.eq("saison", args.saison))
-        .first(),
-      ctx.db
-        .query("salairesSaison")
-        .withIndex("by_saison", (q) => q.eq("saison", args.saison))
-        .collect(),
+    const [previsionnels, cours, parametres, salaires] = await Promise.all([
+      ctx.db.query("previsionnels").withIndex("by_saison", (q) => q.eq("saison", args.saison)).collect(),
+      ctx.db.query("cours").withIndex("by_saison", (q) => q.eq("saison", args.saison)).collect(),
+      ctx.db.query("parametresPaie").withIndex("by_saison", (q) => q.eq("saison", args.saison)).first(),
+      ctx.db.query("salairesSaison").withIndex("by_saison", (q) => q.eq("saison", args.saison)).collect(),
     ]);
 
-    // Camembert : uniquement les recettes strictement positives, regroupées par
-    // analytique, y compris les lignes manuelles du prévisionnel.
+    const analytiquesIds = new Set<Id<"analytiques">>();
+    for (const ligne of previsionnels) analytiquesIds.add(ligne.analytiqueId);
+    for (const creneau of cours) if (creneau.analytiqueId) analytiquesIds.add(creneau.analytiqueId);
+    const analytiques = await Promise.all(
+      [...analytiquesIds].map(async (id) => [id, await ctx.db.get(id)] as const),
+    );
+    const analytiqueNomById = new Map(analytiques.map(([id, analytique]) => [id, analytique?.nom]));
+
     const montantsParAnalytique = new Map<Id<"analytiques">, number>();
     for (const ligne of previsionnels) {
       if (ligne.montant <= 0) continue;
@@ -65,31 +55,28 @@ export const getRepartition = query({
         (montantsParAnalytique.get(ligne.analytiqueId) ?? 0) + ligne.montant,
       );
     }
-    const recettes = await Promise.all(
-      [...montantsParAnalytique.entries()].map(async ([analytiqueId, montant]) => {
-        const analytique = await ctx.db.get(analytiqueId);
-        return {
-          analytiqueId,
-          analytiqueNom: analytique?.nom ?? "Analytique supprimée",
-          montant: arrondirCentimes(montant),
-        };
-      }),
+    const recettes = [...montantsParAnalytique.entries()].map(([analytiqueId, montant]) => ({
+      analytiqueId,
+      analytiqueNom: analytiqueNomById.get(analytiqueId) ?? "Analytique supprimée",
+      montant: arrondirCentimes(montant),
+    }));
+    recettes.sort(
+      (a, b) => b.montant - a.montant || a.analytiqueNom.localeCompare(b.analytiqueNom, "fr"),
     );
-    recettes.sort((a, b) => b.montant - a.montant || a.analytiqueNom.localeCompare(b.analytiqueNom, "fr"));
 
     const recettesCours = zeroVentilation();
     const heuresCours = zeroVentilation();
-    const nbCreneaux: Record<PublicCible, number> = {
-      mineurs: 0,
-      adultes: 0,
-      nonClasses: 0,
-    };
+    const participants = zeroVentilation();
+    const nbCreneaux = { mineurs: 0, adultes: 0, horsPerimetre: 0 } satisfies Ventilation;
     const heuresParSalarie = new Map<Id<"salaries">, Ventilation>();
     const heuresPaieParSalarie = new Map<Id<"salaries">, HeuresPaie>();
 
     for (const creneau of cours) {
-      const cible = categorieCours(creneau);
+      const cible = categorieAnalytique(
+        creneau.analytiqueId ? analytiqueNomById.get(creneau.analytiqueId) : undefined,
+      );
       recettesCours[cible] += creneau.tarifAnnuel * creneau.nbElevesMax;
+      participants[cible] += creneau.nbElevesMax;
       nbCreneaux[cible] += 1;
       const heuresHebdomadaires = creneau.seances.reduce(
         (total, seance) => total + seance.dureeHeures,
@@ -102,47 +89,28 @@ export const getRepartition = query({
         ventilation[cible] += heures;
         heuresParSalarie.set(moniteur.salarieId, ventilation);
 
-        const heuresPaie = heuresPaieParSalarie.get(moniteur.salarieId) ?? {
-          loisir: 0,
-          competition: 0,
-        };
+        const heuresPaie = heuresPaieParSalarie.get(moniteur.salarieId) ?? { loisir: 0, competition: 0 };
         heuresPaie[creneau.competition ? "competition" : "loisir"] += heures;
         heuresPaieParSalarie.set(moniteur.salarieId, heuresPaie);
       }
     }
 
-    // Une paie incomplète ne doit pas produire un faux coût nul. Quand elle est
-    // disponible, le coût complet de chaque salarié est ventilé selon ses heures
-    // de cours (préparation comprise) dans chaque public.
+    // Les autres cours restent au dénominateur de la ventilation du coût complet.
     let couts: Ventilation | null = null;
-    const totalHeuresVentilables = categories.reduce(
-      (total, cible) => total + heuresCours[cible],
-      0,
-    );
     const salairesById = new Map(salaires.map((salaire) => [salaire.salarieId, salaire]));
-    const moniteurSansPaie = [...heuresParSalarie.keys()].some(
-      (salarieId) => !salairesById.has(salarieId),
+    const moniteurCibleSansPaie = [...heuresParSalarie.entries()].some(
+      ([salarieId, ventilation]) =>
+        ventilation.mineurs + ventilation.adultes > 0 && !salairesById.has(salarieId),
     );
-    if (
-      parametres &&
-      salaires.length > 0 &&
-      totalHeuresVentilables > 0 &&
-      !moniteurSansPaie
-    ) {
+    if (parametres && !moniteurCibleSansPaie) {
       couts = zeroVentilation();
       const params = toParametresPaie(parametres);
       for (const salaire of salaires) {
         const ventilation = heuresParSalarie.get(salaire.salarieId) ?? zeroVentilation();
-        const heuresCoursSalarie = categories.reduce(
-          (total, cible) => total + ventilation[cible],
-          0,
-        );
+        const heuresCoursSalarie = categories.reduce((total, cible) => total + ventilation[cible], 0);
         if (heuresCoursSalarie <= 0) continue;
         const salarie = await ctx.db.get(salaire.salarieId);
-        const heuresPaie = heuresPaieParSalarie.get(salaire.salarieId) ?? {
-          loisir: 0,
-          competition: 0,
-        };
+        const heuresPaie = heuresPaieParSalarie.get(salaire.salarieId) ?? { loisir: 0, competition: 0 };
         let heuresLoisir = heuresPaie.loisir + HEURES_REUNION;
         let heuresCompetition = heuresPaie.competition;
         for (const heuresSup of salaire.heuresSup ?? []) {
@@ -166,19 +134,18 @@ export const getRepartition = query({
       }
     }
 
-    const detail = (cible: PublicCible, nbParticipants: number | null) => {
+    const detail = (cible: "mineurs" | "adultes") => {
       const recette = arrondirCentimes(recettesCours[cible]);
       const coutSalarial = couts ? arrondirCentimes(couts[cible]) : null;
       const resultat = coutSalarial === null ? null : arrondirCentimes(recette - coutSalarial);
+      const nbParticipants = participants[cible];
       return {
         recette,
         coutSalarial,
         resultat,
         nbParticipants,
         resultatParParticipant:
-          resultat !== null && nbParticipants !== null && nbParticipants > 0
-            ? arrondirCentimes(resultat / nbParticipants)
-            : null,
+          resultat !== null && nbParticipants > 0 ? arrondirCentimes(resultat / nbParticipants) : null,
         nbCreneaux: nbCreneaux[cible],
         heures: arrondirCentimes(heuresCours[cible]),
       };
@@ -187,11 +154,7 @@ export const getRepartition = query({
     return {
       recettes,
       totalRecettes: arrondirCentimes(recettes.reduce((total, recette) => total + recette.montant, 0)),
-      cours: {
-        mineurs: detail("mineurs", effectifs?.nbMineursCours ?? null),
-        adultes: detail("adultes", effectifs?.nbAdultesCours ?? null),
-        nonClasses: detail("nonClasses", null),
-      },
+      cours: { mineurs: detail("mineurs"), adultes: detail("adultes") },
     };
   },
 });

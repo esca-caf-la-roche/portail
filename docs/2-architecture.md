@@ -156,14 +156,13 @@ annuaire reste transversal pour conserver identités OTP et ressources Google.
 
 Le Budget prévisionnel suit la saison globale. Son onglet « Répartition des
 recettes » croise les lignes positives du prévisionnel, le planning des cours,
-la paie et les effectifs réels de la saison. Les agrégats sont calculés à la
-lecture : aucune synthèse dérivée n'est persistée. Les cours portent un
-`publicCible` explicite (`mineurs` ou `adultes`) ; l'absence de valeur reste
-temporairement admise pour les historiques et exclut le cours des deux
-résultats jusqu'à son classement manuel. Les effectifs réels sont stockés dans
-`budgetEffectifs`, avec la même saison que les autres données du calcul. Voir
-[14-budget-previsionnel.md](14-budget-previsionnel.md) pour les formules et le
-contrat de migration.
+les analytiques et la paie de la saison. Les agrégats sont calculés à la
+lecture : aucune synthèse dérivée n'est persistée. Le planning constitue la
+source unique du détail des cours : l'analytique `ESC01` désigne les cours
+mineurs et `ESC02` les cours adultes. Le calcul suppose les créneaux remplis ;
+le nombre de participants est donc la somme de leurs capacités maximales, sans
+saisie complémentaire. Voir [14-budget-previsionnel.md](14-budget-previsionnel.md)
+pour les formules et le retrait des anciens champs devenus inutiles.
 
 Les relations et index sont définis dans `convex/schema.ts`. Les collections
 potentiellement volumineuses doivent être bornées, paginées ou parcourues par

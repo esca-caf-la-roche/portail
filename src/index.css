@@ -4042,8 +4042,7 @@ a.btn-primary {
   margin-bottom: 1.25rem;
 }
 
-.recettes-section-heading p,
-.effectifs-cours-form p {
+.recettes-section-heading p {
   margin-top: 0.25rem;
   font-weight: 600;
 }
@@ -4165,48 +4164,6 @@ a.btn-primary {
   background: var(--primary);
 }
 
-.effectifs-cours-form {
-  display: grid;
-  grid-template-columns: minmax(180px, 1fr) repeat(2, minmax(130px, 0.55fr)) auto;
-  align-items: end;
-  gap: 1rem;
-  padding: 1rem;
-  border: var(--border-width) solid var(--border-color);
-  background: var(--info);
-  box-shadow: var(--shadow);
-}
-
-.effectifs-cours-form label {
-  display: grid;
-  gap: 0.35rem;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.effectifs-cours-form .input-field {
-  margin: 0;
-  background: var(--card);
-}
-
-.effectifs-cours-form .btn-primary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
-  width: auto;
-  min-height: 48px;
-  padding: 0.65rem 0.85rem;
-  white-space: nowrap;
-}
-
-.effectifs-cours-form__error {
-  grid-column: 1 / -1;
-  padding: 0.5rem;
-  border: 2px solid var(--border-color);
-  background: var(--danger);
-  color: var(--card);
-}
-
 .cours-rentabilite-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -4274,47 +4231,12 @@ a.btn-primary {
   border-top: var(--border-width) solid var(--border-color);
 }
 
-.public-cible-badge {
-  display: inline-block;
-  padding: 0.2rem 0.45rem;
-  border: 2px solid var(--border-color);
-  font-size: 0.72rem;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.public-cible-badge--mineurs {
-  background: var(--warning);
-}
-
-.public-cible-badge--adultes {
-  background: var(--success);
-}
-
-.public-cible-badge--unknown {
-  background: var(--primary);
-}
-
-.form-help {
-  margin-top: 0.35rem;
-  font-size: 0.78rem;
-  font-weight: 600;
-}
-
 @media (max-width: 900px) {
   .recettes-chart-layout,
   .cours-rentabilite-grid {
     grid-template-columns: 1fr;
   }
 
-  .effectifs-cours-form {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .effectifs-cours-form > div,
-  .effectifs-cours-form .btn-primary {
-    grid-column: 1 / -1;
-  }
 }
 
 @media (max-width: 560px) {
@@ -4330,14 +4252,6 @@ a.btn-primary {
   .recettes-legend__percent {
     grid-column: 3;
     grid-row: 1;
-  }
-
-  .effectifs-cours-form {
-    grid-template-columns: 1fr;
-  }
-
-  .effectifs-cours-form > * {
-    grid-column: 1;
   }
 
   .cours-rentabilite-card__formula {

@@ -11,17 +11,13 @@ Depuis la tuile **Budget prévisionnel**, choisir la saison puis ouvrir l'onglet
 
 - un camembert de toutes les recettes prévisionnelles positives, regroupées par
   analytique ;
-- une carte **Cours mineurs** et une carte **Cours adultes** qui affichent la
-  recette maximale, la dépense salariale, le résultat et le résultat par
-  participant ;
-- un avertissement lorsqu'un ancien cours n'est pas encore classé comme
-  `mineurs` ou `adultes` ;
-- la saisie des effectifs réellement inscrits en cours pour les membres du staff
-  autorisés sur la tuile.
+- une carte **ESC01 — Cours mineurs** et une carte **ESC02 — Cours adultes** qui
+  affichent la recette maximale, la dépense salariale, le résultat et le
+  résultat par participant à capacité pleine.
 
-Les corrections de public se font dans l'onglet **Planning des cours**. Le
-public cible est une propriété du type de cours : sa modification est propagée
-à tous les créneaux portant le même nom dans la saison.
+Aucune donnée propre à cet onglet n'est à renseigner. Le détail reprend
+directement les analytiques déjà affectées aux types de cours dans l'onglet
+**Planning des cours**.
 
 ## Sources et calculs
 
@@ -37,18 +33,32 @@ pas représentés.
 Ce choix répond à une question de composition des entrées attendues, et non de
 solde budgétaire : les dépenses restent consultables dans le prévisionnel.
 
-### Recettes des cours
+### Périmètre des cours et participants
 
-Pour chaque public, la recette maximale est calculée sur chaque créneau :
+Le code placé au début du nom de l'analytique du planning détermine le périmètre :
+
+| Analytique | Carte |
+|---|---|
+| `ESC01` (par exemple `ESC01 : Cours mineurs`) | Cours mineurs |
+| `ESC02` (par exemple `ESC02 : Cours adultes`) | Cours adultes |
+
+Les cours rattachés à une autre analytique restent représentés dans le
+camembert lorsqu'ils alimentent une recette prévisionnelle positive, mais ils
+n'apparaissent dans aucune de ces deux cartes. Il n'existe ni déduction à
+partir du nom du cours, ni classement manuel parallèle.
+
+Le calcul suppose tous les créneaux remplis. Pour chaque analytique :
 
 ```text
 recette du créneau = tarif annuel du type × capacité maximale
-recette du public = somme des recettes de ses créneaux
+recette de l'analytique = somme des recettes de ses créneaux
+participants de l'analytique = somme des capacités maximales de ses créneaux
 ```
 
-Il s'agit d'une capacité théorique, pas du montant encaissé ni du nombre réel
-d'inscrits. Un type proposé sur plusieurs créneaux contribue donc une fois par
-créneau.
+Il s'agit d'une projection à capacité pleine, pas du montant encaissé ni du
+nombre réel d'inscrits. Un type proposé sur plusieurs créneaux contribue donc
+une fois par créneau. Le nombre de participants n'est ni saisi ni persisté pour
+ce calcul : il est toujours déduit des capacités du planning.
 
 ### Dépense salariale
 
@@ -63,9 +73,11 @@ heures annuelles du calcul = heures de cours payées + 5 h de réunion + heures 
 Le coefficient `1,25` couvre les quinze minutes de préparation par heure de
 cours. Le coût employeur produit par le calcul de paie inclut le brut, les
 cotisations patronales et les autres paramètres employeur configurés pour la
-saison. Ce coût complet est ensuite ventilé entre mineurs et adultes au prorata
+saison. Ce coût complet est ensuite ventilé entre les analytiques au prorata
 des heures de cours payées du salarié. Les heures de réunion et les heures
-supplémentaires sont ainsi réparties avec le reste de son coût.
+supplémentaires sont ainsi réparties avec le reste de son coût. Les autres
+analytiques restent dans le dénominateur de cette ventilation, afin que les
+cartes `ESC01` et `ESC02` ne s'attribuent pas le coût de cours hors périmètre.
 
 Si les paramètres de paie, la masse salariale ou les heures ventilables manquent,
 l'écran conserve les recettes mais affiche le coût et le résultat comme
@@ -75,38 +87,32 @@ nul.
 ### Résultat par participant
 
 ```text
-résultat du public = recette maximale - coût employeur ventilé
-résultat par participant = résultat du public / effectif réel saisi
+résultat de l'analytique = recette maximale - coût employeur ventilé
+résultat par participant = résultat de l'analytique / somme des capacités maximales
 ```
 
-Les effectifs mineurs et adultes sont saisis pour la saison et arrondis à un
-entier positif ou nul. Le ratio n'est pas calculé lorsque l'effectif est absent
-ou nul, afin d'éviter une division trompeuse. Il mesure le résultat théorique
-rapporté à l'effectif réel ; il ne transforme pas la recette maximale en recette
-encaissée.
+Le ratio n'est pas calculé lorsque l'analytique ne contient aucun participant,
+afin d'éviter une division par zéro. Il mesure un résultat théorique à capacité
+pleine ; il ne représente ni la fréquentation réelle ni la recette encaissée.
 
-## Cours historiques et migration
+## Retrait des champs devenus inutiles
 
-Le champ `cours.publicCible` est volontairement optionnel pendant la migration
-des saisons existantes. La stratégie suit **widen → migrate → narrow** :
+Une première version de l'onglet avait ajouté une classification des cours par
+public et deux compteurs par catégorie. Ces données doublonnent
+l'analytique et la capacité déjà présentes dans le planning ; elles sont donc
+retirées selon une migration **migrate → narrow** :
 
-1. accepter le nouveau champ sans invalider les documents historiques ;
-2. inspecter les cours en lots avec `inspectCoursPublicCible` ;
-3. exécuter `migrateCoursPublicCible` d'abord en DEV, puis en PROD après
-   validation explicite ; la migration idempotente ne classe que les noms sans
-   ambiguïté et ne remplace jamais une correction manuelle ;
-4. corriger dans **Planning des cours** les noms ambigus restés non classés ;
-5. rendre le champ obligatoire seulement dans un déploiement ultérieur, après
-   inspection complète des deux environnements.
+1. la migration de nettoyage des cours efface l'ancien champ de classification ;
+2. `clearBudgetEffectifsCours` efface les anciens effectifs mineurs/adultes,
+   sans modifier `budgetEffectifs.nbMembresLoisir` ;
+3. les inspections internes des cours et de `budgetEffectifs` contrôlent par
+   pages qu'aucune valeur obsolète ne subsiste en DEV puis en PROD ;
+4. les champs optionnels sont supprimés du schéma dans un déploiement ultérieur
+   après validation des deux inspections.
 
-Un cours non classé reste visible dans l'avertissement avec son nombre de
-créneaux, ses heures et sa recette potentielle. Il est exclu des cartes mineurs
-et adultes : cette mise à l'écart explicite évite de fausser silencieusement un
-des deux publics.
-
-Les champs d'effectifs réels dans `budgetEffectifs` restent eux aussi optionnels
-pour les saisons historiques. Leur absence affiche un ratio indisponible et ne
-déclenche aucun remplissage arbitraire.
+Cette migration ne reclasse aucun cours et ne demande aucune reprise manuelle :
+`ESC01`, `ESC02`, les tarifs et les capacités du planning restent les seules
+données métier du calcul.
 
 ## Droits et saison
 
@@ -115,11 +121,9 @@ La fonctionnalité respecte le contrat de la tuile `budget` :
 - la tuile doit figurer dans `userSettings.allowedTiles` pour ouvrir la route et
   lire les agrégats via `budgetRecettes.getRepartition` ;
 - le rôle administrateur ne donne aucun passe-droit lorsque la tuile est absente ;
-- la mutation de persistance des effectifs et son formulaire exigent eux aussi
-  la tuile `budget` ;
-- toutes les lectures et écritures sont indexées ou rattachées à la saison
-  sélectionnée ; un changement de saison ne doit jamais réutiliser les effectifs
-  ni les calculs de la précédente.
+- toutes les lectures sont indexées ou rattachées à la saison sélectionnée ; un
+  changement de saison ne doit jamais réutiliser le planning, le prévisionnel ou
+  la paie de la précédente.
 
 Les scénarios de validation et les commandes associées sont centralisés dans
 [9-tests.md](9-tests.md#scénarios-ciblés--répartition-des-recettes-du-budget).
