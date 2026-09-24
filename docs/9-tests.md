@@ -76,6 +76,50 @@ Pour le planning salarié, la checklist de
 [13-planning-salaries-samedis.md](13-planning-salaries-samedis.md) couvre les
 deux populations, la saison, Google Calendar, les reprises et le rappel du lundi.
 
+### Scénarios ciblés — Répartition des recettes du Budget
+
+Les règles métier et les formules sont décrites dans
+[14-budget-previsionnel.md](14-budget-previsionnel.md).
+
+```bash
+npm test -- convex/budgetRecettes.test.ts
+npm run check:convex
+npm run lint
+npm run build
+```
+
+1. avec un compte staff possédant la tuile `budget`, ouvrir `/budget`, choisir
+   une saison et l'onglet « Répartition des recettes » ; retirer ensuite la
+   tuile, y compris à un administrateur, et vérifier le refus de la route et de
+   `api.budgetRecettes.getRepartition` ;
+2. saisir plusieurs lignes de recettes positives sur une même analytique, une
+   autre analytique, une dépense et une ligne nulle : le camembert doit regrouper
+   les deux premières, ignorer les deux dernières et afficher un total exact ;
+3. créer un type de cours mineurs et un type adultes avec plusieurs créneaux ;
+   vérifier que la recette de chaque public est la somme, par créneau, de
+   `tarif annuel × capacité maximale` ;
+4. affecter un même salarié aux deux publics avec des volumes horaires
+   différents, puis ajouter des heures supplémentaires. Vérifier que le coût
+   employeur complet inclut les heures de cours majorées par `1,25`, les cinq
+   heures de réunion et les heures supplémentaires, puis qu'il est ventilé entre
+   mineurs et adultes au prorata des heures de cours payées ;
+5. avec un membre du staff autorisé sur la tuile, saisir les effectifs réels
+   mineurs et adultes : le
+   résultat doit être `recette - dépense salariale` et le montant par participant
+   ce résultat divisé par l'effectif. Avec un effectif nul ou absent, le ratio ne
+   doit pas être affiché. Recharger puis changer de saison pour contrôler la
+   persistance et l'isolation saisonnière ;
+6. supprimer les paramètres de paie ou la masse salariale de la saison : les
+   recettes doivent rester visibles, tandis que le coût et le résultat sont
+   annoncés comme indisponibles et jamais remplacés par un faux zéro ;
+7. conserver un cours historique sans `publicCible` : un avertissement doit
+   donner son nombre de créneaux, ses heures et sa recette, sans l'intégrer aux
+   cartes mineurs/adultes. Le classer depuis « Planning des cours » doit mettre
+   à jour la répartition et tous les créneaux du même type ;
+8. contrôler le camembert, sa légende et les cartes au clavier, avec un lecteur
+   d'écran et sur mobile ; le texte accessible du graphique doit restituer les
+   analytiques et leurs montants sans dépendre des couleurs.
+
 ### Scénario ciblé — Messagerie Abonnements
 
 1. avec un compte public `abo-otp`, envoyer un message depuis le suivi d'un

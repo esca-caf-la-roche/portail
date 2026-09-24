@@ -154,6 +154,17 @@ Ses affectations bloquent la suppression ; les créneaux importés, opérations
 Google, états de synchronisation et alertes sont supprimés en cascade. Son
 annuaire reste transversal pour conserver identités OTP et ressources Google.
 
+Le Budget prévisionnel suit la saison globale. Son onglet « Répartition des
+recettes » croise les lignes positives du prévisionnel, le planning des cours,
+la paie et les effectifs réels de la saison. Les agrégats sont calculés à la
+lecture : aucune synthèse dérivée n'est persistée. Les cours portent un
+`publicCible` explicite (`mineurs` ou `adultes`) ; l'absence de valeur reste
+temporairement admise pour les historiques et exclut le cours des deux
+résultats jusqu'à son classement manuel. Les effectifs réels sont stockés dans
+`budgetEffectifs`, avec la même saison que les autres données du calcul. Voir
+[14-budget-previsionnel.md](14-budget-previsionnel.md) pour les formules et le
+contrat de migration.
+
 Les relations et index sont définis dans `convex/schema.ts`. Les collections
 potentiellement volumineuses doivent être bornées, paginées ou parcourues par
 lots conformément aux règles Convex du projet.

@@ -25,6 +25,7 @@ export interface CoursRow {
   nbElevesMax: number;
   nbSemaines: number;
   competition: boolean;
+  publicCible?: "mineurs" | "adultes";
   moniteurs: CoursMoniteur[];
   seances: Seance[];
 }
@@ -36,6 +37,7 @@ export interface CoursType {
   nbElevesMax: number;
   nbSemaines: number;
   competition: boolean;
+  publicCible?: "mineurs" | "adultes";
   analytiqueId?: Id<"analytiques">;
   seances: Seance[];
 }
@@ -77,6 +79,7 @@ export default function CoursFormModal({ isOpen, onClose, coursToEdit, moniteurs
   const [nbElevesMax, setNbElevesMax] = useState("");
   const [nbSemaines, setNbSemaines] = useState("");
   const [competition, setCompetition] = useState(false);
+  const [publicCible, setPublicCible] = useState<"mineurs" | "adultes" | "">("");
   const [moniteurIds, setMoniteurIds] = useState<string[]>([]);
   const [seances, setSeances] = useState<SeanceForm[]>([emptySeance()]);
   const [saving, setSaving] = useState(false);
@@ -92,6 +95,7 @@ export default function CoursFormModal({ isOpen, onClose, coursToEdit, moniteurs
       setNbElevesMax(String(coursToEdit.nbElevesMax));
       setNbSemaines(String(coursToEdit.nbSemaines));
       setCompetition(coursToEdit.competition);
+      setPublicCible(coursToEdit.publicCible ?? "");
       setMoniteurIds(coursToEdit.moniteurs.map((m) => m.salarieId));
       setSeances(
         coursToEdit.seances.map((s) => ({ jour: s.jour, heureDebut: s.heureDebut, dureeHeures: String(s.dureeHeures) }))
@@ -104,6 +108,7 @@ export default function CoursFormModal({ isOpen, onClose, coursToEdit, moniteurs
       setNbElevesMax("");
       setNbSemaines("");
       setCompetition(false);
+      setPublicCible("");
       setMoniteurIds(
         prefill?.moniteurIds && prefill.moniteurIds.length > 0
           ? prefill.moniteurIds
@@ -126,6 +131,7 @@ export default function CoursFormModal({ isOpen, onClose, coursToEdit, moniteurs
       setNbElevesMax(String(t.nbElevesMax));
       setNbSemaines(String(t.nbSemaines));
       setCompetition(t.competition);
+      setPublicCible(t.publicCible ?? "");
       setSeances(
         t.seances.map((s) => ({ jour: s.jour, heureDebut: s.heureDebut, dureeHeures: String(s.dureeHeures) }))
       );
@@ -151,8 +157,8 @@ export default function CoursFormModal({ isOpen, onClose, coursToEdit, moniteurs
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!nomEffectif || !nbElevesMax || !tarifAnnuel || !nbSemaines) {
-      alert("Veuillez remplir le nom, le tarif, le nombre d'élèves et de semaines.");
+    if (!nomEffectif || !nbElevesMax || !tarifAnnuel || !nbSemaines || !publicCible) {
+      alert("Veuillez remplir le nom, le public, le tarif, le nombre d'élèves et de semaines.");
       return;
     }
     const parsedSeances = seances
@@ -176,6 +182,7 @@ export default function CoursFormModal({ isOpen, onClose, coursToEdit, moniteurs
         nbElevesMax: parseInt(nbElevesMax, 10),
         nbSemaines: nbSemainesNum,
         competition,
+        publicCible,
         moniteurs: moniteursValides as Id<"salaries">[],
         seances: parsedSeances,
       };
@@ -238,6 +245,26 @@ export default function CoursFormModal({ isOpen, onClose, coursToEdit, moniteurs
                 Tarif, élèves max, semaines et séances sont communs à ce type (cascade).
               </p>
             )}
+          </div>
+
+          <div className="form-group">
+            <label className="form-label" htmlFor="cours-public">
+              Public du cours <span className="text-red-500">*</span>
+            </label>
+            <select
+              id="cours-public"
+              className="input-field"
+              value={publicCible}
+              onChange={(event) => setPublicCible(event.target.value as "mineurs" | "adultes" | "")}
+              required
+            >
+              <option value="" disabled>Choisir le public…</option>
+              <option value="mineurs">Mineurs</option>
+              <option value="adultes">Adultes</option>
+            </select>
+            <p className="form-help">
+              Ce choix est commun à tous les créneaux de ce type et alimente la rentabilité des cours.
+            </p>
           </div>
 
           <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>

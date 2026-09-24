@@ -77,7 +77,7 @@ describe("protections des tuiles Budget", () => {
       await expect(identity.mutation(api.effectifs.setMembresLoisir, { saison: "2026-27", nbMembresLoisir: 10 })).rejects.toThrow("Accès refusé");
       await expect(identity.mutation(api.analytiques.add, { nom: "Interdit" })).rejects.toThrow("Accès refusé");
       await expect(identity.mutation(api.paie.addSalarie, { nom: "Interdit", typeContrat: "CDII", saison: "2026-27", nbMois: 12, tauxHoraireBrut: 20 })).rejects.toThrow("Accès refusé");
-      await expect(identity.mutation(api.cours.addCours, { saison: "2026-27", nom: "Interdit", tarifAnnuel: 100, nbElevesMax: 10, nbSemaines: 30, moniteurs: [salarieId], seances: [{ jour: 0, heureDebut: "18:00", dureeHeures: 1 }] })).rejects.toThrow("Accès refusé");
+      await expect(identity.mutation(api.cours.addCours, { saison: "2026-27", nom: "Interdit", tarifAnnuel: 100, nbElevesMax: 10, nbSemaines: 30, publicCible: "adultes", moniteurs: [salarieId], seances: [{ jour: 0, heureDebut: "18:00", dureeHeures: 1 }] })).rejects.toThrow("Accès refusé");
     }
   });
 

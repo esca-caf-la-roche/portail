@@ -47,6 +47,7 @@ import type * as access from "../access.js";
 import type * as analytiques from "../analytiques.js";
 import type * as auth from "../auth.js";
 import type * as bootstrap from "../bootstrap.js";
+import type * as budgetRecettes from "../budgetRecettes.js";
 import type * as contactsCours from "../contactsCours.js";
 import type * as cours from "../cours.js";
 import type * as crons from "../crons.js";
@@ -136,6 +137,7 @@ declare const fullApi: ApiFromModules<{
   analytiques: typeof analytiques;
   auth: typeof auth;
   bootstrap: typeof bootstrap;
+  budgetRecettes: typeof budgetRecettes;
   contactsCours: typeof contactsCours;
   cours: typeof cours;
   crons: typeof crons;

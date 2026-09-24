@@ -142,10 +142,10 @@ const SEED_DATA: Array<{ saison: string; lignes: Record<string, SeedLigne> }> = 
 ];
 
 /** Heures de réunion ajoutées chaque saison à tout moniteur (catégorie loisir). */
-const HEURES_REUNION = 5;
+export const HEURES_REUNION = 5;
 
 /** Coefficient de préparation : 1 h de cours = 1 h 15 payée (15 min de préparation). */
-const COEF_PREPARATION = 1.25;
+export const COEF_PREPARATION = 1.25;
 
 type HeuresCat = { loisir: number; competition: number };
 
@@ -227,7 +227,7 @@ function makeToRow(
 }
 
 /** Convertit les paramètres bruts (Convex) vers le type attendu par `computePaie`. */
-function toParametresPaie(params: Doc<"parametresPaie">): ParametresPaie {
+export function toParametresPaie(params: Doc<"parametresPaie">): ParametresPaie {
   return {
     margeSecurite: params.margeSecurite,
     indemniteCpPct: params.indemniteCpPct,

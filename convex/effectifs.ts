@@ -1,6 +1,16 @@
 import { authenticatedQuery as query, authenticatedMutation as mutation } from "./customFunctions";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { requireTile } from "./access";
+import { champsModifies } from "./dbUtils";
+
+const MAX_EFFECTIF = 10_000;
+
+function normaliserEffectif(valeur: number, libelle: string): number {
+  if (!Number.isFinite(valeur) || valeur < 0 || valeur > MAX_EFFECTIF) {
+    throw new ConvexError(`${libelle} doit être compris entre 0 et ${MAX_EFFECTIF}.`);
+  }
+  return Math.round(valeur);
+}
 
 // Synthèse pour l'onglet « Coût par membre » du budget prévisionnel.
 // Renvoie les effectifs et la part « base de données » des dépenses ventilées
@@ -47,6 +57,8 @@ export const getSynthese = query({
     return {
       nbMembresLoisir,
       nbMembresCompetition,
+      nbMineursCours: eff?.nbMineursCours ?? null,
+      nbAdultesCours: eff?.nbAdultesCours ?? null,
       depPrevLoisir,
       depPrevCompetition,
     };
@@ -58,15 +70,47 @@ export const setMembresLoisir = mutation({
   args: { saison: v.string(), nbMembresLoisir: v.number() },
   handler: async (ctx, args) => {
     await requireTile(ctx, ctx.userId, "budget");
-    const nb = Math.max(0, Math.round(args.nbMembresLoisir));
+    const nb = normaliserEffectif(args.nbMembresLoisir, "Le nombre de membres loisir");
     const existing = await ctx.db
       .query("budgetEffectifs")
       .withIndex("by_saison", (q) => q.eq("saison", args.saison))
       .first();
     if (existing) {
-      await ctx.db.patch(existing._id, { nbMembresLoisir: nb });
+      const patch = { nbMembresLoisir: nb };
+      if (champsModifies(existing, patch)) await ctx.db.patch(existing._id, patch);
     } else {
       await ctx.db.insert("budgetEffectifs", { saison: args.saison, nbMembresLoisir: nb });
     }
+  },
+});
+
+// Enregistre les effectifs réels des cours, utilisés pour calculer le résultat
+// par participant dans la répartition des recettes.
+export const setEffectifsCours = mutation({
+  args: {
+    saison: v.string(),
+    nbMineursCours: v.number(),
+    nbAdultesCours: v.number(),
+  },
+  handler: async (ctx, args) => {
+    await requireTile(ctx, ctx.userId, "budget");
+    const doc = {
+      nbMineursCours: normaliserEffectif(args.nbMineursCours, "Le nombre de mineurs en cours"),
+      nbAdultesCours: normaliserEffectif(args.nbAdultesCours, "Le nombre d'adultes en cours"),
+    };
+    const existing = await ctx.db
+      .query("budgetEffectifs")
+      .withIndex("by_saison", (q) => q.eq("saison", args.saison))
+      .first();
+    if (existing) {
+      if (champsModifies(existing, doc)) await ctx.db.patch(existing._id, doc);
+    } else {
+      await ctx.db.insert("budgetEffectifs", {
+        saison: args.saison,
+        nbMembresLoisir: 0,
+        ...doc,
+      });
+    }
+    return null;
   },
 });

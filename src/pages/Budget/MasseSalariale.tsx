@@ -15,6 +15,7 @@ import SalarieFormModal, { type SalarieRow } from "../../components/Budget/Salar
 import PlanningCours from "./PlanningCours";
 import Previsionnel from "../Previsionnel";
 import SyntheseCouts from "./SyntheseCouts";
+import RepartitionRecettes from "./RepartitionRecettes";
 
 /** Convertit les paramètres bruts (Convex) vers le type de calcul. */
 function toParametresPaie(params: {
@@ -75,7 +76,7 @@ export default function MasseSalariale() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [isSalarieModalOpen, setIsSalarieModalOpen] = useState(false);
   const [salarieToEdit, setSalarieToEdit] = useState<SalarieRow | null>(null);
-  const [tab, setTab] = useState<"masse" | "planning" | "previsionnel" | "synthese">("masse");
+  const [tab, setTab] = useState<"masse" | "planning" | "previsionnel" | "recettes" | "synthese">("masse");
 
   const params = data?.params;
   const salaries = useMemo(() => data?.salaries ?? [], [data]);
@@ -210,6 +211,7 @@ export default function MasseSalariale() {
       >
         <div>
           <h1>Budget prévisionnel</h1>
+          <p className="subtitle">Saison : {season}</p>
         </div>
         {tab === "masse" && isAdmin && salaries.length > 0 && (
           <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
@@ -225,28 +227,19 @@ export default function MasseSalariale() {
         )}
       </header>
 
-      {/* Onglets : masse salariale / planning des cours */}
-      <div style={{ display: "flex", gap: "0.5rem", borderBottom: "2px solid #e5e7eb", marginBottom: "1.5rem" }}>
+      <div className="budget-tabs" role="group" aria-label="Sections du budget prévisionnel">
         {([
           { id: "masse", label: "Masse salariale" },
           { id: "planning", label: "Planning des cours" },
           { id: "previsionnel", label: "Prévisionnel" },
+          { id: "recettes", label: "Répartition des recettes" },
           { id: "synthese", label: "Coût par membre" },
         ] as const).map((t) => (
           <button
             key={t.id}
+            type="button"
+            aria-pressed={tab === t.id}
             onClick={() => setTab(t.id)}
-            style={{
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              padding: "0.6rem 1rem",
-              fontSize: "0.95rem",
-              fontWeight: tab === t.id ? 700 : 500,
-              color: tab === t.id ? "#2563eb" : "#6b7280",
-              borderBottom: tab === t.id ? "2px solid #2563eb" : "2px solid transparent",
-              marginBottom: "-2px",
-            }}
           >
             {t.label}
           </button>
@@ -260,6 +253,8 @@ export default function MasseSalariale() {
           masseSalarialeLoisir={masseSalarialeSplit?.loisir}
           masseSalarialeCompetition={masseSalarialeSplit?.competition}
         />
+      ) : tab === "recettes" ? (
+        <RepartitionRecettes />
       ) : tab === "synthese" ? (
         <SyntheseCouts
           masseSalarialeLoisir={masseSalarialeSplit?.loisir}

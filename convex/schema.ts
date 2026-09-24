@@ -82,6 +82,11 @@ export default defineSchema({
     tarifAnnuel: v.number(),
     lienPaiementCB: v.optional(v.string()),
     nbElevesMax: v.number(),
+    // WIDEN : public utilisé pour ventiler recettes et masse salariale.
+    // Optionnel jusqu'au backfill contrôlé des cours existants en DEV puis PROD.
+    publicCible: v.optional(
+      v.union(v.literal("mineurs"), v.literal("adultes")),
+    ),
     // Indicateur compétition du type de cours (cascade comme le tarif). Détermine la
     // ventilation des heures/coûts en masse salariale loisir vs compétition.
     // true = compétition, false/absent = loisir.
@@ -116,6 +121,10 @@ export default defineSchema({
   budgetEffectifs: defineTable({
     saison: v.string(),
     nbMembresLoisir: v.number(),
+    // WIDEN : effectifs réellement inscrits en cours, saisis par public.
+    // Ces champs restent optionnels pour préserver les saisons historiques.
+    nbMineursCours: v.optional(v.number()),
+    nbAdultesCours: v.optional(v.number()),
   }).index("by_saison", ["saison"]),
 
   // Paramètres globaux de paie (cotisations, marges…) par saison.

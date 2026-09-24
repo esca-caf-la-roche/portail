@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
-import { Plus, CalendarDays, Save } from "lucide-react";
+import { Plus, CalendarDays, Save, TriangleAlert } from "lucide-react";
 import { useSeason } from "../../contexts/SeasonContext";
 import CoursFormModal, {
   type CoursRow,
@@ -46,6 +46,7 @@ type CoursDisplay = {
   nbElevesMax: number;
   nbSemaines: number;
   competition: boolean;
+  publicCible?: "mineurs" | "adultes";
   analytiqueId?: Id<"analytiques">;
   moniteurs: Array<{ salarieId: Id<"salaries">; nbSemaines: number; nom: string }>;
   seances: Array<{ jour: number; heureDebut: string; dureeHeures: number }>;
@@ -116,6 +117,7 @@ export default function PlanningCours({ isAdmin }: Props) {
           nbElevesMax: c.nbElevesMax,
           nbSemaines: c.nbSemaines,
           competition: c.competition,
+          publicCible: c.publicCible,
           analytiqueId: c.analytiqueId,
           seances: c.seances,
         });
@@ -132,7 +134,7 @@ export default function PlanningCours({ isAdmin }: Props) {
       if (ex) ex.nbCreneaux += 1;
       else
         map.set(c.nom, {
-          type: { nom: c.nom, tarifAnnuel: c.tarifAnnuel, nbElevesMax: c.nbElevesMax, nbSemaines: c.nbSemaines, competition: c.competition, analytiqueId: c.analytiqueId, seances: c.seances },
+          type: { nom: c.nom, tarifAnnuel: c.tarifAnnuel, nbElevesMax: c.nbElevesMax, nbSemaines: c.nbSemaines, competition: c.competition, publicCible: c.publicCible, analytiqueId: c.analytiqueId, seances: c.seances },
           nbCreneaux: 1,
         });
     }
@@ -203,6 +205,7 @@ export default function PlanningCours({ isAdmin }: Props) {
       nbElevesMax: c.nbElevesMax,
       nbSemaines: c.nbSemaines,
       competition: c.competition,
+      publicCible: c.publicCible,
       moniteurs: c.moniteurs.map((m) => ({ salarieId: m.salarieId, nbSemaines: m.nbSemaines })),
       seances: c.seances,
     });
@@ -272,6 +275,15 @@ export default function PlanningCours({ isAdmin }: Props) {
         </section>
       ) : (
         <>
+          {cours.some((c) => !c.publicCible) && (
+            <div className="budget-alert budget-alert--danger" role="alert">
+              <TriangleAlert size={22} aria-hidden="true" />
+              <span>
+                Certains cours historiques n’ont pas de public cible. Choisissez « Mineurs » ou
+                « Adultes » dans le tableau ci-dessous pour les inclure dans la rentabilité.
+              </span>
+            </div>
+          )}
           {isAdmin && (
             <p style={{ color: "#6b7280", fontSize: "0.85rem", margin: "0 0 0.75rem" }}>
               Survolez un créneau pour le détail · cliquez pour le modifier · utilisez les « + » pour ajouter.
@@ -295,6 +307,7 @@ export default function PlanningCours({ isAdmin }: Props) {
               <thead>
                 <tr style={{ borderBottom: "2px solid #e5e7eb", textAlign: "left" }}>
                   <th style={{ padding: "0.6rem 0.5rem" }}>Type de cours</th>
+                  <th style={{ padding: "0.6rem 0.5rem" }}>Public</th>
                   <th style={{ padding: "0.6rem 0.5rem" }}>Analytique</th>
                   <th style={{ padding: "0.6rem 0.5rem" }}>Compétition&nbsp;?</th>
                   <th style={{ padding: "0.6rem 0.5rem", textAlign: "right" }}>Tarif/an (€)</th>
@@ -322,7 +335,7 @@ export default function PlanningCours({ isAdmin }: Props) {
             </table>
             <p style={{ color: "#6b7280", fontSize: "0.85rem", marginTop: "0.75rem", marginBottom: 0 }}>
               Le tarif, le nombre d'élèves, de semaines et l'analytique sont communs à tous les
-              créneaux d'un même type (cascade). Les jours/horaires, durées et moniteurs se modifient
+              créneaux d'un même type (cascade), tout comme le public. Les jours/horaires, durées et moniteurs se modifient
               sur chaque créneau (clic dans le diagramme). L'analytique alimente automatiquement une
               ligne d'inscription dans le prévisionnel (1 par analytique = Σ tarif × élèves max).
             </p>
@@ -363,6 +376,7 @@ function TypeRow({
   const [eleves, setEleves] = useState(String(type.nbElevesMax));
   const [semaines, setSemaines] = useState(String(type.nbSemaines));
   const [competition, setCompetition] = useState(type.competition);
+  const [publicCible, setPublicCible] = useState<"mineurs" | "adultes" | "">(type.publicCible ?? "");
   const [analytiqueId, setAnalytiqueId] = useState<string>(type.analytiqueId ?? "");
   const [saving, setSaving] = useState(false);
 
@@ -373,8 +387,9 @@ function TypeRow({
     setEleves(String(type.nbElevesMax));
     setSemaines(String(type.nbSemaines));
     setCompetition(type.competition);
+    setPublicCible(type.publicCible ?? "");
     setAnalytiqueId(type.analytiqueId ?? "");
-  }, [type.tarifAnnuel, type.nbElevesMax, type.nbSemaines, type.competition, type.analytiqueId]);
+  }, [type.tarifAnnuel, type.nbElevesMax, type.nbSemaines, type.competition, type.publicCible, type.analytiqueId]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const dirty =
@@ -382,6 +397,7 @@ function TypeRow({
     parseInt(eleves, 10) !== type.nbElevesMax ||
     parseInt(semaines, 10) !== type.nbSemaines ||
     competition !== type.competition ||
+    publicCible !== (type.publicCible ?? "") ||
     analytiqueId !== (type.analytiqueId ?? "");
 
   const hSem = type.seances.reduce((a, s) => a + s.dureeHeures, 0);
@@ -396,6 +412,7 @@ function TypeRow({
         nbElevesMax: parseInt(eleves, 10) || 0,
         nbSemaines: parseInt(semaines, 10) || 0,
         competition,
+        publicCible: publicCible || null,
         analytiqueId: analytiqueId ? (analytiqueId as Id<"analytiques">) : null,
       });
     } catch (err) {
@@ -414,6 +431,27 @@ function TypeRow({
       <td style={{ padding: "0.5rem 0.5rem" }}>
         <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: 2, marginRight: 8, backgroundColor: color }} />
         <strong>{type.nom}</strong>
+      </td>
+      <td style={{ padding: "0.5rem 0.5rem" }}>
+        {isAdmin ? (
+          <select
+            className="input-field"
+            style={{ margin: 0, padding: "0.3rem 0.4rem", minWidth: 125 }}
+            value={publicCible}
+            onChange={(event) => setPublicCible(event.target.value as "mineurs" | "adultes" | "")}
+            aria-label={`Public du type ${type.nom}`}
+          >
+            <option value="" disabled>À classer</option>
+            <option value="mineurs">Mineurs</option>
+            <option value="adultes">Adultes</option>
+          </select>
+        ) : publicCible ? (
+          <span className={`public-cible-badge public-cible-badge--${publicCible}`}>
+            {publicCible === "mineurs" ? "Mineurs" : "Adultes"}
+          </span>
+        ) : (
+          <span className="public-cible-badge public-cible-badge--unknown">Non classé</span>
+        )}
       </td>
       <td style={{ padding: "0.5rem 0.5rem" }}>
         {isAdmin ? (
@@ -476,9 +514,9 @@ function TypeRow({
           <button
             className="btn-icon info"
             onClick={save}
-            disabled={!dirty || saving}
-            title={dirty ? "Enregistrer (cascade sur tous les créneaux)" : "Aucune modification"}
-            style={{ opacity: dirty ? 1 : 0.4 }}
+            disabled={!dirty || saving || !publicCible}
+            title={!publicCible ? "Choisissez d’abord le public" : dirty ? "Enregistrer (cascade sur tous les créneaux)" : "Aucune modification"}
+            style={{ opacity: dirty && publicCible ? 1 : 0.4 }}
           >
             <Save size={16} />
           </button>

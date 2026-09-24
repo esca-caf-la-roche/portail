@@ -24,7 +24,7 @@ le détail métier de chaque module.
 | Tableau de bord `/` | `src/pages/Dashboard.tsx`, `src/config/tiles.ts` | `convex/users.ts`, `convex/abo/compteur.ts` (répartition cours/abonnements matérialisée) |
 | Comptabilité `/compta` | `src/pages/Compta.tsx` | `convex/transactions.ts`, `convex/tiers.ts`, `convex/analytiques.ts`, `convex/typesDocuments.ts` |
 | Paiements `/paiements/*` | `src/pages/Paiements/` | `convex/paiements.ts`, `convex/helloasso.ts`, `convex/drive.ts` |
-| Budget `/budget/*` | `src/pages/Budget/` | `convex/paie.ts`, `convex/cours.ts`, `convex/previsionnels.ts`, `convex/effectifs.ts` |
+| Budget `/budget/*` | `src/pages/Budget/`, dont `RepartitionRecettes.tsx` | `convex/paie.ts`, `convex/cours.ts`, `convex/previsionnels.ts`, `convex/effectifs.ts`, `convex/budgetRecettes.ts` |
 | Licences `/licences-cours` | `src/pages/LicencesEnCours.tsx` | `convex/abo/licencesEnCours.ts`, `convex/abo/licences.ts`, `convex/abo/sync.ts` |
 | Contacts des cours `/contacts-cours`, `/contacts-cours/copier` | `src/pages/ContactsCours.tsx`, `src/pages/ContactsCoursCopie.tsx`, `src/utils/contactsCours.ts` | `convex/contactsCours.ts`, `convex/abo/sync.ts` |
 | Remboursements élèves `/remboursements-eleves` | `src/pages/RemboursementsEleves.tsx`, `src/utils/remboursements.ts` | `convex/remboursements.ts`, `convex/remboursementsHelloAsso.ts` |
@@ -87,7 +87,7 @@ La documentation fonctionnelle complète est dans
 | Tuiles | `src/components/Tile.tsx` | Navigation du tableau de bord |
 | Formulaire de transaction | `src/components/TransactionFormModal.tsx` | Comptabilité |
 | Formulaire prévisionnel | `src/components/PrevisionnelFormModal.tsx` | Budget prévisionnel |
-| Composants Budget | `src/components/Budget/` | Cours, salariés et paramètres |
+| Composants Budget | `src/components/Budget/` | Cours, salariés, paramètres, camembert des recettes et cartes de rentabilité |
 | Calcul de paie | `src/utils/paieCompute.ts` | Calculs purs du budget |
 | Planning | `src/utils/planning.ts` | Manipulation des séances |
 | Contacts des cours | `src/utils/contactsCours.ts` | Recherche normalisée, découpage des encadrants, dédoublonnage et lots de 99 emails, empreinte de sélection et liens de contact |

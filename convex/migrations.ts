@@ -14,6 +14,134 @@ export const migrations = new Migrations<DataModel, typeof schema>(
   { schema },
 );
 
+type PublicCibleCours = "mineurs" | "adultes";
+type OriginePublicCibleCours =
+  | "nom_mineurs"
+  | "nom_adultes"
+  | "ambigu";
+
+export type ClassificationPublicCibleCours = {
+  publicCible?: PublicCibleCours;
+  origine: OriginePublicCibleCours;
+};
+
+/**
+ * Classe les noms explicites sans deviner à partir d'un horaire ou d'un tarif.
+ * Les noms ambigus restent sans valeur : l'inspection ci-dessous les signale
+ * afin qu'ils soient arbitrés dans l'UI.
+ */
+export function classifierPublicCibleCours(
+  nom: string,
+): ClassificationPublicCibleCours {
+  const nomNormalise = nom
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("fr")
+    .replace(/[^a-z0-9+]+/g, " ")
+    .trim();
+
+  const mentionMineurs =
+    /\b(mineurs?|enfants?|jeunes?|ados?|adolescents?|baby|babies|poussins?|benjamins?|cadets?)\b/.test(
+      nomNormalise,
+    );
+  const mentionAdultes =
+    /\b(adultes?|seniors?|18\s*(ans)?\s*\+)\b/.test(nomNormalise);
+  const ages = [...nomNormalise.matchAll(/\b(\d{1,2})\s*ans?\b/g)].map(
+    (match) => Number(match[1]),
+  );
+  const trancheExclusivementMineure =
+    ages.length > 0 && Math.max(...ages) < 18;
+
+  if ((mentionMineurs || trancheExclusivementMineure) && !mentionAdultes) {
+    return { publicCible: "mineurs", origine: "nom_mineurs" };
+  }
+  if (mentionAdultes && !mentionMineurs && !trancheExclusivementMineure) {
+    return { publicCible: "adultes", origine: "nom_adultes" };
+  }
+
+  return { origine: "ambigu" };
+}
+
+/**
+ * WIDEN -> MIGRATE (puis NARROW dans un déploiement ultérieur) : renseigne le
+ * public des cours historiques. Définition uniquement ; exécution supervisée
+ * d'abord en DEV, puis en PROD après accord explicite.
+ *
+ * Idempotence : un cours déjà classé, notamment corrigé depuis l'UI, n'est
+ * jamais réécrit.
+ */
+export const migrateCoursPublicCible = migrations.define({
+  table: "cours",
+  migrateOne: async (ctx, cours) => {
+    if (cours.publicCible !== undefined) return;
+    const { publicCible } = classifierPublicCibleCours(cours.nom);
+    if (publicCible === undefined) return;
+    await ctx.db.patch(cours._id, { publicCible });
+  },
+});
+
+const vInspectionPublicCibleCours = v.object({
+  lus: v.number(),
+  sans_public_cible: v.number(),
+  mineurs: v.number(),
+  adultes: v.number(),
+  detectes_nom_mineurs: v.number(),
+  detectes_nom_adultes: v.number(),
+  noms_ambigus: v.number(),
+  ambigus_a_corriger: v.number(),
+  corrections_manuelles: v.number(),
+  continueCursor: v.string(),
+  isDone: v.boolean(),
+});
+
+// Rapport paginé non nominatif à lancer avant/après migration. Les lignes
+// `ambigus_a_corriger` sont les lignes à arbitrer dans l'UI.
+export const inspectCoursPublicCible = internalQuery({
+  args: { paginationOpts: paginationOptsValidator },
+  returns: vInspectionPublicCibleCours,
+  handler: async (ctx, args) => {
+    const page = await ctx.db.query("cours").paginate(args.paginationOpts);
+    const resume = {
+      lus: page.page.length,
+      sans_public_cible: 0,
+      mineurs: 0,
+      adultes: 0,
+      detectes_nom_mineurs: 0,
+      detectes_nom_adultes: 0,
+      noms_ambigus: 0,
+      ambigus_a_corriger: 0,
+      corrections_manuelles: 0,
+      continueCursor: page.continueCursor,
+      isDone: page.isDone,
+    };
+
+    for (const cours of page.page) {
+      const classification = classifierPublicCibleCours(cours.nom);
+      if (cours.publicCible === undefined) resume.sans_public_cible++;
+      else resume[cours.publicCible]++;
+
+      if (classification.origine === "nom_mineurs") {
+        resume.detectes_nom_mineurs++;
+      } else if (classification.origine === "nom_adultes") {
+        resume.detectes_nom_adultes++;
+      } else {
+        resume.noms_ambigus++;
+        if (cours.publicCible === undefined) resume.ambigus_a_corriger++;
+      }
+
+      if (
+        classification.publicCible !== undefined &&
+        cours.publicCible !== undefined &&
+        cours.publicCible !== classification.publicCible
+      ) {
+        resume.corrections_manuelles++;
+      }
+    }
+
+    return resume;
+  },
+});
+
 /**
  * WIDEN -> MIGRATE (puis NARROW dans un déploiement ultérieur) : matérialise
  * le périmètre de contrôle des licences dans la projection compacte.

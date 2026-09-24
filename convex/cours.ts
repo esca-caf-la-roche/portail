@@ -12,6 +12,8 @@ const seanceValidator = v.object({
   dureeHeures: v.number(),
 });
 
+const publicCibleValidator = v.union(v.literal("mineurs"), v.literal("adultes"));
+
 /** Répartit les semaines du cours entre ses moniteurs : nbSemaines / nb moniteurs.
  *  La virgule est admise (prévisionnel). Pour un seul moniteur => toutes les semaines. */
 function repartirMoniteurs(
@@ -117,7 +119,7 @@ async function cascadeTypeCours(
   saison: string,
   nom: string,
   exclureId: Id<"cours">,
-  shared: { tarifAnnuel: number; nbElevesMax: number; nbSemaines: number; seances: Seance[]; competition: boolean; analytiqueId: Id<"analytiques"> | undefined }
+  shared: { tarifAnnuel: number; nbElevesMax: number; nbSemaines: number; seances: Seance[]; competition: boolean; analytiqueId: Id<"analytiques"> | undefined; publicCible: "mineurs" | "adultes" | undefined }
 ): Promise<number> {
   const siblings = (await ctx.db
     .query("cours")
@@ -131,6 +133,7 @@ async function cascadeTypeCours(
       nbSemaines: shared.nbSemaines,
       competition: shared.competition,
       analytiqueId: shared.analytiqueId,
+      publicCible: shared.publicCible,
       seances: alignerSeances(shared.seances, sib.seances),
       // Le nb de semaines a pu changer => on redistribue entre les moniteurs du créneau.
       moniteurs: repartirMoniteurs(sib.moniteurs.map((m) => m.salarieId), shared.nbSemaines),
@@ -225,6 +228,7 @@ export const addCours = mutation({
     nbElevesMax: v.number(),
     nbSemaines: v.number(),
     competition: v.optional(v.boolean()),
+    publicCible: publicCibleValidator,
     moniteurs: v.array(v.id("salaries")), // liste de moniteurs ; semaines réparties auto
     seances: v.array(seanceValidator),
   },
@@ -253,10 +257,21 @@ export const addCours = mutation({
     const nbElevesMax = modele ? modele.nbElevesMax : args.nbElevesMax;
     const nbSemaines = modele ? (modele.nbSemaines ?? args.nbSemaines) : args.nbSemaines;
     const competition = modele ? (modele.competition ?? false) : (args.competition ?? false);
+    const publicCible = modele?.publicCible ?? args.publicCible;
     // L'analytique est un attribut de type : un nouveau créneau hérite de celle du type
     // existant (cascade). Pour un type inédit, elle reste à définir dans le tableau.
     const analytiqueId = modele ? modele.analytiqueId : undefined;
     const seances = modele ? alignerSeances(modele.seances, args.seances) : args.seances;
+
+    // Un type historique peut encore être non classé pendant le rollout. Le choix
+    // obligatoire fait dans la modale devient alors la valeur commune du type.
+    if (modele && modele.publicCible === undefined) {
+      for (const coursExistant of tousCours) {
+        if (coursExistant.nom === nom && coursExistant.publicCible === undefined) {
+          await ctx.db.patch(coursExistant._id, { publicCible });
+        }
+      }
+    }
 
     const id = await ctx.db.insert("cours", {
       saison: args.saison,
@@ -266,6 +281,7 @@ export const addCours = mutation({
       nbElevesMax,
       nbSemaines,
       competition,
+      publicCible,
       analytiqueId,
       moniteurs: repartirMoniteurs(args.moniteurs, nbSemaines),
       seances,
@@ -285,6 +301,7 @@ export const updateCours = mutation({
     nbElevesMax: v.optional(v.number()),
     nbSemaines: v.optional(v.number()),
     competition: v.optional(v.boolean()),
+    publicCible: v.optional(v.union(publicCibleValidator, v.null())),
     moniteurs: v.optional(v.array(v.id("salaries"))),
     seances: v.optional(v.array(seanceValidator)),
   },
@@ -305,6 +322,7 @@ export const updateCours = mutation({
     if (args.nbElevesMax !== undefined) updates.nbElevesMax = args.nbElevesMax;
     if (args.nbSemaines !== undefined) updates.nbSemaines = args.nbSemaines;
     if (args.competition !== undefined) updates.competition = args.competition;
+    if (args.publicCible !== undefined) updates.publicCible = args.publicCible ?? undefined;
     if (args.seances !== undefined) {
       if (args.seances.length === 0) {
         throw new Error("Un cours doit comporter au moins une séance.");
@@ -341,6 +359,7 @@ export const updateCours = mutation({
         nbSemaines: finalCours.nbSemaines ?? finalCours.moniteurs.reduce((a, m) => a + m.nbSemaines, 0),
         competition: finalCours.competition ?? false,
         analytiqueId: finalCours.analytiqueId,
+        publicCible: finalCours.publicCible,
         seances: finalCours.seances,
       });
       await syncInscriptionsPrevisionnel(ctx, finalCours.saison);
@@ -370,6 +389,7 @@ export const updateTypeCours = mutation({
     nbElevesMax: v.number(),
     nbSemaines: v.number(),
     competition: v.optional(v.boolean()),
+    publicCible: v.optional(v.union(publicCibleValidator, v.null())),
     // Analytique du type. Id = rattacher, null = retirer le lien, omis = ne pas toucher.
     analytiqueId: v.optional(v.union(v.id("analytiques"), v.null())),
   },
@@ -386,6 +406,7 @@ export const updateTypeCours = mutation({
         nbElevesMax: args.nbElevesMax,
         nbSemaines: args.nbSemaines,
         ...(args.competition !== undefined ? { competition: args.competition } : {}),
+        ...(args.publicCible !== undefined ? { publicCible: args.publicCible ?? undefined } : {}),
         ...(args.analytiqueId !== undefined ? { analytiqueId: args.analytiqueId ?? undefined } : {}),
         moniteurs: repartirMoniteurs(c.moniteurs.map((m) => m.salarieId), args.nbSemaines),
       });
@@ -432,6 +453,7 @@ export const reprendrePlanningSaisonPrecedente = mutation({
         nbSemaines: c.nbSemaines,
         competition: c.competition,
         analytiqueId: c.analytiqueId,
+        publicCible: c.publicCible,
         moniteurs: c.moniteurs,
         seances: c.seances,
         ordre: c.ordre,
@@ -467,6 +489,7 @@ export const importPlanning = internalMutation({
         nbElevesMax: v.number(),
         nbSemaines: v.number(),
         competition: v.optional(v.boolean()),
+        publicCible: v.optional(publicCibleValidator),
         seances: v.array(seanceValidator),
         // Liste de prénoms ; les semaines sont réparties automatiquement.
         moniteurs: v.array(v.object({ prenom: v.string() })),
@@ -518,6 +541,7 @@ export const importPlanning = internalMutation({
         nbElevesMax: c.nbElevesMax,
         nbSemaines: c.nbSemaines,
         competition: c.competition ?? false,
+        publicCible: c.publicCible,
         moniteurs: repartirMoniteurs(
           c.moniteurs.map((m) => resolve(m.prenom)),
           c.nbSemaines

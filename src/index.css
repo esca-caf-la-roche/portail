@@ -3988,3 +3988,369 @@ a.btn-primary {
     grid-template-columns: 1fr;
   }
 }
+
+/* Budget prévisionnel — navigation et répartition des recettes */
+.budget-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+  padding: 0 0.25rem 0.5rem 0;
+  overflow-x: auto;
+  border-bottom: var(--border-width) solid var(--border-color);
+}
+
+.budget-tabs button {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 0.65rem 0.85rem;
+  border: var(--border-width) solid var(--border-color);
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow: 3px 3px 0 var(--border-color);
+  font: 800 0.82rem var(--font-sans);
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+
+.budget-tabs button:hover,
+.budget-tabs button:focus-visible {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 var(--border-color);
+}
+
+.budget-tabs button[aria-pressed="true"] {
+  background: var(--warning);
+  transform: translate(3px, 3px);
+  box-shadow: none;
+}
+
+.repartition-recettes {
+  display: grid;
+  gap: 2rem;
+}
+
+.recettes-chart-card {
+  margin: 0;
+}
+
+.recettes-section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.recettes-section-heading p,
+.effectifs-cours-form p {
+  margin-top: 0.25rem;
+  font-weight: 600;
+}
+
+.recettes-chart-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(280px, 1.2fr);
+  align-items: center;
+  gap: 2rem;
+}
+
+.recettes-pie-wrap {
+  position: relative;
+  width: min(100%, 360px);
+  aspect-ratio: 1;
+  margin: 0 auto;
+}
+
+.recettes-pie {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+  filter: drop-shadow(5px 5px 0 var(--border-color));
+}
+
+.recettes-pie__base,
+.recettes-pie__segment {
+  fill: none;
+  stroke-width: 9;
+}
+
+.recettes-pie__base {
+  stroke: var(--card);
+}
+
+.recettes-pie__segment {
+  stroke-linecap: butt;
+}
+
+.recettes-pie-total {
+  position: absolute;
+  inset: 34%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.recettes-pie-total strong {
+  font-size: clamp(0.85rem, 2.5vw, 1.25rem);
+}
+
+.recettes-pie-total span {
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.recettes-legend {
+  display: grid;
+  gap: 0.65rem;
+  list-style: none;
+}
+
+.recettes-legend li {
+  display: grid;
+  grid-template-columns: 1.25rem minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.65rem;
+  border: 2px solid var(--border-color);
+  background: var(--card);
+}
+
+.recettes-legend__color {
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 2px solid var(--border-color);
+}
+
+.recettes-legend__label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-weight: 800;
+}
+
+.recettes-legend__percent {
+  min-width: 3.5rem;
+  text-align: right;
+  font-weight: 700;
+}
+
+.recettes-cours-section {
+  display: grid;
+  gap: 1rem;
+}
+
+.budget-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  border: var(--border-width) solid var(--border-color);
+  box-shadow: 4px 4px 0 var(--border-color);
+  font-weight: 700;
+}
+
+.budget-alert svg {
+  flex: 0 0 auto;
+}
+
+.budget-alert--warning {
+  background: var(--warning);
+}
+
+.budget-alert--danger {
+  background: var(--primary);
+}
+
+.effectifs-cours-form {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) repeat(2, minmax(130px, 0.55fr)) auto;
+  align-items: end;
+  gap: 1rem;
+  padding: 1rem;
+  border: var(--border-width) solid var(--border-color);
+  background: var(--info);
+  box-shadow: var(--shadow);
+}
+
+.effectifs-cours-form label {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.effectifs-cours-form .input-field {
+  margin: 0;
+  background: var(--card);
+}
+
+.effectifs-cours-form .btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  width: auto;
+  min-height: 48px;
+  padding: 0.65rem 0.85rem;
+  white-space: nowrap;
+}
+
+.effectifs-cours-form__error {
+  grid-column: 1 / -1;
+  padding: 0.5rem;
+  border: 2px solid var(--border-color);
+  background: var(--danger);
+  color: var(--card);
+}
+
+.cours-rentabilite-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.5rem;
+}
+
+.cours-rentabilite-card {
+  padding: 1.25rem;
+  border: var(--border-width) solid var(--border-color);
+  box-shadow: var(--shadow);
+}
+
+.cours-rentabilite-card--mineurs {
+  background: var(--warning);
+}
+
+.cours-rentabilite-card--adultes {
+  background: var(--success);
+}
+
+.cours-rentabilite-card__formula {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.cours-rentabilite-card__formula > div:not(.cours-rentabilite-card__operator) {
+  min-width: 0;
+  padding: 0.65rem;
+  border: 2px solid var(--border-color);
+  background: var(--card);
+}
+
+.cours-rentabilite-card__formula dt {
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.cours-rentabilite-card__formula dd {
+  margin-top: 0.2rem;
+  overflow-wrap: anywhere;
+  font-family: monospace;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.cours-rentabilite-card__operator {
+  font-size: 1.6rem;
+  font-weight: 800;
+}
+
+.cours-rentabilite-card__result {
+  box-shadow: 3px 3px 0 var(--border-color);
+}
+
+.cours-rentabilite-card__participant {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: var(--border-width) solid var(--border-color);
+}
+
+.public-cible-badge {
+  display: inline-block;
+  padding: 0.2rem 0.45rem;
+  border: 2px solid var(--border-color);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.public-cible-badge--mineurs {
+  background: var(--warning);
+}
+
+.public-cible-badge--adultes {
+  background: var(--success);
+}
+
+.public-cible-badge--unknown {
+  background: var(--primary);
+}
+
+.form-help {
+  margin-top: 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+@media (max-width: 900px) {
+  .recettes-chart-layout,
+  .cours-rentabilite-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .effectifs-cours-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .effectifs-cours-form > div,
+  .effectifs-cours-form .btn-primary {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 560px) {
+  .recettes-legend li {
+    grid-template-columns: 1.25rem minmax(0, 1fr) auto;
+  }
+
+  .recettes-legend li strong {
+    grid-column: 2 / -1;
+    justify-self: start;
+  }
+
+  .recettes-legend__percent {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  .effectifs-cours-form {
+    grid-template-columns: 1fr;
+  }
+
+  .effectifs-cours-form > * {
+    grid-column: 1;
+  }
+
+  .cours-rentabilite-card__formula {
+    grid-template-columns: 1fr;
+  }
+
+  .cours-rentabilite-card__operator {
+    text-align: center;
+    line-height: 1;
+  }
+
+  .cours-rentabilite-card__participant {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
