@@ -636,7 +636,7 @@ function ModalReservation({
         ) : jours.size === 0 ? (
           <div className="abo-placeholder">
             <p>Aucun créneau disponible pour l'instant.</p>
-            <NotificationDisponibilitesTest cible={{ type: "dossier", personneId }} />
+            <NotificationDisponibilitesTest />
           </div>
         ) : (
           <><div className="abo-resa-jours">
@@ -661,7 +661,7 @@ function ModalReservation({
                 </div>
               </div>
             ))}
-          </div><NotificationDisponibilitesTest masquerSiInactif cible={{ type: "dossier", personneId }} /></>
+          </div><NotificationDisponibilitesTest /></>
         )}
 
         {msg && (

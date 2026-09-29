@@ -17,6 +17,53 @@ const URL_RESERVATION = "https://esca-caf-la-roche.github.io/portail/#/abonnemen
 
 type Ctx = QueryCtx | MutationCtx;
 type StatutAttente = Doc<"abo_test_attentes_notifications">["statut"];
+const STATUTS_AUTONOMIE_A_NOTIFIER = [
+  "Recherche du test en cours",
+  "Doit passer le test",
+] as const;
+
+function emailCanonique(email: string): string {
+  return email.trim().toLocaleLowerCase("fr-FR");
+}
+
+function emailValide(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function licenceValide(licence: string): boolean {
+  return /^(?:\d{12}|\d{14})$/.test(licence.trim());
+}
+
+function estReservationBloquante(r: Doc<"abo_test_reservations">): boolean {
+  return r.statut === "active"
+    && r.resultat_test !== "non_valide"
+    && r.resultat_test !== "absent";
+}
+
+async function scrapEligibleNotificationForcee(
+  ctx: Ctx,
+  scrap: Doc<"abo_abonnes_scrap">,
+  cleEmail?: string,
+): Promise<boolean> {
+  const email = scrap.email ? emailCanonique(scrap.email) : "";
+  const licence = scrap.licence?.trim();
+  if (
+    !STATUTS_AUTONOMIE_A_NOTIFIER.includes(scrap.autonomie as typeof STATUTS_AUTONOMIE_A_NOTIFIER[number]) ||
+    scrap.age === undefined ||
+    scrap.age < 16 ||
+    !scrap.nom?.trim() ||
+    !scrap.prenom?.trim() ||
+    !emailValide(email) ||
+    (cleEmail !== undefined && email !== cleEmail) ||
+    !licence ||
+    !licenceValide(licence)
+  ) return false;
+  const eleve = await ctx.db
+    .query("abo_eleves_en_cours")
+    .withIndex("by_licence", (q) => q.eq("licence", licence))
+    .first();
+  return !eleve && !(await reservationActivePourLicence(ctx, licence));
+}
 
 function cleDirecte(id: Id<"abo_test_candidats_directs">): string {
   return `direct:${id}`;
@@ -31,7 +78,7 @@ async function reservationActivePourLicence(ctx: Ctx, licence: string): Promise<
     .query("abo_test_reservations")
     .withIndex("by_candidat_licence", (q) => q.eq("candidat_licence", licence))
     .collect();
-  if (directes.some((r) => r.statut === "active")) return true;
+  if (directes.some(estReservationBloquante)) return true;
 
   const personnes = await ctx.db
     .query("abo_personnes")
@@ -42,7 +89,7 @@ async function reservationActivePourLicence(ctx: Ctx, licence: string): Promise<
       .query("abo_test_reservations")
       .withIndex("by_personne", (q) => q.eq("personne_id", personne._id))
       .collect();
-    if (reservations.some((r) => r.statut === "active")) return true;
+    if (reservations.some(estReservationBloquante)) return true;
   }
   return false;
 }
@@ -123,12 +170,6 @@ export async function marquerAttente(
 export async function ouvrirLotNotification(
   ctx: MutationCtx,
 ): Promise<Id<"abo_test_notification_lots"> | undefined> {
-  const attente = await ctx.db
-    .query("abo_test_attentes_notifications")
-    .withIndex("by_statut", (q) => q.eq("statut", "en_attente"))
-    .first();
-  if (!attente) return undefined;
-
   const existant = await ctx.db
     .query("abo_test_notification_lots")
     .withIndex("by_statut", (q) => q.eq("statut", "en_attente"))
@@ -137,9 +178,11 @@ export async function ouvrirLotNotification(
 
   const maintenant = Date.now();
   const lotId = await ctx.db.insert("abo_test_notification_lots", {
+    mode: "nouveaux_creneaux",
     statut: "en_attente",
     ouvert_le: maintenant,
     envoi_prevu_le: maintenant + DELAI_REGROUPEMENT_MS,
+    phase_preparation: "attentes",
   });
   await ctx.scheduler.runAfter(
     DELAI_REGROUPEMENT_MS,
@@ -148,6 +191,40 @@ export async function ouvrirLotNotification(
   );
   return lotId;
 }
+
+async function creerLotRattrapage(
+  ctx: MutationCtx,
+  cleIdempotence: string,
+): Promise<Id<"abo_test_notification_lots">> {
+  const cle = cleIdempotence.trim();
+  if (!cle || cle.length > 120) {
+    throw new ConvexError({ code: "ABO_TEST_CLE_RATTRAPAGE_INVALIDE", message: "Clé de rattrapage requise (120 caractères maximum)." });
+  }
+  const existant = await ctx.db
+    .query("abo_test_notification_lots")
+    .withIndex("by_cle_idempotence", (q) => q.eq("cle_idempotence", cle))
+    .unique();
+  if (existant) return existant._id;
+  const maintenant = Date.now();
+  const lotId = await ctx.db.insert("abo_test_notification_lots", {
+    mode: "rattrapage",
+    cle_idempotence: cle,
+    statut: "en_attente",
+    ouvert_le: maintenant,
+    envoi_prevu_le: maintenant,
+    phase_preparation: "attentes",
+  });
+  await ctx.scheduler.runAfter(0, internal.abo.testNotifications.envoyerLot, { lotId });
+  return lotId;
+}
+
+// Endpoint exclusivement serveur pour une exécution de maintenance via le CLI
+// Convex. La clé explicite rend tout rejeu idempotent.
+export const declencherRattrapageInterne = internalMutation({
+  args: { cleIdempotence: v.string() },
+  returns: v.id("abo_test_notification_lots"),
+  handler: async (ctx, args) => await creerLotRattrapage(ctx, args.cleIdempotence),
+});
 
 export const mesSuivisDisponibilites = authenticatedQuery({
   args: {},
@@ -260,6 +337,7 @@ export const suivrePersonneDossier = authenticatedMutation({
 type ContexteDestinataire = {
   destinataire: string;
   personnes: string[];
+  licences: string[];
 };
 
 async function contexteDestinataire(
@@ -304,7 +382,85 @@ async function contexteDestinataire(
       }
     }
   }
-  return personnes.length > 0 ? { destinataire, personnes: [...new Set(personnes)] } : null;
+  return personnes.length > 0 ? { destinataire, personnes: [...new Set(personnes)], licences: [] } : null;
+}
+
+async function contexteScrap(
+  ctx: Ctx,
+  destinataire: string,
+  licences: string[],
+): Promise<ContexteDestinataire | null> {
+  const cle = emailCanonique(destinataire);
+  const personnes: string[] = [];
+  const licencesEligibles: string[] = [];
+  for (const licence of licences) {
+    const scrap = await ctx.db
+      .query("abo_abonnes_scrap")
+      .withIndex("by_licence", (q) => q.eq("licence", licence))
+      .first();
+    if (!scrap || !(await scrapEligibleNotificationForcee(ctx, scrap, cle))) continue;
+    const prenom = scrap.prenom?.trim();
+    const nom = scrap.nom?.trim();
+    const licenceEligible = scrap.licence?.trim();
+    if (!prenom || !nom || !licenceEligible) continue;
+    personnes.push(`${prenom} ${nom}`);
+    licencesEligibles.push(licenceEligible);
+  }
+  return personnes.length > 0
+    ? { destinataire: cle, personnes: [...new Set(personnes)], licences: [...new Set(licencesEligibles)] }
+    : null;
+}
+
+async function ajouterOuFusionnerEnvoi(
+  ctx: MutationCtx,
+  lotId: Id<"abo_test_notification_lots">,
+  destinataire: string,
+  personnes: string[],
+  licences: string[],
+  userId?: string,
+): Promise<boolean> {
+  const cle = emailCanonique(destinataire);
+  if (!emailValide(cle)) return false;
+  const existant = await ctx.db
+    .query("abo_test_notification_envois")
+    .withIndex("by_lot_id_and_cle_destinataire", (q) => q.eq("lot_id", lotId).eq("cle_destinataire", cle))
+    .first();
+  const existantHistorique = !existant && userId
+    ? await ctx.db
+        .query("abo_test_notification_envois")
+        .withIndex("by_lot_id_and_user_id", (q) => q.eq("lot_id", lotId).eq("user_id", userId))
+        .first()
+    : null;
+  const ligneExistante = existant ?? existantHistorique;
+  if (ligneExistante) {
+    const nouvellesPersonnes = [...new Set([...ligneExistante.personnes, ...personnes])];
+    const nouvellesLicences = [...new Set([...(ligneExistante.licences ?? []), ...licences])];
+    if (
+      ligneExistante.cle_destinataire !== cle ||
+      nouvellesPersonnes.length !== ligneExistante.personnes.length ||
+      nouvellesLicences.length !== (ligneExistante.licences?.length ?? 0)
+    ) {
+      await ctx.db.patch(ligneExistante._id, {
+        cle_destinataire: cle,
+        destinataire: cle,
+        personnes: nouvellesPersonnes,
+        licences: nouvellesLicences,
+      });
+    }
+    return false;
+  }
+  await ctx.db.insert("abo_test_notification_envois", {
+    lot_id: lotId,
+    user_id: userId,
+    cle_destinataire: cle,
+    destinataire: cle,
+    personnes: [...new Set(personnes)],
+    licences: [...new Set(licences)],
+    statut: "a_envoyer",
+    tentatives: 0,
+    cree_le: Date.now(),
+  });
+  return true;
 }
 
 export const preparerLot = internalMutation({
@@ -316,37 +472,50 @@ export const preparerLot = internalMutation({
     if (lot.preparation_terminee) return { terminee: true, crees: 0 };
     if (lot.statut === "en_attente") await ctx.db.patch(lot._id, { statut: "preparation" });
 
-    const page = await ctx.db
-      .query("abo_test_attentes_notifications")
-      .withIndex("by_statut", (q) => q.eq("statut", "en_attente"))
-      .paginate({ numItems: TAILLE_LOT_EMAIL, cursor: lot.curseur_attentes ?? null });
-    const userIds = [...new Set(page.page.map((attente) => attente.user_id))];
     let crees = 0;
-    for (const userId of userIds) {
-      const deja = await ctx.db
-        .query("abo_test_notification_envois")
-        .withIndex("by_lot_id_and_user_id", (q) => q.eq("lot_id", lot._id).eq("user_id", userId))
-        .first();
-      if (deja) continue;
-      const userDocId = ctx.db.normalizeId("users", userId);
-      const user = userDocId ? await ctx.db.get(userDocId) : null;
-      const destinataire = typeof user?.email === "string" ? user.email.trim() : "";
-      if (!destinataire) continue;
-      await ctx.db.insert("abo_test_notification_envois", {
-        lot_id: lot._id,
-        user_id: userId,
-        destinataire,
-        personnes: [],
-        statut: "a_envoyer",
-        tentatives: 0,
-        cree_le: Date.now(),
-      });
-      crees += 1;
+    if ((lot.phase_preparation ?? "attentes") === "attentes") {
+      const page = await ctx.db
+        .query("abo_test_attentes_notifications")
+        .withIndex("by_statut", (q) => q.eq("statut", "en_attente"))
+        .paginate({ numItems: TAILLE_LOT_EMAIL, cursor: lot.curseur_attentes ?? null });
+      const userIds = [...new Set(page.page.map((attente) => attente.user_id))];
+      for (const userId of userIds) {
+        const contexte = await contexteDestinataire(ctx, userId);
+        if (contexte && await ajouterOuFusionnerEnvoi(ctx, lot._id, contexte.destinataire, contexte.personnes, [], userId)) crees += 1;
+      }
+      await ctx.db.patch(lot._id, page.isDone
+        ? { curseur_attentes: undefined, phase_preparation: "scrap", curseur_scrap: undefined }
+        : { curseur_attentes: page.continueCursor });
+      return { terminee: false, crees };
     }
-    await ctx.db.patch(lot._id, page.isDone
-      ? { curseur_attentes: undefined, preparation_terminee: true }
-      : { curseur_attentes: page.continueCursor });
-    return { terminee: page.isDone, crees };
+
+    const curseurBrut = lot.curseur_scrap;
+    const secondStatut = curseurBrut?.startsWith("doit:") ?? false;
+    const statut = secondStatut ? STATUTS_AUTONOMIE_A_NOTIFIER[1] : STATUTS_AUTONOMIE_A_NOTIFIER[0];
+    const curseur = curseurBrut ? curseurBrut.slice(curseurBrut.indexOf(":") + 1) || null : null;
+    const page = await ctx.db
+      .query("abo_abonnes_scrap")
+      .withIndex("by_autonomie", (q) => q.eq("autonomie", statut))
+      .paginate({ numItems: TAILLE_LOT_EMAIL, cursor: curseur });
+    for (const scrap of page.page) {
+      const email = scrap.email ? emailCanonique(scrap.email) : "";
+      if (!(await scrapEligibleNotificationForcee(ctx, scrap))) continue;
+      const prenom = scrap.prenom?.trim();
+      const nom = scrap.nom?.trim();
+      const licence = scrap.licence?.trim();
+      if (!prenom || !nom || !licence) continue;
+      if (await ajouterOuFusionnerEnvoi(ctx, lot._id, email, [`${prenom} ${nom}`], [licence])) crees += 1;
+    }
+    if (!page.isDone) {
+      await ctx.db.patch(lot._id, { curseur_scrap: `${secondStatut ? "doit" : "recherche"}:${page.continueCursor}` });
+      return { terminee: false, crees };
+    }
+    if (!secondStatut) {
+      await ctx.db.patch(lot._id, { curseur_scrap: "doit:" });
+      return { terminee: false, crees };
+    }
+    await ctx.db.patch(lot._id, { curseur_scrap: undefined, preparation_terminee: true });
+    return { terminee: true, crees };
   },
 });
 
@@ -359,6 +528,15 @@ export const aDesEnvoisAEffectuer = internalQuery({
     .first()),
 });
 
+export const modeLot = internalQuery({
+  args: { lotId: v.id("abo_test_notification_lots") },
+  returns: v.union(v.literal("nouveaux_creneaux"), v.literal("rattrapage")),
+  handler: async (ctx, args) => {
+    const lot = await ctx.db.get(args.lotId);
+    return lot?.mode === "rattrapage" ? "rattrapage" : "nouveaux_creneaux";
+  },
+});
+
 export const reclamerProchainEnvoi = internalMutation({
   args: { lotId: v.id("abo_test_notification_lots") },
   handler: async (ctx, args) => {
@@ -367,7 +545,15 @@ export const reclamerProchainEnvoi = internalMutation({
       .withIndex("by_lot_id_and_statut", (q) => q.eq("lot_id", args.lotId).eq("statut", "a_envoyer"))
       .first();
     if (!envoi) return null;
-    const contexte = await contexteDestinataire(ctx, envoi.user_id);
+    const volontaire = envoi.user_id ? await contexteDestinataire(ctx, envoi.user_id) : null;
+    const force = await contexteScrap(ctx, envoi.destinataire, envoi.licences ?? []);
+    const contexte = volontaire || force
+      ? {
+          destinataire: force?.destinataire ?? volontaire!.destinataire,
+          personnes: [...new Set([...(volontaire?.personnes ?? []), ...(force?.personnes ?? [])])],
+          licences: force?.licences ?? [],
+        }
+      : null;
     if (!contexte) {
       await ctx.db.patch(envoi._id, { statut: "echec", tentatives: envoi.tentatives + 1, erreur: "Le candidat n'est plus éligible." });
       return null;
@@ -378,6 +564,7 @@ export const reclamerProchainEnvoi = internalMutation({
       reclame_le: Date.now(),
       destinataire: contexte.destinataire,
       personnes: contexte.personnes,
+      licences: contexte.licences,
     });
     return { envoiId: envoi._id, ...contexte };
   },
@@ -458,6 +645,7 @@ export const envoyerLot = internalAction({
   returns: v.null(),
   handler: async (ctx, args) => {
     await ctx.runMutation(internal.abo.testNotifications.recupererClaimsExpires, { lotId: args.lotId });
+    const mode = await ctx.runQuery(internal.abo.testNotifications.modeLot, { lotId: args.lotId });
     const creneaux = await ctx.runQuery(internal.abo.tests.disponibilitesPourNotification, { lotId: args.lotId });
     if (creneaux.length === 0) {
       await ctx.runMutation(internal.abo.testNotifications.finaliserLot, { lotId: args.lotId, sansDestinataire: true });
@@ -476,21 +664,25 @@ export const envoyerLot = internalAction({
       const texte = [
         "Bonjour,",
         "",
-        `Des disponibilités ont été ajoutées pour le test d'autonomie de ${contexte.personnes.join(", ")}.`,
+        mode === "rattrapage"
+          ? `Des créneaux sont actuellement disponibles pour le test d'autonomie de ${contexte.personnes.join(", ")}.`
+          : `Des disponibilités ont été ajoutées pour le test d'autonomie de ${contexte.personnes.join(", ")}.`,
         "Voici tous les créneaux actuellement réservables :",
         "",
         ...creneaux.map((creneau) => `- ${formaterCreneau(creneau.tranche_debut, creneau.tranche_fin)} (${creneau.disponible} place${creneau.disponible > 1 ? "s" : ""})`),
         "",
         `Réserver : ${URL_RESERVATION}`,
         "",
-        "Ce message est envoyé parce que vous avez demandé à être prévenu. Vous pouvez désactiver l'alerte depuis le portail.",
+        "Ce message vous est envoyé automatiquement car le test d'autonomie reste à passer et aucune réservation en cours n'est enregistrée.",
         "",
         "Commission abonnements — ESCA",
       ].join("\n");
       try {
         await ctx.runAction(internal.email.sendAboEmail, {
           to: contexte.destinataire,
-          subject: "Nouveaux créneaux de test d'autonomie",
+          subject: mode === "rattrapage"
+            ? "Créneaux actuellement disponibles pour le test d'autonomie"
+            : "Nouveaux créneaux de test d'autonomie",
           text: texte,
         });
         await ctx.runMutation(internal.abo.testNotifications.terminerEnvoi, { envoiId: contexte.envoiId, succes: true });

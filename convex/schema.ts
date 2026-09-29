@@ -1037,6 +1037,7 @@ export default defineSchema({
     last_scrap_at: v.optional(v.string()),
   })
     .index("by_licence", ["licence"])
+    .index("by_autonomie", ["autonomie"])
     .index("by_nom_prenom_normalise", ["nom_prenom_normalise"]),
 
   // SAISON-EXEMPT: acquittements manuels du snapshot Abonnements courant,
@@ -1306,6 +1307,14 @@ export default defineSchema({
   // SAISON-EXEMPT: lot opérationnel regroupant pendant 30 minutes les
   // nouveaux créneaux d'une campagne Abonnements. Aucun cron n'est nécessaire.
   abo_test_notification_lots: defineTable({
+    // WIDEN: absent des lots historiques. Le mode distingue les lots ouverts
+    // lors d'un ajout de créneaux du rattrapage ponctuel des créneaux ouverts.
+    mode: v.optional(
+      v.union(v.literal("nouveaux_creneaux"), v.literal("rattrapage")),
+    ),
+    // Clé fournie par le déclencheur de rattrapage pour rendre sa création
+    // rejouable sans dupliquer les emails.
+    cle_idempotence: v.optional(v.string()),
     statut: v.union(
       v.literal("en_attente"),
       v.literal("preparation"),
@@ -1315,19 +1324,32 @@ export default defineSchema({
     ouvert_le: v.number(),
     envoi_prevu_le: v.number(),
     termine_le: v.optional(v.number()),
+    // WIDEN: la préparation existante parcourt les attentes volontaires ; les
+    // notifications forcées parcourent ensuite le snapshot club par statut.
+    phase_preparation: v.optional(
+      v.union(v.literal("attentes"), v.literal("scrap")),
+    ),
     curseur_attentes: v.optional(v.string()),
+    curseur_scrap: v.optional(v.string()),
     preparation_terminee: v.optional(v.boolean()),
   })
     .index("by_statut", ["statut"])
+    .index("by_cle_idempotence", ["cle_idempotence"])
     .index("by_envoi_prevu_le", ["envoi_prevu_le"]),
 
-  // SAISON-EXEMPT: outbox idempotente d'un email par compte et par lot de
-  // nouveaux créneaux. Le reset de campagne la purge avant ses lots parents.
+  // SAISON-EXEMPT: outbox idempotente d'un email par destinataire et par lot
+  // de créneaux. Le reset de campagne la purge avant ses lots parents.
   abo_test_notification_envois: defineTable({
     lot_id: v.id("abo_test_notification_lots"),
-    user_id: v.string(),
+    // WIDEN: une ligne issue directement du snapshot club peut ne pas être
+    // rattachée à un compte portail.
+    user_id: v.optional(v.string()),
+    // Adresse canonique utilisée comme clé de regroupement familial et
+    // d'idempotence dans un lot. Optionnelle pour les lignes historiques.
+    cle_destinataire: v.optional(v.string()),
     destinataire: v.string(),
     personnes: v.array(v.string()),
+    licences: v.optional(v.array(v.string())),
     statut: v.union(
       v.literal("a_envoyer"),
       v.literal("en_cours"),
@@ -1342,6 +1364,10 @@ export default defineSchema({
   })
     .index("by_lot_id", ["lot_id"])
     .index("by_lot_id_and_user_id", ["lot_id", "user_id"])
+    .index("by_lot_id_and_cle_destinataire", [
+      "lot_id",
+      "cle_destinataire",
+    ])
     .index("by_lot_id_and_statut", ["lot_id", "statut"]),
 
   // SAISON-EXEMPT: singleton du dernier compteur public calculé, transversal

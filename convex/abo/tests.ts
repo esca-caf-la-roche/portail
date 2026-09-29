@@ -536,6 +536,8 @@ export const testCreneauxDisponibles = authenticatedQuery({
 export const disponibilitesPourNotification = internalQuery({
   args: { lotId: v.id("abo_test_notification_lots") },
   handler: async (ctx, args) => {
+    const lot = await ctx.db.get(args.lotId);
+    if (!lot) return [];
     const creneauxDuLot = await ctx.db
       .query("abo_test_creneaux")
       .withIndex("by_notification_lot_id", (q) => q.eq("notification_lot_id", args.lotId))
@@ -545,7 +547,7 @@ export const disponibilitesPourNotification = internalQuery({
       const fin = parisWallToUtcMs(`${creneau.date_jour}T${creneau.heure_fin}`);
       return debut == null || fin == null ? [] : [{ debut, fin }];
     });
-    if (intervalles.length === 0) return [];
+    if (lot.mode !== "rattrapage" && intervalles.length === 0) return [];
     const tranches = await calculerTranches(ctx);
     const reservations = await reservationsActives(ctx);
     const disponibles = placesReservablesParTranche(tranches, reservations);
@@ -560,7 +562,10 @@ export const disponibilitesPourNotification = internalQuery({
       .filter((t) => {
         const debut = new Date(t.tranche_debut).getTime();
         const fin = new Date(t.tranche_fin).getTime();
-        return debut > now && t.disponible > 0 && intervalles.some((intervalle) => debut < intervalle.fin && fin > intervalle.debut);
+        return debut > now && t.disponible > 0 && (
+          lot.mode === "rattrapage" ||
+          intervalles.some((intervalle) => debut < intervalle.fin && fin > intervalle.debut)
+        );
       });
   },
 });

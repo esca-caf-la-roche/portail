@@ -1751,6 +1751,102 @@ describe("réservation de test d'autonomie", () => {
     expect(etat.creneau?.notification_lot_id).toBe(etat.lots[0]?._id);
   });
 
+  test("regroupe les notifications forcées sans opt-in par email", async () => {
+    const t = convexTest(schema, modules);
+    rateLimiterTest.register(t);
+    const lotId = await t.run(async (ctx) => {
+      for (const [licence, prenom, autonomie, age] of [
+        ["748000000101", "Alice", "Recherche du test en cours", 24],
+        ["748000000102", "Bob", "Doit passer le test", 25],
+        ["748000000103", "Ignorée", "OK", 30],
+        ["748000000104", "Mineure", "Doit passer le test", 15],
+        ["748000000105", "Élève", "Doit passer le test", 18],
+      ] as const) {
+        await ctx.db.insert("abo_abonnes_scrap", {
+          licence,
+          nom: "DUPONT",
+          prenom,
+          nom_prenom_normalise: `dupont ${prenom.toLowerCase()}`,
+          email: prenom === "Ignorée" ? "ignoree@example.test" : " Famille@Example.Test ",
+          age,
+          autonomie,
+          abonnement_valide: "oui",
+          last_scrap_at: new Date().toISOString(),
+        });
+      }
+      await ctx.db.insert("abo_eleves_en_cours", {
+        licence: "748000000105",
+        nom: "DUPONT",
+        prenom: "Élève",
+        nom_prenom_normalise: "dupont eleve",
+        imported_at: new Date().toISOString(),
+      });
+      await ctx.db.insert("abo_test_reservations", {
+        candidat_licence: "748000000102",
+        candidat_nom: "DUPONT",
+        candidat_prenom: "Bob",
+        candidat_email: "famille@example.test",
+        tranche: "2026-01-01T10:00:00.000Z",
+        statut: "active",
+        resultat_test: "non_valide",
+      });
+      return await ctx.db.insert("abo_test_notification_lots", {
+        mode: "nouveaux_creneaux",
+        statut: "en_attente",
+        ouvert_le: Date.now(),
+        envoi_prevu_le: Date.now() + 30 * 60_000,
+        phase_preparation: "attentes",
+      });
+    });
+    for (let i = 0; i < 5; i += 1) {
+      const resultat = await t.mutation(internal.abo.testNotifications.preparerLot, { lotId });
+      if (resultat.terminee) break;
+    }
+    const envois = await t.run((ctx) => ctx.db.query("abo_test_notification_envois").collect());
+    expect(envois).toHaveLength(1);
+    expect(envois[0]).toMatchObject({
+      cle_destinataire: "famille@example.test",
+      destinataire: "famille@example.test",
+      personnes: expect.arrayContaining(["Alice DUPONT", "Bob DUPONT"]),
+      licences: expect.arrayContaining(["748000000101", "748000000102"]),
+    });
+    expect(envois[0]?.personnes).not.toEqual(expect.arrayContaining(["Mineure DUPONT", "Élève DUPONT"]));
+    expect(envois[0]?.licences).not.toEqual(expect.arrayContaining(["748000000104", "748000000105"]));
+  });
+
+  test("exclut au recontrôle une licence qui possède une réservation bloquante", async () => {
+    const t = convexTest(schema, modules);
+    const lotId = await t.mutation(internal.abo.testNotifications.declencherRattrapageInterne, {
+      cleIdempotence: "test-rattrapage-bloquant",
+    });
+    await t.run(async (ctx) => {
+      await ctx.db.insert("abo_abonnes_scrap", {
+        licence: "748000000201",
+        nom: "MARTIN",
+        prenom: "Chloé",
+        nom_prenom_normalise: "martin chloe",
+        email: "chloe@example.test",
+        age: 22,
+        autonomie: "Doit passer le test",
+        abonnement_valide: "oui",
+        last_scrap_at: new Date().toISOString(),
+      });
+      await ctx.db.insert("abo_test_reservations", {
+        candidat_licence: "748000000201",
+        candidat_nom: "MARTIN",
+        candidat_prenom: "Chloé",
+        candidat_email: "chloe@example.test",
+        tranche: "2099-06-03T08:00:00.000Z",
+        statut: "active",
+      });
+    });
+    for (let i = 0; i < 5; i += 1) {
+      const resultat = await t.mutation(internal.abo.testNotifications.preparerLot, { lotId });
+      if (resultat.terminee) break;
+    }
+    await expect(t.run((ctx) => ctx.db.query("abo_test_notification_envois").collect())).resolves.toEqual([]);
+  });
+
   test("refuse explicitement une licence directe invalide", async () => {
     const t = convexTest(schema, modules);
     rateLimiterTest.register(t);

@@ -524,17 +524,28 @@ un snapshot entièrement actualisé depuis moins de quinze minutes ; la réserva
 ultérieure s'appuie sur le rattachement mémorisé et les données club actuellement
 disponibles.
 
-Quand aucun créneau n'est disponible, chaque personne éligible peut demander
-explicitement à être prévenue par e-mail. Le premier créneau réellement ajouté
-par le staff ouvre une fenêtre fixe de 30 minutes ; les créations et ajouts de
-capacité de cette fenêtre sont regroupés, sans cron. À l'échéance, le backend
-recalcule les tranches futures encore disponibles et envoie au plus un e-mail par
-compte familial, avec tous les noms concernés. La préparation est paginée par
-lots de 25 comptes et chaque envoi est réclamé atomiquement avant SMTP. Une
-réservation met l'alerte en veille ; une annulation volontaire ne la réactive pas,
-tandis qu'une annulation imposée par le staff restaure un consentement antérieur.
-Les rattachements, alertes, lots et journaux d'envoi sont purgés au reset de la
-campagne.
+Les abonnés dont le site du club indique exactement
+**Recherche du test en cours** ou **Doit passer le test** sont automatiquement
+informés par e-mail. Pour ces deux statuts,
+l'information est envoyée même sans inscription préalable à l'alerte, à
+condition que la personne ait au moins 16 ans, ne soit pas élève d'un cours et
+n'ait aucune réservation encore bloquante. Une tentative terminée **Non
+validée** ou **Absente** n'empêche donc pas de prévenir d'un nouveau créneau.
+
+Le premier créneau réellement ajouté par le staff ouvre une fenêtre fixe de
+30 minutes ; les créations et ajouts de capacité de cette fenêtre sont
+regroupés, sans cron. À l'échéance, le backend recalcule les tranches futures
+encore disponibles et envoie au plus un e-mail par adresse familiale, avec tous
+les noms éligibles rattachés à cette adresse. L'éligibilité et l'absence de
+réservation bloquante sont vérifiées une dernière fois juste avant l'envoi. La
+préparation est paginée par lots de 25 destinataires et chaque envoi est réclamé
+atomiquement avant SMTP.
+
+Un rattrapage exclusivement interne permet de notifier immédiatement les mêmes destinataires lorsqu'il
+existe déjà des créneaux futurs disponibles, par exemple après la mise en
+production de cette règle. Il exige une clé d'idempotence explicite : rejouer la
+même opération ne crée ni nouveau lot ni second envoi. Les rattachements,
+alertes, lots et journaux d'envoi sont purgés au reset de la campagne.
 
 Après une synchronisation réussie du site, la réévaluation ne s'appuie que sur
 une **licence exactement identique**. Un rapprochement par nom et prénom ne
