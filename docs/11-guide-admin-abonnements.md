@@ -375,17 +375,20 @@ L'onglet **Tests** organise les rendez-vous de test d'autonomie. Chaque
 encadrant y déclare ses propres disponibilités ; les candidats réservent ensuite
 des tranches calculées automatiquement à partir de l'ensemble des encadrants.
 
-Une personne dont la demande a été **validée** peut réserver, même si sa
-licence, son âge ou son besoin de test ne sont pas encore connus. Le rendez-vous
-est alors affiché comme **provisoire**. Cette réservation reste possible hors
-saison : elle ne dépend pas de l'ouverture d'une vague.
+Une personne dont la demande a été **validée** peut réserver lorsque le test
+est **requis** pour elle et que son **âge est connu et supérieur ou égal à 16
+ans** ; le portail refuse la réservation tant que ces conditions ne sont pas
+réunies par une synchronisation du site du club. Le rendez-vous est enregistré
+comme **provisoire**. Cette réservation reste possible hors saison : elle ne
+dépend pas de l'ouverture d'une vague.
 
 Le bloc **Personnes à tester** indique combien de personnes ont réservé parmi
 celles qui doivent encore passer le test. Cliquez sur ce bloc pour ouvrir la
-liste complète et distinguer **En attente de créneau**, **Créneau réservé** et
-**Test passé**. Le statut « passé » signifie que l'heure du rendez-vous est
-atteinte ou que le document a été archivé ; il ne confirme pas la réussite du
-test sur le site du club.
+liste complète et filtrer par statut : **En attente de créneau**, **Créneau
+réservé**, **Élève en cours — test avec son moniteur**, **Résultat à
+qualifier**, **Test validé**, **Test non validé** et **Absent**. Ces statuts
+reflètent le suivi interne du portail ; ils ne remplacent pas le résultat
+enregistré sur le site du club.
 
 ### Proposer une disponibilité
 
@@ -394,15 +397,14 @@ test sur le site du club.
 3. Vérifier le résumé et cliquer **Ajouter le créneau**.
 
 Les limites appliquées sont : horaires alignés sur 20 minutes (`00`, `20`,
-`40`), fin après début et durée minimale de 40 minutes. L'interface propose une
+`40`), fin après début et durée minimale de 20 minutes. L'interface propose une
 grille de 08:00 à 22:40.
 
 Chaque encadrant apporte deux places par tranche de 20 minutes. Lorsque des
-disponibilités se chevauchent, la capacité se cumule. Les candidats voient des
-rendez-vous de 60 minutes en priorité, puis de 40 minutes, sans connaître
-l'identité de l'encadrant.
+disponibilités se chevauchent, la capacité se cumule. Les candidats réservent un
+créneau de 20 minutes, sans connaître l'identité de l'encadrant.
 
-### Mes créneaux et inscrits
+### Créneaux de l'équipe et inscrits
 
 - **Créneaux de l'équipe** : tous les créneaux futurs y apparaissent. Vous
   pouvez rejoindre ceux d'un collègue et vous retirer uniquement de vos propres
@@ -414,20 +416,15 @@ Avant de supprimer un créneau, tenir compte de l'avertissement : si la capacit�
 devient insuffisante, les derniers inscrits sont annulés en premier. Ils sont
 invités à reprendre rendez-vous et un e-mail d'annulation est planifié.
 
-### Confirmer ou annuler un RDV provisoire
+### Suivre un RDV provisoire
 
-La vérification se fait après une synchronisation du site du club. Pour protéger
-les personnes portant des noms proches, le portail ne réévalue un RDV que si la
-**licence correspond exactement** ; une similitude de nom ou de prénom ne suffit
-jamais.
-
-- Si les informations synchronisées confirment qu'un test est requis et que la
-  personne a au moins 16 ans, le RDV devient **confirmé**.
-- Si elles indiquent que le test n'est pas requis, qu'il est déjà validé, ou que
-  la personne a moins de 16 ans, le RDV est annulé et le demandeur reçoit une
-  explication.
-- Si la licence, l'âge ou le besoin de test restent inconnus, le RDV demeure
-  provisoire jusqu'au jour du rendez-vous. Ne l'annulez pas sur une supposition.
+Une réservation issue d'un dossier reste **provisoire** : aucune synchronisation
+du site du club ne la confirme ni ne l'annule automatiquement. La synchronisation
+ne met à jour que les données de la personne (licence, âge, besoin de test), et
+le rapprochement exige une **licence exactement identique** — une similitude de
+nom ou de prénom ne suffit jamais. Le RDV est donc traité manuellement par le
+staff selon son déroulement : tenue du rendez-vous, résultat saisi, ou annulation
+explicite.
 
 Chaque réservation active reçoit un rappel à J-1 ; si le créneau est à moins de
 24 heures au moment de la réservation, le rappel est envoyé immédiatement. Son
@@ -439,10 +436,13 @@ réservation ; aucun cron périodique n'est utilisé.
 ### Enregistrer et traiter un test
 
 Après un rendez-vous, ouvrez la liste des candidats ayant réservé un créneau
-passé, puis cliquez sur **Enregistrer le test**. Prenez ou choisissez une seule
+passé, puis cliquez sur **Déposer le test**. Prenez ou choisissez une seule
 photo du formulaire rempli et validez l'envoi. Le scan est rangé dans le même
 répertoire Google Drive historique que les anciens tests, avec le nom
 `NOM Prénom`.
+
+Le résultat peut être saisi directement : **Validé**, **Non validé** ou
+**Absent**. Cette saisie alimente le suivi interne et l'archive du test.
 
 Si la personne n'apparaît pas dans la liste, utilisez **Rechercher un candidat**
 et saisissez son numéro de licence. Cette recherche ne charge pas l'annuaire
@@ -450,7 +450,7 @@ complet : elle sert uniquement à retrouver la personne demandée.
 
 La liste **Tests déposés sur Drive** rassemble les scans récemment enregistrés.
 Ouvrez le test, validez son résultat sur le site du club, puis cliquez sur
-**Marquer comme traité** dans le portail. Ce statut est un repère interne ; il
+**Marquer traité** dans le portail. Ce statut est un repère interne ; il
 ne modifie pas le résultat du test dans le portail ni sur le site du club. Au
 changement de campagne, cette liste et ses statuts sont vidés dans le portail ;
 les scans restent dans Drive et s'y recherchent avec l'identité de la personne.
@@ -477,7 +477,7 @@ délai entre la signature et cette confirmation est donc normal.
 3. Contrôler les correspondances exactes ou probables proposées, puis choisir
    la bonne licence. Si elle n'apparaît pas, rechercher avec un nom, un prénom
    ou quelques lettres. Le nom reste un indice : aucune liaison n'est automatique.
-4. Cliquer **Confirmer la liaison avec cette licence** et confirmer. Le fichier
+4. Cliquer **Confirmer cette licence** et confirmer. Le fichier
    Drive devient alors l'archive signée de cette licence. Un même PDF ne peut pas être réutilisé,
    et une licence ne peut recevoir qu'un règlement pour la version courante
    `6GFLQa478G3Qwv`.
@@ -591,9 +591,11 @@ annuel. L'archive des abonnés est, elle, remplacée par le seul snapshot N-1.
 
 > **Autorisation requise :** ne lancer le reset que lorsque les
 > responsabilités de fin de campagne ont été validées. Le bouton n'est
-> accessible qu'à l'administrateur général disposant à la fois de la tuile
-> Abonnements et de l'autorisation nominative de reset, réglée dans
-> **Configurations > Utilisateurs et Accès**.
+> accessible qu'à un membre du staff disposant à la fois de la tuile
+> Abonnements et de l'autorisation nominative de configuration (ou de l'ancien
+> drapeau de reset), réglée dans
+> **Configurations > Utilisateurs et Accès**. Le rôle `admin` général n'est pas
+> exigé.
 > Avant le premier reset réel, répéter néanmoins l'opération sur une copie de
 > données représentative et vérifier les deux cas : compte public pur et compte
 > staff ayant aussi déposé une demande. Voir

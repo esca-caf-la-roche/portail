@@ -44,7 +44,7 @@ flowchart LR
 | **Personne** | Chaque candidat figurant dans un dossier ; les décisions et les étapes sont suivies par personne. |
 | **Vague** | Période d'ouverture des demandes, avec priorité aux élèves déjà inscrits aux cours en vague 2. |
 | **Créneau de disponibilité** | Plage proposée par un encadrant. Plusieurs encadrants peuvent proposer la même plage. |
-| **Tranche de test** | Rendez-vous réservable de 40 ou 60 min, calculé à partir des disponibilités cumulées. |
+| **Tranche de test** | Rendez-vous réservable par tranche de 20 min, calculé à partir des disponibilités cumulées. |
 
 ## 3. Comment un bénévole devient administrateur Abonnements
 
@@ -111,9 +111,10 @@ l'onglet **Configuration** :
   (site du club, annuaire de licences, élèves en cours).
 
 Les synchronisations sont déclenchées en ouvrant l'espace administrateur et
-sont limitées côté serveur à environ une fois par heure par source. Le bouton
-de synchronisation du site du club force, lui, une actualisation immédiate.
-Un échec externe ne bloque pas l'affichage du dernier état connu : il doit donc
+sont limitées côté serveur à environ une fois par quatre heures par source
+(`SYNC_TTL_MINUTES`, 240 min par défaut). Le bouton de synchronisation manuelle
+reste soumis à une fenêtre de cinq minutes avant de pouvoir relancer la même
+source. Un échec externe ne bloque pas l'affichage du dernier état connu : il doit donc
 être vérifié avant une décision importante.
 
 ### Créer une disponibilité de test
@@ -125,7 +126,7 @@ Un échec externe ne bloque pas l'affichage du dernier état connu : il doit don
 
 Le serveur refuse les entrées incohérentes : date invalide ou passée, heure
 invalide, fin avant début, heures non alignées sur `00`, `20` ou `40`, ou durée
-inférieure à 40 min. La plage est enregistrée au nom du bénévole qui l'a créée.
+inférieure à 20 min. La plage est enregistrée au nom du bénévole qui l'a créée.
 
 ### Comment la capacité et les rendez-vous sont calculés
 
@@ -134,23 +135,24 @@ Chaque encadrant apporte une capacité de **deux candidats par tranche de
 la capacité devient quatre candidats sur les portions communes. Les identités
 des encadrants ne sont jamais montrées aux candidats.
 
-Le système découpe ensuite les disponibilités continues en rendez-vous de 60
-minutes en priorité, puis de 40 minutes pour le reliquat. Un candidat réserve
-une tranche, pas un encadrant précis ; la répartition fine se fait le jour J.
+Le système réserve ensuite les rendez-vous par tranches de 20 minutes, en
+fonction des disponibilités cumulées. Un candidat réserve une tranche, pas un
+encadrant précis ; la répartition fine se fait le jour J.
 
 ```mermaid
 flowchart TD
   A[Encadrant A : 18:00-19:00] --> S[Slots de 20 min]
   B[Encadrant B : 18:20-19:20] --> S
   S --> C[Capacité : 2 x encadrants présents]
-  C --> T[Tranches 60 min prioritaires\npuis 40 min]
+  C --> T[Tranches de 20 min]
   T --> R[Candidat réserve une tranche\nsi une place reste]
 ```
 
 ### Suivre et retirer ses créneaux
 
-- La zone **Mes créneaux** n'affiche que les disponibilités créées par le
-  bénévole connecté.
+- La zone **Créneaux de l'équipe** liste tous les créneaux futurs ; un bénévole
+  peut rejoindre un créneau d'un collègue et ne retirer que ses propres
+  disponibilités.
 - La zone **Inscrits par créneau** affiche à tous les admins Abonnements les
   candidats actifs, regroupés par jour et tranche, avec nom, prénom et e-mail.
 - Un bénévole ne peut supprimer que **ses propres** créneaux.
@@ -165,13 +167,13 @@ candidats. Le message de confirmation l'annonce avant l'action.
 
 ### Après le test : résultat et présence
 
-L'écran Tests permet aujourd'hui de planifier les disponibilités et de voir les
-inscrits, mais **ne permet pas de saisir le résultat** (réussi, échoué, absent).
-Le suivi public considère le test comme validé lorsque le scraper retrouve
-`Autonomie = OK` sur le site du club. L'équipe doit donc, pour l'instant,
-enregistrer le résultat dans le site du club puis lancer/attendre la
-synchronisation. Ce n'est pas une étape facultative : sans elle, le demandeur
-reste « À faire » dans le portail.
+L'écran Tests permet de planifier les disponibilités, de voir les inscrits et de
+**saisir le résultat** d'un test (**Validé**, **Non validé** ou **Absent**) via
+`renseignerResultatTest`, en complément du dépôt du formulaire scanné. Le suivi
+public, lui, considère le test comme validé lorsque le scraper retrouve
+`Autonomie = OK` sur le site du club. Selon le déroulement, l'équipe saisit le
+résultat dans le portail ou l'enregistre sur le site puis synchronise ; sans l'un
+des deux, le demandeur reste « À faire » dans le portail.
 
 ### Ce qu'un candidat doit avoir fait pour réserver
 
@@ -397,17 +399,17 @@ Elle effectue ensuite, dans cet ordre :
 
 | Priorité | Constat observé | Risque / décision attendue |
 |---|---|---|
-| Haute | Aucun écran ni endpoint ne permet à un encadrant de marquer directement un test comme réussi ou échoué. L'étape est lue depuis la colonne `autonomie` du site club après synchronisation. | Définir qui saisit le résultat, dans quel outil et avec quel délai. Si le site club est la source officielle, rédiger la procédure du jour J et vérifier que la synchronisation la remonte bien. |
+| Corrigé | L'écran Tests permet de saisir un résultat (**Validé** / **Non validé** / **Absent**) via `renseignerResultatTest`, en complément du dépôt du formulaire. Le suivi public reste fondé sur la colonne `autonomie` du site club après synchronisation. | La procédure du jour J doit préciser qui saisit le résultat dans le portail et qui l'enregistre sur le site, puis vérifier que la synchronisation remonte bien le résultat officiel. |
 | Corrigé | Un même e-mail peut servir au staff et à une demande publique personnelle. | Lors du reset, la purge efface les données de campagne et `abo_profiles`, tout en conservant `users`, `userSettings`, sessions et comptes d'authentification dès qu'un accès staff existe. |
 | Corrigé | L'API de réservation vérifie que la demande est validée, que le test est requis, que l'âge est renseigné et d'au moins 16 ans, et que la tranche est future. Ces prérequis sont contrôlés côté serveur, donc un appel direct ne contourne pas la règle d'affichage. | Couvert par `convex/abo.tests.test.ts`. |
-| Corrigé | La remise à zéro supprime les comptes publics et leurs dossiers ; l'archive conservée ne contient que le snapshot minimal des abonnés du site. | La conservation et l'absence d'export préalable ont été validées par le club. Le déclenchement exige désormais la tuile Abonnements, le rôle admin général et une autorisation nominative de reset. |
+| Corrigé | La remise à zéro supprime les comptes publics et leurs dossiers ; l'archive conservée ne contient que le snapshot minimal des abonnés du site. | La conservation et l'absence d'export préalable ont été validées par le club. Le déclenchement exige désormais la tuile Abonnements et une autorisation nominative de configuration (ou l'ancien drapeau de reset), sans exiger le rôle `admin` général. |
 | Haute | L'ajout d'un staff donne actuellement Comptabilité, Paiements et Budget par défaut avant correction manuelle. | La procédure doit imposer le retrait immédiat de ces tuiles pour un simple encadrant de test ; idéalement le comportement devra être revu avant généralisation. |
 | Corrigé | Le plafond configuré est désormais contrôlé par la transaction de décision : la validation qui porterait l'occupation au-delà du plafond devient une liste d'attente, sauf action explicite « Valider malgré le plafond ». | La décision reste fondée sur le snapshot synchronisé du site club ; une synchronisation récente demeure nécessaire lorsque des changements externes sont possibles. |
 | Moyenne | La suppression d'un créneau annule les derniers inscrits. | Définir une règle d'information / re-priorisation manuelle si les rendez-vous sont proches. |
 | Moyenne | Un demandeur peut retirer une personne, y compris après validation ; s'il retire la dernière, le dossier, les messages, le journal et les réservations sont supprimés. | Décider des états à verrouiller et de la trace d'audit à conserver. |
-| Moyenne | Le code OTP public ne présente pas de limitation applicative visible par adresse ou origine. | Protéger contre l'envoi abusif de codes avec un rate limit, une temporisation de renvoi et une trace minimale des abus. |
+| Corrigé | Le code OTP public est limité par adresse (3 par 10 min) et globalement (60 par minute) via `convex/aboOtp.ts`. | Rate limit en place ; la temporisation de renvoi et la trace minimale d'abus restent à confirmer. |
 | Moyenne | Un compte public connecté peut tester des numéros de licence et apprendre s'ils figurent parmi les élèves en cours. | Déplacer ce contrôle dans la mutation de demande, ou limiter fortement les tentatives. |
-| Moyenne | Le suivi annonce une synchronisation quotidienne d'environ 24 h, tandis que les actualisations internes sont déclenchées à l'ouverture avec une limite d'environ une heure. | Clarifier pour le club la part réellement quotidienne du système externe et la fréquence réelle attendue côté portail. |
+| Moyenne | Le suivi annonce une synchronisation quotidienne d'environ 24 h, tandis que les actualisations internes sont déclenchées à l'ouverture avec une limite d'environ quatre heures. | Clarifier pour le club la part réellement quotidienne du système externe et la fréquence réelle attendue côté portail. |
 
 ### Dette technique et montée en charge à programmer
 
@@ -415,8 +417,8 @@ Elle effectue ensuite, dans cet ordre :
 |---|---|---|
 | Importante | Le calcul des tranches de test lit tous les créneaux et plusieurs vues admin lisent toutes les réservations actives. | À faible volume c'est simple ; avant extension, borner/paginer ou indexer par date pour maîtriser les lectures Convex. |
 | Importante | La query des créneaux disponibles utilise l'heure courante (`Date.now()`) dans une query réactive. | L'affichage d'un créneau qui passe dans le passé peut ne pas se rafraîchir sans autre événement ; prévoir un rafraîchissement client explicite ou matérialiser l'état. |
-| Importante | La première partie du reset lit et supprime des collections entières dans une même mutation. Seule la purge des profils publics est déjà traitée par lots. | Avec davantage de données, une limite transactionnelle Convex peut interrompre la remise à zéro ; la découper en étapes idempotentes, bornées et suivies. |
-| Moyenne | Le formulaire de demande ne fixe pas de nombre maximal de personnes ni de longueur métier explicite pour tous les champs. | Fixer ces limites avant exposition large pour éviter les opérations coûteuses et les dossiers impossibles à traiter. |
+| Corrigé | Le reset est exécuté par lots : profils publics d'une part, suivi de campagne (tests, règlements, fusions, anomalies) d'autre part. | Les deux purges progressent séparément ; vérifier à grande échelle qu'aucune limite transactionnelle n'interrompt la remise à zéro. |
+| Corrigé | Le formulaire borne la saisie : 10 personnes par dossier, 100 caractères pour le nom et le prénom, 2 000 pour le commentaire (`convex/abo/demandes.ts`). | Limites en place ; vérifier qu'elles restent alignées sur les besoins métier lors d'une exposition large. |
 | À vérifier | Plusieurs erreurs d'autorisation sont des `Error` simples et non des `ConvexError`. | En production, le message lisible peut devenir « Server Error » ; uniformiser les erreurs métier lors de la finalisation. |
 | À vérifier | `abo_profiles.role` autorise encore la valeur `admin`, alors que l'administration est censée provenir uniquement de la tuile staff. | Simplifier ce modèle ou migrer les anciennes données afin de lever toute ambiguïté. |
 
