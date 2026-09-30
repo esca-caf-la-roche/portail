@@ -593,7 +593,8 @@ function ModalReservation({
   personneId: Id<"abo_personnes">;
   onFermer: () => void;
 }) {
-  const dispos = useQuery(api.abo.tests.testCreneauxDisponibles);
+  const maintenantMs = useMaintenantMinute();
+  const dispos = useQuery(api.abo.tests.testCreneauxDisponibles, { maintenantMs });
   const reserver = useMutation(api.abo.tests.reserverTest);
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);

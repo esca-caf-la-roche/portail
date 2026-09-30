@@ -67,7 +67,10 @@ export async function requireAboIdentity(
 ): Promise<AboIdentity> {
   const id = await getAboIdentity(ctx);
   if (!id) {
-    throw new Error("Non autorisé : vous devez être connecté.");
+    throw new ConvexError({
+      code: "ABO_NON_CONNECTE",
+      message: "Non autorisé : vous devez être connecté.",
+    });
   }
   return id;
 }
@@ -78,7 +81,10 @@ export async function requireAboAdmin(
 ): Promise<AboIdentity> {
   const id = await requireAboIdentity(ctx);
   if (id.aboRole !== "admin") {
-    throw new Error("Réservé aux administrateurs.");
+    throw new ConvexError({
+      code: "ABO_ADMIN_REQUIS",
+      message: "Réservé aux administrateurs.",
+    });
   }
   return id;
 }
@@ -133,9 +139,17 @@ export async function requireOwnedDossier(
 ) {
   const id = await requireAboIdentity(ctx);
   const dossier = await ctx.db.get(dossierId);
-  if (!dossier) throw new Error("Dossier introuvable.");
+  if (!dossier) {
+    throw new ConvexError({
+      code: "ABO_DOSSIER_INTROUVABLE",
+      message: "Dossier introuvable.",
+    });
+  }
   if (id.aboRole !== "admin" && dossier.owner_id !== id.userId) {
-    throw new Error("Accès refusé à ce dossier.");
+    throw new ConvexError({
+      code: "ABO_DOSSIER_ACCES_REFUSE",
+      message: "Accès refusé à ce dossier.",
+    });
   }
   return { identity: id, dossier };
 }

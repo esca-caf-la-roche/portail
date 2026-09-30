@@ -377,7 +377,9 @@ npm test -- convex/abo.elevesProjection.test.ts convex/paiements.test.ts
 ## Stratégie recommandée
 
 Introduire les tests progressivement autour des règles métier les plus risquées,
-sans bloquer leur adoption sur une couverture globale.
+sans bloquer leur adoption sur une couverture globale. Les suites Convex et les
+utilitaires purs déjà en place couvrent une partie des priorités ci-dessous ; les
+points restants sont indiqués comme objectifs.
 
 ### Priorité 1 : fonctions pures
 
