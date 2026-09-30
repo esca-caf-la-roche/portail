@@ -599,7 +599,7 @@ annuel. L'archive des abonnés est, elle, remplacée par le seul snapshot N-1.
 > Avant le premier reset réel, répéter néanmoins l'opération sur une copie de
 > données représentative et vérifier les deux cas : compte public pur et compte
 > staff ayant aussi déposé une demande. Voir
-> [l'audit complet](10-audit-abonnements-escalade.md).
+> [l'audit complet](15-audit-abonnements-escalade.md).
 
 Après le reset, reconfigurer les vagues et contrôler les liens. Attendre que les
 sources utilisées par Abonnements aient basculé sur la nouvelle campagne, puis
@@ -644,4 +644,4 @@ dossier portail. Retirez d'abord l'inscription sur le site, puis synchronisez.
    suppression tardive.
 
 Pour les règles de sécurité, la base de données et les limites connues, lire
-aussi [l'audit fonctionnel complet](10-audit-abonnements-escalade.md).
+aussi [l'audit fonctionnel complet](15-audit-abonnements-escalade.md).

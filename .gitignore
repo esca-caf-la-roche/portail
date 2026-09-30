@@ -71,5 +71,11 @@ BS.pdf
 CLAUDE.md
 TODO.md
 
+# Artefacts locaux d'agents
+.codex-finalizer/
+.codex-slides/
+.pnpm-store/
+output/
+
 # Clés JWKS générées (Convex Auth) — public mais propre au déploiement local
 jwks.json
