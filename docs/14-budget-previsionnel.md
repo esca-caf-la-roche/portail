@@ -99,20 +99,15 @@ pleine ; il ne représente ni la fréquentation réelle ni la recette encaissée
 
 Une première version de l'onglet avait ajouté une classification des cours par
 public et deux compteurs par catégorie. Ces données doublonnent
-l'analytique et la capacité déjà présentes dans le planning ; elles sont donc
-retirées selon une migration **migrate → narrow** :
+l'analytique et la capacité déjà présentes dans le planning ; elles ont donc été
+retirées selon un cycle **migrate → narrow** : nettoyage des valeurs puis
+inspection paginée confirmée sans valeur obsolète sur `cours` et
+`budgetEffectifs` (`budgetEffectifs.nbMembresLoisir` étant conservé), avant
+suppression des champs optionnels du schéma.
 
-1. la migration de nettoyage des cours efface l'ancien champ de classification ;
-2. `clearBudgetEffectifsCours` efface les anciens effectifs mineurs/adultes,
-   sans modifier `budgetEffectifs.nbMembresLoisir` ;
-3. les inspections internes des cours et de `budgetEffectifs` contrôlent par
-   pages qu'aucune valeur obsolète ne subsiste en DEV puis en PROD ;
-4. les champs optionnels sont supprimés du schéma dans un déploiement ultérieur
-   après validation des deux inspections.
-
-Cette migration ne reclasse aucun cours et ne demande aucune reprise manuelle :
-`ESC01`, `ESC02`, les tarifs et les capacités du planning restent les seules
-données métier du calcul.
+Cette migration n'a reclassé aucun cours et n'a demandé aucune reprise
+manuelle : `ESC01`, `ESC02`, les tarifs et les capacités du planning restent les
+seules données métier du calcul.
 
 ## Droits et saison
 

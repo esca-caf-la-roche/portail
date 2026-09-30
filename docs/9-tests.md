@@ -117,9 +117,10 @@ npm run build
    annoncés comme indisponibles et jamais remplacés par un faux zéro ;
 8. changer la saison sélectionnée et vérifier que le planning, les recettes et
    la paie de la saison précédente ne sont pas réutilisés ;
-9. après la migration de retrait, inspecter toutes les pages des tables
-   `cours` et `budgetEffectifs` : les compteurs de champs obsolètes doivent être
-   nuls, tandis que `budgetEffectifs.nbMembresLoisir` reste intact ;
+9. vérifier que les anciennes saisies manuelles par public ne sont plus
+   proposées : l'analytique `ESC01` ou `ESC02`, les tarifs et les capacités du
+   planning restent les seules données du calcul, tandis que
+   `budgetEffectifs.nbMembresLoisir` reste utilisé par les autres onglets ;
 10. contrôler le camembert, sa légende et les cartes au clavier, avec un lecteur
    d'écran et sur mobile ; le texte accessible du graphique doit restituer les
    analytiques et leurs montants sans dépendre des couleurs.
