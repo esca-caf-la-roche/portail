@@ -60,6 +60,7 @@ export default function Paiements({ versionSources = 0 }: { versionSources?: num
   const [q, setQ] = useState("");
   const [problemes, setProblemes] = useState(false);
   const [sync, setSync] = useState<string | null>(null);
+  const [syncEnCours, setSyncEnCours] = useState(false);
 
   const paiements = useMemo(() => reponse?.paiements ?? [], [reponse]);
   const nbProblemes = paiements.filter((p) => p.besoin_action_remboursement).length;
@@ -82,10 +83,12 @@ export default function Paiements({ versionSources = 0 }: { versionSources?: num
   }, [paiements, statut, q, problemes]);
 
   async function lancerSync() {
+    if (syncEnCours) return;
+    setSyncEnCours(true);
     setSync("Synchronisation…");
     try {
       const r = await synchroniser({});
-      await recharger();
+      if (r.statut !== "skipped") await recharger({ force: true });
       setSync(
         r.statut === "skipped"
           ? `Synchronisation déjà lancée récemment. Réessayez à partir de ${formatRetryAt(r.retryAt)}.`
@@ -95,6 +98,8 @@ export default function Paiements({ versionSources = 0 }: { versionSources?: num
       );
     } catch (err) {
       setSync(`Échec : ${aboError(err).message}`);
+    } finally {
+      setSyncEnCours(false);
     }
   }
 
@@ -106,7 +111,7 @@ export default function Paiements({ versionSources = 0 }: { versionSources?: num
       <>
         <ConfigLien enregistrer={async (args) => {
           const resultat = await enregistrerLien(args);
-          await recharger();
+          await recharger({ force: true });
           return resultat;
         }} />
         {erreurChargement !== null && (
@@ -128,7 +133,7 @@ export default function Paiements({ versionSources = 0 }: { versionSources?: num
         vient du scrap) ni le suivi des paiements des cours.
       </p>
       <div className="abo-admin-toolbar">
-        <button type="button" className="abo-admin-button abo-admin-button--secondary" onClick={lancerSync}>
+        <button type="button" className="abo-admin-button abo-admin-button--secondary" onClick={lancerSync} disabled={syncEnCours}>
           🔄 Synchroniser maintenant
         </button>
         <button type="button" className="abo-admin-button" onClick={() => void recharger()}>
@@ -203,7 +208,7 @@ export default function Paiements({ versionSources = 0 }: { versionSources?: num
               p={p}
               adminUrl={reponse.adminUrl}
               setStatut={setStatut}
-              onMisAJour={recharger}
+              onMisAJour={() => recharger({ force: true })}
             />
           ))
         )}
@@ -228,6 +233,7 @@ function Card({
   const [comment, setComment] = useState(p.commentaire ?? "");
   const [copie, setCopie] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [enregistrementEnCours, setEnregistrementEnCours] = useState(false);
 
   const inscrit = `${majNom(p.inscrit_nom)} ${capPrenom(p.inscrit_prenom)}`.trim() || "—";
   const payeur = `${majNom(p.payeur_nom)} ${capPrenom(p.payeur_prenom)}`.trim();
@@ -235,6 +241,8 @@ function Card({
   const probleme = messageProbleme(p);
 
   async function enregistrer(s: string, c: string | undefined) {
+    if (enregistrementEnCours) return;
+    setEnregistrementEnCours(true);
     setErr(null);
     try {
       await setStatut({
@@ -246,10 +254,13 @@ function Card({
       setPending(null);
     } catch (e) {
       setErr(aboError(e).message);
+    } finally {
+      setEnregistrementEnCours(false);
     }
   }
 
   function onStatut(s: string) {
+    if (enregistrementEnCours) return;
     if (s === p.statut_local) return;
     if (AVEC_COMMENTAIRE.has(s)) {
       setComment(p.commentaire ?? "");
@@ -333,6 +344,7 @@ function Card({
           <button
             key={v}
             type="button"
+            disabled={enregistrementEnCours}
             onClick={() => onStatut(v)}
             className={`abo-admin-decision${p.statut_local === v ? " is-active" : ""}`}
           >
@@ -351,11 +363,12 @@ function Card({
             className="abo-admin-input abo-admin-payment-comment"
           />
           <div className="abo-admin-toolbar">
-            <button className="abo-admin-button" type="button" onClick={() => enregistrer(pending, comment.trim() || undefined)}>
-              Confirmer
+            <button className="abo-admin-button" type="button" disabled={enregistrementEnCours} onClick={() => enregistrer(pending, comment.trim() || undefined)}>
+              {enregistrementEnCours ? "Enregistrement…" : "Confirmer"}
             </button>
             <button
               type="button"
+              disabled={enregistrementEnCours}
               onClick={() => setPending(null)}
               className="abo-admin-link-button"
             >

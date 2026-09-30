@@ -178,7 +178,7 @@ export default function Dossiers({
         decision,
         ...(autoriserDepassementPlafond ? { autoriserDepassementPlafond: true } : {}),
       });
-      await rechargerDossiers();
+      await rechargerDossiers({ force: true });
       setErreurs((prev) => {
         const next = { ...prev };
         delete next[personne.id];

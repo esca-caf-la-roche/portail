@@ -40,9 +40,13 @@ export default function AboAdmin() {
   const reglementsATraiter = useQuery(api.abo.reglements.compterActions, {});
   const [vue, setVue] = useState<Vue>("dossiers");
   const [licenceTest, setLicenceTest] = useState<string | null>(null);
-  const [versionSources, setVersionSources] = useState(0);
+  const [versionDossiers, setVersionDossiers] = useState(0);
+  const [versionPaiements, setVersionPaiements] = useState(0);
   const actualiserVuesSources = useCallback(
-    () => setVersionSources((version) => version + 1),
+    (sources: ("helloasso" | "scrap" | "annuaire" | "eleves")[]) => {
+      if (sources.includes("helloasso")) setVersionPaiements((version) => version + 1);
+      if (sources.some((source) => source !== "helloasso")) setVersionDossiers((version) => version + 1);
+    },
     [],
   );
 
@@ -99,7 +103,7 @@ export default function AboAdmin() {
       <div className="abo-admin-view">
         {vue === "dossiers" ? (
           <Dossiers
-            versionSources={versionSources}
+            versionSources={versionDossiers}
             onVoirTests={(licence) => {
               setLicenceTest(licence);
               setVue("tests");
@@ -118,7 +122,7 @@ export default function AboAdmin() {
         ) : vue === "anomalies" ? (
           <Anomalies />
         ) : vue === "paiements" ? (
-          <Paiements versionSources={versionSources} />
+          <Paiements versionSources={versionPaiements} />
         ) : vue === "config" ? (
           <Configuration />
         ) : (

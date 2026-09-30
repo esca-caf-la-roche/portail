@@ -11,6 +11,7 @@
 import type * as abo_apercu from "../abo/apercu.js";
 import type * as abo_auth from "../abo/auth.js";
 import type * as abo_compteur from "../abo/compteur.js";
+import type * as abo_compteurCache from "../abo/compteurCache.js";
 import type * as abo_config from "../abo/config.js";
 import type * as abo_demandes from "../abo/demandes.js";
 import type * as abo_demo from "../abo/demo.js";
@@ -36,6 +37,7 @@ import type * as abo_scrap from "../abo/scrap.js";
 import type * as abo_statutAbonnement from "../abo/statutAbonnement.js";
 import type * as abo_sync from "../abo/sync.js";
 import type * as abo_syncConstants from "../abo/syncConstants.js";
+import type * as abo_syncHealth from "../abo/syncHealth.js";
 import type * as abo_syncStatus from "../abo/syncStatus.js";
 import type * as abo_testAutonomiePdf from "../abo/testAutonomiePdf.js";
 import type * as abo_testDocuments from "../abo/testDocuments.js";
@@ -101,6 +103,7 @@ declare const fullApi: ApiFromModules<{
   "abo/apercu": typeof abo_apercu;
   "abo/auth": typeof abo_auth;
   "abo/compteur": typeof abo_compteur;
+  "abo/compteurCache": typeof abo_compteurCache;
   "abo/config": typeof abo_config;
   "abo/demandes": typeof abo_demandes;
   "abo/demo": typeof abo_demo;
@@ -126,6 +129,7 @@ declare const fullApi: ApiFromModules<{
   "abo/statutAbonnement": typeof abo_statutAbonnement;
   "abo/sync": typeof abo_sync;
   "abo/syncConstants": typeof abo_syncConstants;
+  "abo/syncHealth": typeof abo_syncHealth;
   "abo/syncStatus": typeof abo_syncStatus;
   "abo/testAutonomiePdf": typeof abo_testAutonomiePdf;
   "abo/testDocuments": typeof abo_testDocuments;

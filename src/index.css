@@ -4268,3 +4268,17 @@ a.btn-primary {
     flex-direction: column;
   }
 }
+.sync-global-alert {
+  display: inline-flex;
+  align-items: center;
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0.3rem 0.55rem;
+  border: 2px solid currentColor;
+  background: var(--warning);
+  color: var(--foreground);
+  font-weight: 800;
+  font-size: 0.8rem;
+}

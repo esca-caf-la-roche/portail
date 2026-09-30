@@ -335,6 +335,8 @@ export const synchroniserPaiementsAbo = authenticatedAction({
         errors: [],
       };
     }
+    const tentativeAt = new Date().toISOString();
+    await ctx.runMutation(internal.abo.syncHealth.marquer, { source: "helloasso_abo", tentativeAt, etat: "en_cours" });
     try {
       const resultat: { synced_count: number; errors: string[] } = await ctx.runAction(
         internal.helloasso.syncHelloAssoLinksInternal,
@@ -346,8 +348,13 @@ export const synchroniserPaiementsAbo = authenticatedAction({
           reussieAt: new Date().toISOString(),
         });
       }
+      await ctx.runMutation(internal.abo.syncHealth.marquer, {
+        source: "helloasso_abo", tentativeAt,
+        etat: resultat.errors.length === 0 ? "reussie" : "echec",
+      });
       return { statut: "done", retryAt: null, ...resultat };
     } catch (error) {
+      await ctx.runMutation(internal.abo.syncHealth.marquer, { source: "helloasso_abo", tentativeAt, etat: "echec" });
       await ctx.runMutation(internal.abo.sync.restaurerMarqueur, {
         cle: MANUAL_SYNC_KEY,
         valeur: reservation.precedent,
