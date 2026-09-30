@@ -111,8 +111,8 @@ l'onglet **Configuration** :
   (site du club, annuaire de licences, élèves en cours).
 
 Les synchronisations sont déclenchées en ouvrant l'espace administrateur et
-sont limitées côté serveur à environ une fois par quatre heures par source
-(`SYNC_TTL_MINUTES`, 240 min par défaut). Le bouton de synchronisation manuelle
+sont limitées côté serveur à environ une fois par quatre heures par source, hors
+annuaire des licences (créneaux 7 h et 9 h, heure de Paris). Le bouton de synchronisation manuelle
 reste soumis à une fenêtre de cinq minutes avant de pouvoir relancer la même
 source. Un échec externe ne bloque pas l'affichage du dernier état connu : il doit donc
 être vérifié avant une décision importante.

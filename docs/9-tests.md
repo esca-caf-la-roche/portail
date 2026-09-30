@@ -337,8 +337,8 @@ npm test -- convex/abo.elevesProjection.test.ts convex/paiements.test.ts
    vérifier que la somme des centimes attribués correspond exactement au total
    et que l'instantané des élèves reste lisible après renouvellement de la
    source `abo_eleves_en_cours` ;
-3. ouvrir la tuile deux fois et vérifier les verrous d'une heure pour les élèves
-   et HelloAsso ; simuler l'échec de chaque source et vérifier que le dernier
+3. ouvrir la tuile deux fois et vérifier les verrous de quatre heures pour les
+   élèves et HelloAsso ; simuler l'échec de chaque source et vérifier que le dernier
    cache reste affiché avec un avertissement non bloquant ;
 4. ouvrir un brouillon initial puis une relance : Gmail doit s'ouvrir dans un
    nouvel onglet avec `escalade@caflarochebonneville.fr`, le destinataire unique,
