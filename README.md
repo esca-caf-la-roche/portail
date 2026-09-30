@@ -17,7 +17,7 @@ L'architecture détaillée est décrite dans
 
 ## Prérequis
 
-- Node.js 20, version utilisée par le workflow de production
+- Node.js 24, version utilisée par le workflow de production
 - Un déploiement Convex accessible
 
 ## Installation et démarrage
@@ -44,6 +44,9 @@ les variables d'environnement Convex, jamais dans le dépôt.
 | `npm run dev` | Démarre le serveur Vite local |
 | `npm run build` | Vérifie TypeScript puis produit le build Vite |
 | `npm run lint` | Exécute ESLint sur le projet |
+| `npm test` | Exécute les tests Vitest, dont les tests Convex |
+| `npm run check:convex` | Typecheck les fonctions et tests Convex |
+| `npm run validate` | Enchaîne typecheck Convex, tests, lint et build |
 | `npm run preview` | Prévisualise le build de production |
 | `npx convex dev` | Synchronise le backend Convex de développement |
 
@@ -80,9 +83,12 @@ de `convex/customFunctions.ts`. Les exceptions publiques ou internes doivent
 | [`docs/7-workflow.md`](docs/7-workflow.md) | Livraison et contrôles |
 | [`docs/8-component-mapping.md`](docs/8-component-mapping.md) | Cartographie des modules |
 | [`docs/9-tests.md`](docs/9-tests.md) | Tests et validation |
+| [`docs/10-audit-abonnements-escalade.md`](docs/10-audit-abonnements-escalade.md) | Audit fonctionnel du module Abonnements |
 | [`docs/10-remboursements-eleves.md`](docs/10-remboursements-eleves.md) | Suivi des remboursements élèves |
+| [`docs/11-guide-admin-abonnements.md`](docs/11-guide-admin-abonnements.md) | Guide d'usage de l'administration Abonnements |
 | [`docs/12-module-samedis.md`](docs/12-module-samedis.md) | Carnet de réservation de la salle le samedi après-midi |
 | [`docs/13-planning-salaries-samedis.md`](docs/13-planning-salaries-samedis.md) | Planning Google des salariés du samedi |
+| [`docs/14-budget-previsionnel.md`](docs/14-budget-previsionnel.md) | Contrat métier de la répartition des recettes du Budget |
 
 ## Déploiement
 

@@ -249,7 +249,7 @@ configuration et remplacer uniquement le jeton de renouvellement.
   ou de cinq pages Google, elle échoue en conservant les données précédentes.
 - Une affectation locale peut être visible avant sa confirmation Google. Le
   statut et les files d'échec doivent être surveillés par un gestionnaire.
-- Le secret du compte de service, le jeton OAuth et le mot de passe SMTP donnent
+- Le secret OAuth, le jeton de renouvellement et le mot de passe SMTP donnent
   accès à des systèmes externes : ils doivent rester dans les variables Convex
   et être révoqués en cas d'exposition.
 - La version actuelle de Convex Auth ne rend pas parfaitement indistinguables

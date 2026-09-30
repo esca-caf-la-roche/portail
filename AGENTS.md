@@ -35,9 +35,10 @@ npm run lint
 npm run build
 ```
 
-Il n'existe pas encore de suite de tests automatisés. Ne jamais annoncer que
-des tests passent sans commande correspondante. Suivre `docs/9-tests.md` pour
-la validation manuelle et la stratégie d'introduction des tests.
+Le dépôt contient des tests Vitest, dont des tests Convex exécutés avec
+`convex-test`. Ne jamais annoncer que des tests passent sans commande
+correspondante. Suivre `docs/9-tests.md` pour le périmètre automatisé, la
+validation manuelle et la stratégie d'introduction des tests.
 
 ## Convex : règles obligatoires
 

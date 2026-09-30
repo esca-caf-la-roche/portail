@@ -289,6 +289,8 @@ Les statuts de synchronisation sont abonnés aux marqueurs réels, avec des
 arguments stables. Le navigateur calcule l'écoulement des délais et les
 créneaux de l'annuaire sans relire la base à chaque minute. Les actions
 recontrôlent toujours la disponibilité avec l'heure du serveur.
+`api.abo.syncHealth.resume` expose le dernier état par source
+(`en_cours`, `reussie` ou `echec`) sans le confondre avec une donnée fraîche.
 Les boutons manuels conservent leur délai de cinq minutes (hors annuaire), et
 le test d'autonomie direct conserve son snapshot complet de moins de 15 minutes.
 
