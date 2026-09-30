@@ -391,6 +391,7 @@ async function synchroniserSource(
       const resultat = await ctx.runAction(internal.abo.licences.importerAnnuaireLicencesInternal, {});
       return resultat.statut;
     } catch (e) {
+      await ctx.runMutation(internal.abo.syncHealth.marquer, { source, tentativeAt: new Date().toISOString(), etat: "echec" });
       console.error("[sync] échec source annuaire:", e);
       return "erreur";
     }
@@ -405,10 +406,14 @@ async function synchroniserSource(
     ttlMs: TTL_PAR_SOURCE[source],
   });
   if (!reservation.proceed) return "skipped";
+  const tentativeAt = new Date().toISOString();
+  await ctx.runMutation(internal.abo.syncHealth.marquer, { source, tentativeAt, etat: "en_cours" });
   try {
     switch (source) {
       case "helloasso":
-        await ctx.runAction(internal.helloasso.syncHelloAssoInternal, {});
+        if ((await ctx.runAction(internal.helloasso.syncHelloAssoInternal, {})).errors.length > 0) {
+          throw new Error("Import HelloAsso partiellement échoué");
+        }
         break;
       case "scrap":
         await ctx.runAction(internal.abo.scrap.scraperAbonnes, { generation: etat!.generation });
@@ -419,12 +424,14 @@ async function synchroniserSource(
         });
         break;
     }
+    await ctx.runMutation(internal.abo.syncHealth.marquer, { source, tentativeAt, etat: "reussie" });
     return "done";
   } catch (e) {
     await ctx.runMutation(internal.abo.sync.restaurerMarqueur, {
       cle,
       valeur: reservation.precedent,
     });
+    await ctx.runMutation(internal.abo.syncHealth.marquer, { source, tentativeAt, etat: "echec" });
     console.error(`[sync] échec source ${source}:`, e);
     return "erreur";
   }

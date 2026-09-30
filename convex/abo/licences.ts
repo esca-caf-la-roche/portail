@@ -520,7 +520,13 @@ export const importerAnnuaireLicences = authenticatedAction({
     if (!me || me.aboRole !== "admin") {
       throw new ConvexError("Réservé aux administrateurs.");
     }
-    return await ctx.runAction(internal.abo.licences.importerAnnuaireLicencesInternal, {});
+    try {
+      const resultat = await ctx.runAction(internal.abo.licences.importerAnnuaireLicencesInternal, {});
+      return resultat;
+    } catch (error) {
+      await ctx.runMutation(internal.abo.syncHealth.marquer, { source: "annuaire", tentativeAt: new Date().toISOString(), etat: "echec" });
+      throw error;
+    }
   },
 });
 
@@ -533,6 +539,9 @@ export const importerAnnuaireLicencesInternal = internalAction({
     if (reservation.statut !== "reserved") {
       return { statut: reservation.statut, retryAt: reservation.retryAt, upsertees: 0, recus: 0, supprimees: 0 };
     }
+    await ctx.runMutation(internal.abo.syncHealth.marquer, {
+      source: "annuaire", tentativeAt: reservation.tentativeAt!, etat: "en_cours",
+    });
     const user = process.env.LICENCES_USER;
     const pass = process.env.LICENCES_PASSWORD;
     if (!user || !pass) {
@@ -593,6 +602,9 @@ export const importerAnnuaireLicencesInternal = internalAction({
     });
     await ctx.runMutation(internal.abo.sync.marquerSyncReussie, {
       source: "annuaire", reussieAt: new Date().toISOString(), annuaireTentativeAt: reservation.tentativeAt,
+    });
+    await ctx.runMutation(internal.abo.syncHealth.marquer, {
+      source: "annuaire", tentativeAt: reservation.tentativeAt!, etat: "reussie",
     });
     return { statut: "done", retryAt: null, upsertees, recus: data.length, supprimees };
   },

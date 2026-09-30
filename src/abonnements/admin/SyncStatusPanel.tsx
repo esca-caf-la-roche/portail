@@ -88,9 +88,10 @@ function resumerResultats(resultats: ResultatsSync) {
   return `Vérification terminée : ${reussites} source${reussites > 1 ? "s ont" : " a"} été mise${reussites > 1 ? "s" : ""} à jour.`;
 }
 
-export default function SyncStatusPanel({ onTerminee }: { onTerminee?: () => void }) {
+export default function SyncStatusPanel({ onTerminee }: { onTerminee?: (sources: SourceId[]) => void }) {
   const maintenantMs = useMaintenantMinute();
   const etatSources = useQuery(api.abo.sync.getStatutSyncAbo, {});
+  const etatsPersistes = useQuery(api.abo.syncHealth.resume, {});
   const statut = etatSources === undefined ? undefined : {
     helloasso: actualiserStatutSource("helloasso", etatSources.helloasso, maintenantMs),
     scrap: actualiserStatutSource("scrap", etatSources.scrap, maintenantMs),
@@ -118,9 +119,8 @@ export default function SyncStatusPanel({ onTerminee }: { onTerminee?: () => voi
       const nouveauxResultats = await syncAbo({});
       setResultats(nouveauxResultats);
       setAnnonce(resumerResultats(nouveauxResultats));
-      if (Object.values(nouveauxResultats).some((resultat) => resultat === "done")) {
-        onTerminee?.();
-      }
+      const sourcesModifiees = SOURCES.filter((source) => nouveauxResultats[source.id] === "done").map((source) => source.id);
+      if (sourcesModifiees.length > 0) onTerminee?.(sourcesModifiees);
     } catch (error) {
       const detail = messageErreur(error);
       setErreur(detail);
@@ -156,11 +156,6 @@ export default function SyncStatusPanel({ onTerminee }: { onTerminee?: () => voi
             Sources d’inscription · hors règlements Drive
           </p>
           <h2 id="abo-sync-panel-title">État des synchronisations</h2>
-          <p className="abo-admin-sync-panel-intro">
-            La vérification se lance automatiquement à l’ouverture. Chaque source n’est mise à jour
-            que lorsqu’elle est disponible. Pour l’annuaire, les créneaux s’ouvrent à 7 h et 9 h,
-            heure de Paris. Sans consultation, aucun appel à l’annuaire n’est lancé.
-          </p>
         </div>
         <button
           className="abo-admin-button abo-admin-button--primary abo-admin-sync-panel-button"
@@ -188,7 +183,32 @@ export default function SyncStatusPanel({ onTerminee }: { onTerminee?: () => voi
         {annonce}
       </p>
 
-      <div className="abo-admin-sync-panel-grid">
+      <div className="abo-admin-sync-overview" aria-label="Résumé des sources">
+        {SOURCES.map((source) => {
+          const etat = statut?.[source.id];
+          const resultat = resultats?.[source.id];
+          const dernierEtat = etatsPersistes?.find((entree) => entree.source === (source.id === "helloasso" ? "helloasso_abo" : source.id) && entree.etat === "echec") ??
+            etatsPersistes?.find((entree) => entree.source === source.id);
+          return <div className="abo-admin-sync-overview-item" key={source.id}>
+            <strong>{source.label}</strong>
+            <span className={resultat === "erreur" || dernierEtat?.etat === "echec" ||
+              (dernierEtat?.etat === "en_cours" && maintenantMs - Date.parse(dernierEtat.tentativeAt) >= 10 * 60_000) ? "abo-admin-sync-error" : ""}>
+              {resultat === "erreur" || dernierEtat?.etat === "echec" ? "Échec de la dernière vérification" :
+              dernierEtat?.etat === "en_cours" && maintenantMs - Date.parse(dernierEtat.tentativeAt) >= 10 * 60_000 ? "Vérification interrompue : réessayer" :
+              dernierEtat?.etat === "en_cours" ? "Vérification en cours" :
+                !etat ? "Chargement…" : !etat.active ? "Suspendue" :
+                etat.lastSyncAt ? `Réussie le ${formaterDate(etat.lastSyncAt)}` : "Jamais synchronisée"}
+            </span>
+          </div>;
+        })}
+      </div>
+      <details className="abo-admin-sync-details">
+        <summary>Voir les détails et les prochains créneaux</summary>
+        <p className="abo-admin-sync-panel-intro">
+          La vérification se lance à l’ouverture. Chaque source n’est mise à jour que lorsqu’elle
+          est disponible. L’annuaire utilise les créneaux de 7 h et 9 h, heure de Paris.
+        </p>
+        <div className="abo-admin-sync-panel-grid">
         {SOURCES.map((source, index) => {
           const etat = statut?.[source.id];
           const resultat = resultats?.[source.id];
@@ -220,7 +240,7 @@ export default function SyncStatusPanel({ onTerminee }: { onTerminee?: () => voi
                           <dt>État courant</dt>
                           <dd>
                             <span className="abo-admin-sync-panel-state is-running">
-                              Synchronisation en cours
+                              Vérification globale en cours
                             </span>
                           </dd>
                         </>
@@ -315,6 +335,7 @@ export default function SyncStatusPanel({ onTerminee }: { onTerminee?: () => voi
         Pour l’annuaire, une première consultation après 9 h lance un seul appel, sans rattrapage.
         Les autres sources conservent leurs propres délais. Toutes les heures affichées sont celles de Paris.
       </p>
+      </details>
     </section>
   );
 }

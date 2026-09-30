@@ -1,12 +1,16 @@
-import { Outlet, Navigate, useLocation } from "react-router-dom";
+import { Outlet, Navigate, Link, useLocation } from "react-router-dom";
 import { useConvexAuth, useQuery } from "convex/react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { api } from "../../convex/_generated/api";
 import { useSeason } from "../contexts/SeasonContext";
 import { LogOut, UserRound } from "lucide-react";
 import PortalReturnLink from "./PortalReturnLink";
+import { useMaintenantMinute } from "../abonnements/lib/useMaintenantMinute";
+
+const libellesSources = { helloasso: "HelloAsso", helloasso_abo: "Paiements Abonnements", helloasso_cours: "Paiements cours", scrap: "Site du club", annuaire: "Annuaire", eleves: "Élèves" };
 
 export default function Layout() {
+  const maintenantMs = useMaintenantMinute();
   const { isAuthenticated, isLoading } = useConvexAuth();
   const { signOut } = useAuthActions();
   const { season, setSeason, availableSeasons } = useSeason();
@@ -18,6 +22,12 @@ export default function Layout() {
   const samediIdentity = useQuery(api.samedis.identity.me, doitVerifierSamedi ? {} : "skip");
   const planningSalarieIdentity = useQuery(api.planningSalaries.identity.me, doitVerifierSamedi ? {} : "skip");
   const currentUser = useQuery(api.users.current);
+  const etatsSync = useQuery(api.abo.syncHealth.resume, me?.isStaff ? {} : "skip");
+  const echecsSync = etatsSync?.filter((etat) => etat.etat === "echec" ||
+    (etat.etat === "en_cours" && maintenantMs - Date.parse(etat.tentativeAt) >= 10 * 60_000)) ?? [];
+  const synchronisationsEnCours = etatsSync?.filter((etat) =>
+    etat.etat === "en_cours" && maintenantMs - Date.parse(etat.tentativeAt) < 10 * 60_000
+  ) ?? [];
 
   // Les parties Paiements et Abonnements ne fonctionnent pas avec les saisons
   // (chacune gère son propre reset manuel) : on masque le sélecteur sur ces écrans.
@@ -57,6 +67,10 @@ export default function Layout() {
         
         <div className="header-controls">
           {location.pathname !== "/" && <PortalReturnLink />}
+          {echecsSync.length > 0 && <Link to={echecsSync[0].lien} className="sync-global-alert" role="status" title={echecsSync.map((etat) => libellesSources[etat.source]).join(", ")}>
+            ⚠ {echecsSync.map((etat) => libellesSources[etat.source]).join(", ")} à vérifier
+          </Link>}
+          {echecsSync.length === 0 && synchronisationsEnCours.length > 0 && <span className="sync-global-alert" role="status">Synchronisation en cours</span>}
           {showSeasonSelector && (
             <div className="season-selector">
               <label htmlFor="season">Saison :</label>

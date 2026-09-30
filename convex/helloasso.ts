@@ -410,7 +410,18 @@ export const syncHelloAsso = authenticatedAction({
       userId: ctx.userId,
       tile: "paiements",
     });
-    return await runHelloAssoSync(ctx);
+    const tentativeAt = new Date().toISOString();
+    await ctx.runMutation(internal.abo.syncHealth.marquer, { source: "helloasso_cours", tentativeAt, etat: "en_cours" });
+    try {
+      const resultat = await runHelloAssoSync(ctx);
+      await ctx.runMutation(internal.abo.syncHealth.marquer, {
+        source: "helloasso_cours", tentativeAt, etat: resultat.errors.length ? "echec" : "reussie",
+      });
+      return resultat;
+    } catch (error) {
+      await ctx.runMutation(internal.abo.syncHealth.marquer, { source: "helloasso_cours", tentativeAt, etat: "echec" });
+      throw error;
+    }
   },
 });
 

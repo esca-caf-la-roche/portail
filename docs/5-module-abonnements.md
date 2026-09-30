@@ -706,3 +706,21 @@ Les dossiers `abo-esca-new/` et `abo-esca-new/supabase/` servent uniquement de
 **spécification** (contrats RPC, codes d'erreur `P0010`–`P0013`, migrations SQL,
 modèle de données). Ils sont **non suivis par git** — leur suppression est
 irréversible. À supprimer **une fois la checklist e2e ci-dessus validée**.
+## Fraîcheur de l'interface et état partagé
+
+Les décisions locales des dossiers et des paiements relisent leur vue immédiatement
+après confirmation, même pendant le délai normal de limitation des lectures
+ponctuelles. Une vérification externe ignorée par le verrou ne force pas de
+relecture des paiements.
+
+L'état des sources est présenté en résumé compact dans l'administration ; les
+délais et modalités de relance sont accessibles dans les détails dépliables.
+Un indicateur discret dans l'en-tête staff signale un échec d'import ou une
+vérification interrompue, uniquement pour les sources liées aux tuiles
+attribuées à l'utilisateur. Il n'affiche aucune erreur brute ni donnée métier.
+L'état opérationnel courant est stocké par source dans `abo_app_config`, hors
+saison comptable ; il ne remplace ni le verrou partagé ni le dernier snapshot
+disponible. Une ouverture du portail ne déclenche pas d'import depuis cet
+indicateur. Le formulaire HelloAsso Abonnements et le parcours des paiements
+des cours ont des états distincts de la vérification générale : la réussite
+d'un formulaire ne masque pas l'échec de l'autre.
