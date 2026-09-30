@@ -200,13 +200,14 @@ stable du suivi « traité » et le statut de licence de la saison courante util
 par la tuile Licences des cours. Le numéro `licence` peut appartenir à une
 saison précédente : seule la valeur `OK` de `licence_saison` masque une ligne.
 
-La page **Configuration** n'est accessible qu'avec la tuile `abonnements` et
-l'autorisation nominative `canManageAboConfiguration`, accordée dans
-*Configurations > Utilisateurs et Accès*. Un administrateur général peut
-l'attribuer à tout membre du staff titulaire de cette tuile, y compris si cette
-personne n'est pas administratrice générale. Ce droit couvre les réglages de
-campagne, dont la réinitialisation annuelle ; le backend le vérifie sur chaque
-lecture ou modification de configuration.
+La page **Configuration** exige la tuile `abonnements` et une autorisation
+nominative : `canManageAboConfiguration`, ou l'ancien drapeau
+`canResetAboSeason` conservé pour compatibilité. Ces droits sont accordés dans
+*Configurations > Utilisateurs et Accès*. Un administrateur général peut les
+attribuer à tout membre du staff titulaire de cette tuile, y compris si cette
+personne n'est pas administratrice générale ; le rôle `admin` seul ne suffit pas.
+Ce droit couvre les réglages de campagne, dont la réinitialisation annuelle ; le
+backend le vérifie sur chaque lecture ou modification de configuration.
 
 Elle remet le portail dans un état exclusivement utile à la nouvelle campagne :
 les suivis et statuts de campagne sont supprimés, tandis que les documents des
@@ -289,6 +290,8 @@ Les statuts de synchronisation sont abonnés aux marqueurs réels, avec des
 arguments stables. Le navigateur calcule l'écoulement des délais et les
 créneaux de l'annuaire sans relire la base à chaque minute. Les actions
 recontrôlent toujours la disponibilité avec l'heure du serveur.
+`api.abo.syncHealth.resume` expose le dernier état par source
+(`en_cours`, `reussie` ou `echec`) sans le confondre avec une donnée fraîche.
 Les boutons manuels conservent leur délai de cinq minutes (hors annuaire), et
 le test d'autonomie direct conserve son snapshot complet de moins de 15 minutes.
 
@@ -476,10 +479,13 @@ peut être liée qu'une fois à cette version durant la campagne.
 
 ## Rendez-vous de test d'autonomie
 
-Une personne dont la demande est **validée** peut réserver un créneau de test,
-même si sa licence, son âge ou le besoin de test ne sont pas encore connus. La
-réservation est alors un **RDV provisoire** : elle évite de retarder la prise de
-rendez-vous sur la seule attente des données du site du club. Exception : une
+Une personne dont la demande est **validée** peut réserver un créneau de test
+uniquement lorsque le test est **requis** pour elle et que son **âge est connu et
+supérieur ou égal à 16 ans** ; le serveur refuse toute réservation tant que ces
+conditions ne sont pas réunies, ce qui suppose des données du site du club déjà
+synchronisées. Une réservation issue d'un dossier est enregistrée comme **RDV
+provisoire** ; aucun traitement ultérieur ne la confirme ni ne l'annule
+automatiquement (voir plus bas). Exception : une
 personne déposée en **vague 2** parce qu'elle est déjà élève en cours n'a pas à
 réserver de créneau. Elle imprime le formulaire et le fait valider par son
 moniteur pendant son cours d'escalade. Le suivi explique directement cette
@@ -547,14 +553,12 @@ production de cette règle. Il exige une clé d'idempotence explicite : rejouer 
 même opération ne crée ni nouveau lot ni second envoi. Les rattachements,
 alertes, lots et journaux d'envoi sont purgés au reset de la campagne.
 
-Après une synchronisation réussie du site, la réévaluation ne s'appuie que sur
-une **licence exactement identique**. Un rapprochement par nom et prénom ne
-peut ni confirmer ni annuler un rendez-vous. Lorsque les données ainsi
-retrouvées indiquent qu'un test est requis et que la personne a au moins 16 ans,
-le RDV est confirmé. Lorsqu'elles indiquent que le test n'est pas requis, qu'il
-est déjà validé ou que l'âge est inférieur à 16 ans, le RDV est annulé et la
-personne est prévenue. Si ces conditions restent inconnues, la réservation est
-conservée jusqu'au jour J.
+Après une synchronisation réussie du site, le rapprochement ne s'appuie que sur
+une **licence exactement identique** et il met uniquement à jour les données de
+la personne (licence, âge, besoin de test). Il ne confirme ni n'annule jamais un
+rendez-vous déjà pris : un rapprochement par nom et prénom ne peut pas davantage
+le faire. Un RDV provisoire reste donc tel quel, et le staff le traite
+manuellement, jusqu'à l'échéance ou la saisie d'un résultat.
 
 Un rappel est planifié pour chaque réservation active à J-1 ; pour un créneau
 dans moins de 24 heures, il part immédiatement. Son objet indique explicitement
@@ -700,12 +704,6 @@ déploiement `npx.cmd convex dev` actif.
 - [ ] **Non-régression compta** : login staff `google-otp` inchangé ; tuiles
   Comptabilité/Paiements/Budget intactes ; table `dossiers` (cours) non impactée.
 
-## Nettoyage final
-
-Les dossiers `abo-esca-new/` et `abo-esca-new/supabase/` servent uniquement de
-**spécification** (contrats RPC, codes d'erreur `P0010`–`P0013`, migrations SQL,
-modèle de données). Ils sont **non suivis par git** — leur suppression est
-irréversible. À supprimer **une fois la checklist e2e ci-dessus validée**.
 ## Fraîcheur de l'interface et état partagé
 
 Les décisions locales des dossiers et des paiements relisent leur vue immédiatement
