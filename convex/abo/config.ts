@@ -1,6 +1,6 @@
 // Configuration applicative du module Abonnements (table abo_app_config) et
 // helpers du gating par vague. Portage de :
-//   - gating_helpers.sql (vagues_config, licence_est_eleve)
+//   - gating_helpers.sql (vagues_config)
 //   - vagues_timezone.sql (vague_courante + interprétation Europe/Paris)
 //   - liens_finalisation.sql (liens_finalisation)
 //
@@ -182,22 +182,6 @@ export const vaguesConfig = authenticatedQuery({
       vague2_debut: await vagueDateIso(ctx, "vague2_debut"),
       vague3_debut: await vagueDateIso(ctx, "vague3_debut"),
     };
-  },
-});
-
-// ── licence_est_eleve(licence) : booléen sans fuite (contrôle vague 2) ──
-// Vrai si la licence appartient à un élève en cours d'escalade (passe-droit
-// vague 2). Ne renvoie JAMAIS la liste des élèves (booléen seul).
-export const licenceEstEleve = authenticatedQuery({
-  args: { licence: v.string() },
-  handler: async (ctx, args) => {
-    const lic = args.licence.trim();
-    if (!lic) return false;
-    const row = await ctx.db
-      .query("abo_eleves_en_cours")
-      .withIndex("by_licence", (q) => q.eq("licence", lic))
-      .first();
-    return row !== null;
   },
 });
 

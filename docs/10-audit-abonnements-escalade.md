@@ -56,10 +56,9 @@ personne qui devra proposer des tests.
    **Configurations > Utilisateurs et Accès**.
 2. Cliquer sur **Ajouter un utilisateur**, saisir le nom et l'adresse e-mail
    professionnelle ou personnelle du bénévole, puis enregistrer.
-3. Éditer ensuite cet utilisateur et cocher explicitement la permission
-   **Abonnements escalade** (tuile `abonnements`). Les droits Comptabilité,
-   Paiements et Budget ajoutés par défaut lors de la création doivent être
-   retirés s'ils ne correspondent pas au rôle réel.
+3. Éditer ensuite cet utilisateur et cocher explicitement les permissions
+   nécessaires. À la création, **aucun module n'est autorisé** : attribuez la
+   tuile **Abonnements escalade** (et toute autre utile) selon le rôle réel.
 4. Le rôle général peut rester `user`. Le mettre à `admin` n'est nécessaire
    que si la personne doit elle-même administrer les comptes et les saisons.
 5. Informer le bénévole qu'il se connecte par `/#/login`, avec son e-mail ; il
@@ -403,12 +402,12 @@ Elle effectue ensuite, dans cet ordre :
 | Corrigé | Un même e-mail peut servir au staff et à une demande publique personnelle. | Lors du reset, la purge efface les données de campagne et `abo_profiles`, tout en conservant `users`, `userSettings`, sessions et comptes d'authentification dès qu'un accès staff existe. |
 | Corrigé | L'API de réservation vérifie que la demande est validée, que le test est requis, que l'âge est renseigné et d'au moins 16 ans, et que la tranche est future. Ces prérequis sont contrôlés côté serveur, donc un appel direct ne contourne pas la règle d'affichage. | Couvert par `convex/abo.tests.test.ts`. |
 | Corrigé | La remise à zéro supprime les comptes publics et leurs dossiers ; l'archive conservée ne contient que le snapshot minimal des abonnés du site. | La conservation et l'absence d'export préalable ont été validées par le club. Le déclenchement exige désormais la tuile Abonnements et une autorisation nominative de configuration (ou l'ancien drapeau de reset), sans exiger le rôle `admin` général. |
-| Haute | L'ajout d'un staff donne actuellement Comptabilité, Paiements et Budget par défaut avant correction manuelle. | La procédure doit imposer le retrait immédiat de ces tuiles pour un simple encadrant de test ; idéalement le comportement devra être revu avant généralisation. |
+| Corrigé | L'ajout d'un staff ne donne plus aucun module par défaut : les tuiles sont attribuées explicitement par l'administrateur (`convex/users.ts`). | La procédure d'ajout doit cocher la tuile du rôle réel ; aucun accès financier n'est plus accordé silencieusement. |
 | Corrigé | Le plafond configuré est désormais contrôlé par la transaction de décision : la validation qui porterait l'occupation au-delà du plafond devient une liste d'attente, sauf action explicite « Valider malgré le plafond ». | La décision reste fondée sur le snapshot synchronisé du site club ; une synchronisation récente demeure nécessaire lorsque des changements externes sont possibles. |
 | Moyenne | La suppression d'un créneau annule les derniers inscrits. | Définir une règle d'information / re-priorisation manuelle si les rendez-vous sont proches. |
 | Moyenne | Un demandeur peut retirer une personne, y compris après validation ; s'il retire la dernière, le dossier, les messages, le journal et les réservations sont supprimés. | Décider des états à verrouiller et de la trace d'audit à conserver. |
 | Corrigé | Le code OTP public est limité par adresse (3 par 10 min) et globalement (60 par minute) via `convex/aboOtp.ts`. | Rate limit en place ; la temporisation de renvoi et la trace minimale d'abus restent à confirmer. |
-| Moyenne | Un compte public connecté peut tester des numéros de licence et apprendre s'ils figurent parmi les élèves en cours. | Déplacer ce contrôle dans la mutation de demande, ou limiter fortement les tentatives. |
+| Accepté | Un compte peut apprendre si une licence figure parmi les élèves en cours via le parcours de demande, qui résout l'identité à partir d'une licence saisie. L'endpoint `licenceEstEleve`, accessible à tout compte connecté, a en revanche été supprimé. | **Décision : conservé tel quel, sans vérification par e-mail.** Le parcours de demande résout l'identité depuis la licence saisie ; ce compromis est assumé pour ne pas alourdir la vague 2. À réévaluer uniquement si le risque d'énumération devient inacceptable. |
 | Moyenne | Le suivi annonce une synchronisation quotidienne d'environ 24 h, tandis que les actualisations internes sont déclenchées à l'ouverture avec une limite d'environ quatre heures. | Clarifier pour le club la part réellement quotidienne du système externe et la fréquence réelle attendue côté portail. |
 
 ### Dette technique et montée en charge à programmer
@@ -416,10 +415,10 @@ Elle effectue ensuite, dans cet ordre :
 | Priorité | Observation de code | Conséquence probable |
 |---|---|---|
 | Importante | Le calcul des tranches de test lit tous les créneaux et plusieurs vues admin lisent toutes les réservations actives. | À faible volume c'est simple ; avant extension, borner/paginer ou indexer par date pour maîtriser les lectures Convex. |
-| Importante | La query des créneaux disponibles utilise l'heure courante (`Date.now()`) dans une query réactive. | L'affichage d'un créneau qui passe dans le passé peut ne pas se rafraîchir sans autre événement ; prévoir un rafraîchissement client explicite ou matérialiser l'état. |
+| Corrigé | La query des créneaux disponibles reçoit désormais un `maintenantMs` stable (hook `useMaintenantMinute`) au lieu d'appeler `Date.now()`. | L'affichage se rafraîchit à la minute côté client. |
 | Corrigé | Le reset est exécuté par lots : profils publics d'une part, suivi de campagne (tests, règlements, fusions, anomalies) d'autre part. | Les deux purges progressent séparément ; vérifier à grande échelle qu'aucune limite transactionnelle n'interrompt la remise à zéro. |
 | Corrigé | Le formulaire borne la saisie : 10 personnes par dossier, 100 caractères pour le nom et le prénom, 2 000 pour le commentaire (`convex/abo/demandes.ts`). | Limites en place ; vérifier qu'elles restent alignées sur les besoins métier lors d'une exposition large. |
-| À vérifier | Plusieurs erreurs d'autorisation sont des `Error` simples et non des `ConvexError`. | En production, le message lisible peut devenir « Server Error » ; uniformiser les erreurs métier lors de la finalisation. |
+| Corrigé (partiel) | Les gardes principales (`requireAboIdentity`, `requireAboAdmin`, `requireOwnedDossier`, synchronisations Paiements et Club) lèvent désormais des `ConvexError`. | Reste à uniformiser les autres erreurs métier de `convex/abo/**`. |
 | À vérifier | `abo_profiles.role` autorise encore la valeur `admin`, alors que l'administration est censée provenir uniquement de la tuile staff. | Simplifier ce modèle ou migrer les anciennes données afin de lever toute ambiguïté. |
 
 ### Expérience et accessibilité à finaliser

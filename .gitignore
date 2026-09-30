@@ -67,6 +67,7 @@ BS.pdf
 # Configurations et notes personnelles d'assistants locaux
 .claude/
 .codex/memory/
+.opencode/memory/
 CLAUDE.md
 TODO.md
 

@@ -24,7 +24,7 @@ function ReservationDirecte() {
   const verificationId = useRef(0);
   const candidats = useQuery(api.abo.tests.mesCandidatsDirects);
   const reservations = useQuery(api.abo.tests.getMesReservationsDirectes, { maintenantMs });
-  const creneaux = useQuery(api.abo.tests.testCreneauxDisponibles);
+  const creneaux = useQuery(api.abo.tests.testCreneauxDisponibles, { maintenantMs });
   const synchroniser = useAction(api.abo.scrap.synchroniserPourTestAutonomieDirect);
   const memoriser = useMutation(api.abo.tests.verifierEtMemoriserCandidatDirect);
   const retirer = useMutation(api.abo.tests.retirerCandidatDirect);

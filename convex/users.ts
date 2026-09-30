@@ -312,7 +312,7 @@ export const addUser = authenticatedMutation({
     
     await ctx.db.insert("userSettings", {
       userId: newUserId,
-      allowedTiles: ensureBudgetIncludesCompta(["compta", "paiements", "budget"]),
+      allowedTiles: [],
       role: "user",
       canResetAboSeason: false,
       canManageAboConfiguration: false,

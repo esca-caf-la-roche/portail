@@ -266,6 +266,13 @@ describe("saisons et administration globale", () => {
     });
     const user = await t.run(async (ctx) => await ctx.db.get(userId));
     expect(user?.email).toBe("nouveau.staff@example.test");
+    const settings = await t.run(async (ctx) =>
+      await ctx.db
+        .query("userSettings")
+        .withIndex("by_userId", (q) => q.eq("userId", userId))
+        .first(),
+    );
+    expect(settings?.allowedTiles).toEqual([]);
     await expect(admin.mutation(api.users.addUser, {
       email: "nouveau.staff@example.test",
       name: "Doublon",

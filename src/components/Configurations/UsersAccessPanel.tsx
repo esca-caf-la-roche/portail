@@ -128,8 +128,8 @@ export default function UsersAccessPanel() {
           </button>
         </form>
         <p className="user-add-note">
-          À la création, Comptabilité, Paiements Escalade et Budget prévisionnel
-          sont autorisés par défaut. Vous pourrez ajuster ces accès juste après.
+          Aucun module n'est autorisé à la création. Attribuez explicitement
+          les tuiles nécessaires au rôle réel de la personne.
         </p>
         {addError && (
           <p className="user-edit-error" role="alert" aria-live="assertive">

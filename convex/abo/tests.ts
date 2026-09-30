@@ -511,13 +511,13 @@ async function inscrireReservationsAdmin(
 // ── Candidat : tranches encore disponibles (à venir, place libre) ─────
 // Aucune identité d'admin (anonymat). Réservé aux comptes connectés.
 export const testCreneauxDisponibles = authenticatedQuery({
-  args: {},
-  handler: async (ctx) => {
+  args: { maintenantMs: v.optional(v.number()) },
+  handler: async (ctx, args) => {
     await requireAboIdentity(ctx);
     const tranches = await calculerTranches(ctx);
     const reservations = await reservationsActives(ctx);
     const disponibles = placesReservablesParTranche(tranches, reservations);
-    const now = Date.now();
+    const now = args.maintenantMs ?? Date.now();
     return tranches
       .map((t) => ({
         tranche_debut: t.tranche_debut,

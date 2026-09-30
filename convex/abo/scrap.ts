@@ -655,7 +655,10 @@ export const synchroniserClub = authenticatedAction({
   handler: async (ctx): Promise<ResultatSynchronisationClubAdmin> => {
     const me = await ctx.runQuery(api.abo.identity.me, {});
     if (!me || me.aboRole !== "admin") {
-      throw new Error("Réservé aux administrateurs.");
+      throw new ConvexError({
+        code: "ABO_ADMIN_REQUIS",
+        message: "Réservé aux administrateurs.",
+      });
     }
     const resultat = await synchroniserClubAvecVerrou(ctx, true);
     if (resultat.statut === "en_cours") {

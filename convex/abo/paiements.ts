@@ -10,7 +10,7 @@
 // Rappel métier : ce statut interne est un SUIVI d'arbitrage (remboursements,
 // attestations) ; le paiement « officiel » des étapes vient du scrap (Phase H).
 
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { authenticatedQuery, authenticatedMutation, authenticatedAction } from "../customFunctions";
 import type { QueryCtx, MutationCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
@@ -309,7 +309,10 @@ export const synchroniserPaiementsAbo = authenticatedAction({
   ): Promise<{ statut: "done" | "skipped"; retryAt: string | null; synced_count: number; errors: string[] }> => {
     const me = await ctx.runQuery(api.abo.identity.me, {});
     if (!me || me.aboRole !== "admin") {
-      throw new Error("Réservé aux administrateurs.");
+      throw new ConvexError({
+        code: "ABO_ADMIN_REQUIS",
+        message: "Réservé aux administrateurs.",
+      });
     }
     const linkId = await ctx.runQuery(internal.abo.paiements.getLienAboInterne, {});
     if (!linkId) {

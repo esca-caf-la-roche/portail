@@ -52,7 +52,7 @@ function ReservationDirecte() {
   const synchronisationId = useRef<number | null>(null);
   const eligibility = useQuery(api.abo.tests.eligibiliteReservationDirecteTest, recherche ?? "skip");
   const reservations = useQuery(api.abo.tests.getMesReservationsDirectes, { maintenantMs });
-  const creneaux = useQuery(api.abo.tests.testCreneauxDisponibles);
+  const creneaux = useQuery(api.abo.tests.testCreneauxDisponibles, { maintenantMs });
   const synchroniser = useAction(api.abo.scrap.synchroniserPourTestAutonomieDirect);
   const reserver = useMutation(api.abo.tests.reserverTestDirect);
   const annuler = useMutation(api.abo.tests.annulerMaReservationDirecte);
