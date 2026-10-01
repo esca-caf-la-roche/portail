@@ -1397,14 +1397,11 @@ describe("réservation de test d'autonomie", () => {
     }));
     const caller = t.withIdentity({ subject: userId });
 
+    // La réservation passée sans résultat n'est plus le RDV courant…
     await expect(caller.query(api.abo.tests.getMesReservationsDirectes, {
       maintenantMs: Date.parse("2020-06-02T08:21:00.000Z"),
-    })).resolves.toEqual([
-      expect.objectContaining({
-        id: reservationId,
-        annulation_autorisee: false,
-      }),
-    ]);
+    })).resolves.toEqual([]);
+    // … et reste impossible à annuler (tentative terminée).
     await expect(caller.mutation(api.abo.tests.annulerMaReservationDirecte, {
       reservationId,
     })).rejects.toThrow("ne peut plus être annulée");
@@ -1718,6 +1715,41 @@ describe("réservation de test d'autonomie", () => {
       annulee_raison: "creneau_admin_annule",
     });
   }, 10_000);
+
+  test("autorise une réservation directe malgré une réservation passée non clôturée", async () => {
+    const t = convexTest(schema, modules);
+    rateLimiterTest.register(t);
+    const candidatId = await creerCandidatDirect(t);
+    const candidat = t.withIdentity({ subject: candidatId });
+    await creerCreneau(t, "2099-06-02");
+    // Absence non marquée sur un créneau passé (ex. ROSSET en prod).
+    await t.run((ctx) => ctx.db.insert("abo_test_reservations", {
+      candidat_user_id: candidatId,
+      candidat_licence: "748012345678",
+      candidat_nom: "DIRECT",
+      candidat_prenom: "Camille",
+      candidat_email: "direct@example.test",
+      tranche: "2026-09-16T14:40:00.000Z",
+      tranche_fin: "2026-09-16T15:20:00.000Z",
+      statut: "active",
+      etat_confirmation: "confirmee",
+    }));
+
+    const rattachement = await candidat.mutation(
+      api.abo.tests.verifierEtMemoriserCandidatDirect,
+      { licence: "748012345678" },
+    );
+    if (!rattachement.candidat || !("id" in rattachement.candidat)) throw new Error("Candidat non mémorisé");
+
+    // Le sélecteur ne montre plus l'ancienne réservation…
+    await expect(candidat.query(api.abo.tests.getMesReservationsDirectes, {}))
+      .resolves.toEqual([]);
+    // … et la nouvelle réservation aboutit.
+    await expect(candidat.mutation(api.abo.tests.reserverTestDirect, {
+      candidatId: rattachement.candidat.id,
+      tranche: await trancheDisponible(candidat),
+    })).resolves.toBeNull();
+  });
 
   test("canonise la licence avant l'éligibilité et la réservation directes", async () => {
     const t = convexTest(schema, modules);

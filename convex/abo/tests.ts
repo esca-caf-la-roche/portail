@@ -873,8 +873,14 @@ export const getMesReservationsDirectes = authenticatedQuery({
     const maintenantMs = args.maintenantMs ?? Date.now();
     const rows = await ctx.db.query("abo_test_reservations")
       .withIndex("by_candidat_user_id", (q) => q.eq("candidat_user_id", id.userId)).collect();
+    // Même règle que getMesReservationsParPersonne : une réservation passée
+    // sans résultat n'est plus le RDV courant (non annulable, non bloquante) ;
+    // l'afficher figerait le sélecteur de créneaux.
     return rows
-      .filter((reservation) => estReservationActive(reservation) && reservation.resultat_test === undefined)
+      .filter((reservation) =>
+        estReservationActive(reservation)
+        && reservation.resultat_test === undefined
+        && (finReservationMs(reservation) ?? 0) > maintenantMs)
       .map((r) => ({
         id: r._id,
         licence: r.candidat_licence ?? "",
