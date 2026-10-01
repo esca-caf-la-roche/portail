@@ -819,6 +819,82 @@ describe("réservation de test d'autonomie", () => {
     })).rejects.toThrow("réservation active");
   });
 
+  test("ne bloque plus sur une réservation passée sans résultat renseigné", async () => {
+    const t = convexTest(schema, modules);
+    const { userId, personneId } = await creerPersonne(t, { licence: "748000000033" });
+    await creerCreneau(t, "2099-06-02");
+    // Absence non marquée : réservation passée restée active sans résultat.
+    await t.run((ctx) => ctx.db.insert("abo_test_reservations", {
+      personne_id: personneId,
+      tranche: "2026-09-24T15:00:00.000Z",
+      tranche_fin: "2026-09-24T15:20:00.000Z",
+      statut: "active",
+      etat_confirmation: "provisoire",
+    }));
+    const caller = t.withIdentity({ subject: userId });
+
+    // Elle n'est pas affichée comme le RDV courant…
+    await expect(caller.query(api.abo.tests.getMesReservationsParPersonne, {}))
+      .resolves.toEqual([]);
+
+    // … et n'empêche pas de réserver un nouveau créneau.
+    await expect(caller.mutation(api.abo.tests.reserverTest, {
+      personneId,
+      tranche: await trancheDisponible(caller),
+    })).resolves.toBeNull();
+
+    const reservations = await caller.query(api.abo.tests.getMesReservationsParPersonne, {});
+    expect(reservations).toEqual([
+      expect.objectContaining({
+        personne_id: personneId,
+        active: expect.objectContaining({
+          tranche: expect.stringContaining("2099-06-02"),
+        }),
+      }),
+    ]);
+  });
+
+  test("ne bloque plus sur une réservation directe passée sans résultat sur la même licence", async () => {
+    const t = convexTest(schema, modules);
+    const { userId, personneId } = await creerPersonne(t, { licence: "748000000034" });
+    await creerCreneau(t, "2099-06-02");
+    await t.run(async (ctx) => {
+      const autreUserId = await ctx.db.insert("users", { email: "autre@example.test" });
+      await ctx.db.insert("abo_test_reservations", {
+        candidat_user_id: autreUserId,
+        candidat_licence: "748000000034",
+        candidat_nom: "Candidate",
+        candidat_prenom: "Test",
+        tranche: "2026-09-24T15:00:00.000Z",
+        tranche_fin: "2026-09-24T15:20:00.000Z",
+        statut: "active",
+        etat_confirmation: "confirmee",
+      });
+    });
+    const caller = t.withIdentity({ subject: userId });
+
+    await expect(caller.mutation(api.abo.tests.reserverTest, {
+      personneId,
+      tranche: await trancheDisponible(caller),
+    })).resolves.toBeNull();
+  });
+
+  test("bloque toujours sur une réservation future active", async () => {
+    const t = convexTest(schema, modules);
+    const { userId, personneId } = await creerPersonne(t, { licence: "748000000035" });
+    await creerCreneau(t, "2099-06-02");
+    const caller = t.withIdentity({ subject: userId });
+
+    await caller.mutation(api.abo.tests.reserverTest, {
+      personneId,
+      tranche: await trancheDisponible(caller),
+    });
+    await expect(caller.mutation(api.abo.tests.reserverTest, {
+      personneId,
+      tranche: await trancheDisponible(caller),
+    })).rejects.toThrow("déjà une réservation");
+  });
+
   test("répartit chaque personne dans un statut exclusif dont la somme égale le total", async () => {
     const t = convexTest(schema, modules);
     const adminId = await creerAdminAbo(t);
@@ -1355,7 +1431,7 @@ describe("réservation de test d'autonomie", () => {
     });
   });
 
-  test("affiche un créneau dossier terminé comme non annulable avant sa qualification", async () => {
+  test("n'affiche plus un créneau dossier terminé non qualifié comme RDV courant", async () => {
     const t = convexTest(schema, modules);
     const { userId, personneId } = await creerPersonne(t);
     await t.run((ctx) => ctx.db.insert("abo_test_reservations", {
@@ -1365,11 +1441,13 @@ describe("réservation de test d'autonomie", () => {
       statut: "active",
     }));
 
+    // Une réservation passée sans résultat n'est ni annulable ni bloquante :
+    // elle n'apparaît plus comme le rendez-vous courant.
     const reservations = await t.withIdentity({ subject: userId }).query(
       api.abo.tests.getMesReservationsParPersonne,
       { maintenantMs: Date.parse("2020-06-02T08:21:00.000Z") },
     );
-    expect(reservations[0]?.active?.annulation_autorisee).toBe(false);
+    expect(reservations[0]?.active ?? null).toBeNull();
   });
 
   test("n'expose pas une réservation directe sur une licence seulement saisie", async () => {

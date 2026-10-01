@@ -5,7 +5,7 @@
 import { ConvexError, v } from "convex/values";
 import { authenticatedMutation, authenticatedQuery } from "../customFunctions";
 import { internalMutation, internalQuery } from "../_generated/server";
-import type { Id } from "../_generated/dataModel";
+import type { Doc, Id } from "../_generated/dataModel";
 import { champsModifies } from "../dbUtils";
 import { requireAboAdmin } from "./auth";
 import { canoniserLicence } from "./lib";
@@ -145,19 +145,33 @@ async function archivesAffichables<T extends {
   );
 }
 
-async function reservationPasseePourPersonne(
+// Réservation passée la plus récente rattachée à une licence (parcours dossier
+// et/ou parcours direct), pour permettre la saisie du résultat depuis la
+// recherche par licence.
+async function reservationPasseePourLicence(
   ctx: Parameters<typeof requireAboAdmin>[0],
-  personneId: Id<"abo_personnes">,
+  licence: string,
+  personneId: Id<"abo_personnes"> | null,
   avant: string,
-): Promise<boolean> {
-  const reservations = await ctx.db
-    .query("abo_test_reservations")
-    .withIndex("by_personne", (q) => q.eq("personne_id", personneId))
-    .take(20);
-  return reservations.some(
+): Promise<Doc<"abo_test_reservations"> | null> {
+  const [directes, liees] = await Promise.all([
+    ctx.db
+      .query("abo_test_reservations")
+      .withIndex("by_candidat_licence", (q) => q.eq("candidat_licence", licence))
+      .take(20),
+    personneId
+      ? ctx.db
+          .query("abo_test_reservations")
+          .withIndex("by_personne", (q) => q.eq("personne_id", personneId))
+          .take(20)
+      : Promise.resolve([]),
+  ]);
+  const passees = [...directes, ...liees].filter(
     (reservation) =>
       reservation.statut === "active" && reservationEstPassee(reservation, avant),
   );
+  passees.sort((a, b) => b._creationTime - a._creationTime);
+  return passees[0] ?? null;
 }
 
 async function aUneAutreReservationFuture(
@@ -305,20 +319,24 @@ export const rechercherCandidatParLicence = authenticatedQuery({
       const personne = personnesParLicence.get(licence) ?? null;
       const entreeAnnuaire = annuaireParLicence.get(licence);
       const archive = archivesParLicence.get(licence);
+      const reservation = await reservationPasseePourLicence(
+        ctx,
+        licence,
+        personne?._id ?? null,
+        args.avant,
+      );
       return {
-        reservationId: null,
+        reservationId: reservation?._id ?? null,
         personneId: personne?._id ?? null,
         licence,
         nom: personne?.nom ?? entreeAnnuaire?.nom ?? archive?.nom ?? "",
         prenom: personne?.prenom ?? entreeAnnuaire?.prenom ?? archive?.prenom ?? "",
         licenceManquante: false,
-        reservationPassee: personne
-          ? await reservationPasseePourPersonne(ctx, personne._id, args.avant)
-          : false,
+        reservationPassee: Boolean(reservation),
         archiveId: archive?._id ?? null,
         statut: archive?.statut ?? null,
         driveUrl: archive?.drive_url || null,
-        resultatTest: null,
+        resultatTest: reservation?.resultat_test ?? null,
       };
     }));
   },

@@ -111,10 +111,20 @@ function estReservationActive(r: Doc<"abo_test_reservations">): boolean {
   return r.statut === "active";
 }
 
-function estReservationBloquante(r: Doc<"abo_test_reservations">): boolean {
-  return r.statut === "active"
-    && r.resultat_test !== "non_valide"
-    && r.resultat_test !== "absent";
+// Une tentative « valide » bloque durablement (on ne repasse pas un test
+// réussi). En revanche une réservation passée sans résultat renseigné (absence
+// non marquée) ne doit plus bloquer une nouvelle réservation : sinon
+// l'utilisateur est en deadlock, le créneau passé n'étant plus annulable
+// (estReservationAnnulable).
+function estReservationBloquante(
+  r: Doc<"abo_test_reservations">,
+  maintenantMs: number,
+): boolean {
+  if (r.statut !== "active") return false;
+  if (r.resultat_test === "non_valide" || r.resultat_test === "absent") return false;
+  if (r.resultat_test === "valide") return true;
+  const fin = finReservationMs(r);
+  return fin !== null && fin > maintenantMs;
 }
 
 function estReservationAnnulable(
@@ -602,7 +612,7 @@ async function reservationActive(
     .query("abo_test_reservations")
     .withIndex("by_personne", (q) => q.eq("personne_id", personneId))
     .collect();
-  return rows.find(estReservationBloquante) ?? null;
+  return rows.find((r) => estReservationBloquante(r, Date.now())) ?? null;
 }
 
 type EligibiliteDirecte = {
@@ -819,7 +829,7 @@ async function reservationActivePourLicence(
     .query("abo_test_reservations")
     .withIndex("by_candidat_licence", (q) => q.eq("candidat_licence", licence))
     .collect();
-  if (directes.some(estReservationBloquante)) return true;
+  if (directes.some((r) => estReservationBloquante(r, Date.now()))) return true;
   const personnes = await ctx.db
     .query("abo_personnes")
     .withIndex("by_licence", (q) => q.eq("licence", licence))
@@ -829,7 +839,7 @@ async function reservationActivePourLicence(
       .query("abo_test_reservations")
       .withIndex("by_personne", (q) => q.eq("personne_id", personne._id))
       .collect();
-    if (reservations.some(estReservationBloquante)) return true;
+    if (reservations.some((r) => estReservationBloquante(r, Date.now()))) return true;
   }
   return false;
 }
@@ -1176,7 +1186,15 @@ export const getMesReservationsParPersonne = authenticatedQuery({
         ).values()];
         // Plus récent d'abord (l'annulée subie la plus récente pour le bandeau).
         rows.sort((a, b) => b._creationTime - a._creationTime);
-        const active = rows.find(estReservationActive) ?? null;
+        // Seule une réservation à venir (ou en cours) est « le RDV » affiché :
+        // une réservation passée non clôturée ne doit ni être présentée comme
+        // le rendez-vous courant ni masquer le bouton de réservation.
+        const active =
+          rows.find(
+            (r) =>
+              estReservationActive(r)
+              && (finReservationMs(r) ?? 0) > maintenantMs,
+          ) ?? null;
         const annulee =
           rows.find(
             (r) =>

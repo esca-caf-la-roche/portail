@@ -34,10 +34,26 @@ function licenceValide(licence: string): boolean {
   return /^(?:\d{12}|\d{14})$/.test(licence.trim());
 }
 
-function estReservationBloquante(r: Doc<"abo_test_reservations">): boolean {
-  return r.statut === "active"
-    && r.resultat_test !== "non_valide"
-    && r.resultat_test !== "absent";
+// Aligné sur estReservationBloquante de abo/tests.ts : une tentative « valide »
+// bloque durablement, mais une réservation passée sans résultat renseigné ne
+// bloque plus (elle n'est plus annulable, sinon deadlock pour l'utilisateur).
+function finReservationMs(reservation: Doc<"abo_test_reservations">): number | null {
+  const debut = Date.parse(reservation.tranche);
+  if (!Number.isFinite(debut)) return null;
+  const fin = reservation.tranche_fin ? Date.parse(reservation.tranche_fin) : Number.NaN;
+  // Historique 40/60 min : retombe sur 3 slots de 20 min (cf. abo/tests.ts).
+  return Number.isFinite(fin) && fin > debut ? fin : debut + 3 * 20 * 60 * 1000;
+}
+
+function estReservationBloquante(
+  r: Doc<"abo_test_reservations">,
+  maintenantMs: number,
+): boolean {
+  if (r.statut !== "active") return false;
+  if (r.resultat_test === "non_valide" || r.resultat_test === "absent") return false;
+  if (r.resultat_test === "valide") return true;
+  const fin = finReservationMs(r);
+  return fin !== null && fin > maintenantMs;
 }
 
 async function scrapEligibleNotificationForcee(
@@ -78,7 +94,7 @@ async function reservationActivePourLicence(ctx: Ctx, licence: string): Promise<
     .query("abo_test_reservations")
     .withIndex("by_candidat_licence", (q) => q.eq("candidat_licence", licence))
     .collect();
-  if (directes.some(estReservationBloquante)) return true;
+  if (directes.some((r) => estReservationBloquante(r, Date.now()))) return true;
 
   const personnes = await ctx.db
     .query("abo_personnes")
@@ -89,7 +105,7 @@ async function reservationActivePourLicence(ctx: Ctx, licence: string): Promise<
       .query("abo_test_reservations")
       .withIndex("by_personne", (q) => q.eq("personne_id", personne._id))
       .collect();
-    if (reservations.some(estReservationBloquante)) return true;
+    if (reservations.some((r) => estReservationBloquante(r, Date.now()))) return true;
   }
   return false;
 }

@@ -232,6 +232,16 @@ function ArchiveTests({
           ))}
         </ul>
       )}
+      {candidat && candidat.reservationId && (
+        <ResultatTestActions
+          candidat={candidat}
+          archiveExistante={
+            candidat.archiveId
+              ? toutesArchives?.find((archive) => archive.id === candidat.archiveId) ?? null
+              : null
+          }
+        />
+      )}
       {candidat && !candidat.driveUrl && (
         <RechercheDrive key={candidat.licence} nom={candidat.nom} prenom={candidat.prenom} />
       )}
