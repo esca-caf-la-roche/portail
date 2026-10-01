@@ -1957,6 +1957,42 @@ describe("réservation de test d'autonomie", () => {
     await expect(t.run((ctx) => ctx.db.query("abo_test_notification_envois").collect())).resolves.toEqual([]);
   });
 
+  test("autorise l'alerte dossier malgré une réservation passée sans résultat", async () => {
+    const t = convexTest(schema, modules);
+    // Personne sans licence : le contrôle passe par by_personne.
+    const { userId, personneId } = await creerPersonne(t, {});
+    await t.run((ctx) => ctx.db.insert("abo_test_reservations", {
+      personne_id: personneId,
+      tranche: "2026-09-24T15:00:00.000Z",
+      tranche_fin: "2026-09-24T15:20:00.000Z",
+      statut: "active",
+    }));
+    const caller = t.withIdentity({ subject: userId });
+
+    // Absence non marquée : l'alerte reste possible (plus de P0011).
+    await expect(caller.mutation(api.abo.testNotifications.suivrePersonneDossier, {
+      personneId,
+      actif: true,
+    })).resolves.toBeNull();
+  });
+
+  test("refuse l'alerte dossier pour une réservation future active", async () => {
+    const t = convexTest(schema, modules);
+    const { userId, personneId } = await creerPersonne(t, {});
+    await t.run((ctx) => ctx.db.insert("abo_test_reservations", {
+      personne_id: personneId,
+      tranche: "2099-06-02T08:00:00.000Z",
+      tranche_fin: "2099-06-02T08:20:00.000Z",
+      statut: "active",
+    }));
+    const caller = t.withIdentity({ subject: userId });
+
+    await expect(caller.mutation(api.abo.testNotifications.suivrePersonneDossier, {
+      personneId,
+      actif: true,
+    })).rejects.toThrow("déjà une réservation");
+  });
+
   test("refuse explicitement une licence directe invalide", async () => {
     const t = convexTest(schema, modules);
     rateLimiterTest.register(t);

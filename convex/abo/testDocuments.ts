@@ -8,9 +8,8 @@ import { internalMutation, internalQuery } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import { champsModifies } from "../dbUtils";
 import { requireAboAdmin } from "./auth";
-import { canoniserLicence } from "./lib";
+import { canoniserLicence, finReservationMs } from "./lib";
 
-const DUREE_LEGACY_MS = 60 * 60 * 1000;
 const MAX_RESERVATIONS_PAR_PERSONNE = 100;
 const MAX_PERSONNES_PAR_LICENCE = 50;
 
@@ -36,12 +35,10 @@ function reservationEstPassee(
   reservation: { tranche: string; tranche_fin?: string },
   avant: string,
 ): boolean {
-  const debut = Date.parse(reservation.tranche);
   const reference = Date.parse(avant);
-  if (!Number.isFinite(debut) || !Number.isFinite(reference)) return false;
-  const finLue = reservation.tranche_fin ? Date.parse(reservation.tranche_fin) : Number.NaN;
-  const fin = Number.isFinite(finLue) && finLue > debut ? finLue : debut + DUREE_LEGACY_MS;
-  return fin <= reference;
+  if (!Number.isFinite(reference)) return false;
+  const fin = finReservationMs(reservation);
+  return fin !== null && fin <= reference;
 }
 
 const statutValidator = v.union(v.literal("a_traiter"), v.literal("traite"));
@@ -158,11 +155,13 @@ async function reservationPasseePourLicence(
     ctx.db
       .query("abo_test_reservations")
       .withIndex("by_candidat_licence", (q) => q.eq("candidat_licence", licence))
+      .order("desc")
       .take(20),
     personneId
       ? ctx.db
           .query("abo_test_reservations")
           .withIndex("by_personne", (q) => q.eq("personne_id", personneId))
+          .order("desc")
           .take(20)
       : Promise.resolve([]),
   ]);

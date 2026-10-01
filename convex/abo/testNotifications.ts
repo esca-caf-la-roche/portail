@@ -10,6 +10,7 @@ import {
 } from "../_generated/server";
 import { authenticatedMutation, authenticatedQuery } from "../customFunctions";
 import { requireAboIdentity } from "./auth";
+import { estReservationBloquante } from "./lib";
 
 const DELAI_REGROUPEMENT_MS = 30 * 60 * 1_000;
 const TAILLE_LOT_EMAIL = 25;
@@ -32,28 +33,6 @@ function emailValide(email: string): boolean {
 
 function licenceValide(licence: string): boolean {
   return /^(?:\d{12}|\d{14})$/.test(licence.trim());
-}
-
-// Aligné sur estReservationBloquante de abo/tests.ts : une tentative « valide »
-// bloque durablement, mais une réservation passée sans résultat renseigné ne
-// bloque plus (elle n'est plus annulable, sinon deadlock pour l'utilisateur).
-function finReservationMs(reservation: Doc<"abo_test_reservations">): number | null {
-  const debut = Date.parse(reservation.tranche);
-  if (!Number.isFinite(debut)) return null;
-  const fin = reservation.tranche_fin ? Date.parse(reservation.tranche_fin) : Number.NaN;
-  // Historique 40/60 min : retombe sur 3 slots de 20 min (cf. abo/tests.ts).
-  return Number.isFinite(fin) && fin > debut ? fin : debut + 3 * 20 * 60 * 1000;
-}
-
-function estReservationBloquante(
-  r: Doc<"abo_test_reservations">,
-  maintenantMs: number,
-): boolean {
-  if (r.statut !== "active") return false;
-  if (r.resultat_test === "non_valide" || r.resultat_test === "absent") return false;
-  if (r.resultat_test === "valide") return true;
-  const fin = finReservationMs(r);
-  return fin !== null && fin > maintenantMs;
 }
 
 async function scrapEligibleNotificationForcee(
@@ -108,6 +87,19 @@ async function reservationActivePourLicence(ctx: Ctx, licence: string): Promise<
     if (reservations.some((r) => estReservationBloquante(r, Date.now()))) return true;
   }
   return false;
+}
+
+// Réservation bloquante d'une personne (parcours dossier), même règle
+// temporelle que reservationActivePourLicence : une réservation passée sans
+// résultat n'est plus annulable, donc ne doit plus bloquer ni supprimer les
+// alertes.
+async function reservationBloquantePourPersonne(ctx: Ctx, personneId: Id<"abo_personnes">): Promise<boolean> {
+  const reservations = await ctx.db
+    .query("abo_test_reservations")
+    .withIndex("by_personne", (q) => q.eq("personne_id", personneId))
+    .collect();
+  const maintenant = Date.now();
+  return reservations.some((r) => estReservationBloquante(r, maintenant));
 }
 
 async function candidatDirectEligible(
@@ -329,7 +321,7 @@ export const suivrePersonneDossier = authenticatedMutation({
     }
     if (
       (personne.licence && await reservationActivePourLicence(ctx, personne.licence)) ||
-      (!personne.licence && (await ctx.db.query("abo_test_reservations").withIndex("by_personne", (q) => q.eq("personne_id", personne._id)).collect()).some((r) => r.statut === "active"))
+      (!personne.licence && await reservationBloquantePourPersonne(ctx, personne._id))
     ) {
       throw new ConvexError({ code: "P0011", message: "Cette personne a déjà une réservation." });
     }
@@ -388,11 +380,7 @@ async function contexteDestinataire(
         await personneDossierEligible(ctx, personne, userDocId) &&
         !(personne.licence && await reservationActivePourLicence(ctx, personne.licence))
       ) {
-        const reservations = await ctx.db
-          .query("abo_test_reservations")
-          .withIndex("by_personne", (q) => q.eq("personne_id", personne._id))
-          .collect();
-        if (!reservations.some((r) => r.statut === "active")) {
+        if (!(await reservationBloquantePourPersonne(ctx, personne._id))) {
           personnes.push(`${personne.prenom} ${personne.nom}`.trim());
         }
       }

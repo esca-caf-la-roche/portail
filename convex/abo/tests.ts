@@ -30,7 +30,7 @@ import { components, internal } from "../_generated/api";
 import { requireAboIdentity, requireAboAdmin } from "./auth";
 import { parisWallToUtcMs } from "./config";
 import { getAboStaffActifsIds, getAboStaffActifsParId } from "../users";
-import { canoniserLicence, normaliserNomPrenom } from "./lib";
+import { canoniserLicence, normaliserNomPrenom, estReservationBloquante, finReservationMs, SLOT_TEST_MS as SLOT_MS } from "./lib";
 import {
   CLUB_SYNC_ATTEMPT_KEY,
   CLUB_SYNC_COMPLETE_KEY,
@@ -43,7 +43,6 @@ import {
   ouvrirLotNotification,
 } from "./testNotifications";
 
-const SLOT_MS = 20 * 60 * 1000; // slot de base = 20 min
 const MAX_CRENEAUX_STAFF = 200;
 const MAX_CANDIDATS_DIRECTS_PAR_COMPTE = 10;
 const MAX_PERSONNES_PAR_LICENCE = 50;
@@ -109,22 +108,6 @@ async function exigerNomStaffConfigure(
 
 function estReservationActive(r: Doc<"abo_test_reservations">): boolean {
   return r.statut === "active";
-}
-
-// Une tentative « valide » bloque durablement (on ne repasse pas un test
-// réussi). En revanche une réservation passée sans résultat renseigné (absence
-// non marquée) ne doit plus bloquer une nouvelle réservation : sinon
-// l'utilisateur est en deadlock, le créneau passé n'étant plus annulable
-// (estReservationAnnulable).
-function estReservationBloquante(
-  r: Doc<"abo_test_reservations">,
-  maintenantMs: number,
-): boolean {
-  if (r.statut !== "active") return false;
-  if (r.resultat_test === "non_valide" || r.resultat_test === "absent") return false;
-  if (r.resultat_test === "valide") return true;
-  const fin = finReservationMs(r);
-  return fin !== null && fin > maintenantMs;
 }
 
 function estReservationAnnulable(
@@ -196,13 +179,6 @@ type AllocationReservations = {
   nonAffectees: Doc<"abo_test_reservations">[];
   hypothetiquesAffectees: number;
 };
-
-function finReservationMs(reservation: Doc<"abo_test_reservations">): number | null {
-  const debut = Date.parse(reservation.tranche);
-  if (!Number.isFinite(debut)) return null;
-  const fin = reservation.tranche_fin ? Date.parse(reservation.tranche_fin) : Number.NaN;
-  return Number.isFinite(fin) && fin > debut ? fin : debut + 3 * SLOT_MS;
-}
 
 type ReservationAAllouer = {
   cle: string;
