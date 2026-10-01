@@ -30,7 +30,7 @@ import { components, internal } from "../_generated/api";
 import { requireAboIdentity, requireAboAdmin } from "./auth";
 import { parisWallToUtcMs } from "./config";
 import { getAboStaffActifsIds, getAboStaffActifsParId } from "../users";
-import { canoniserLicence, normaliserNomPrenom, estReservationBloquante, finReservationMs, SLOT_TEST_MS as SLOT_MS } from "./lib";
+import { canoniserLicence, normaliserNomPrenom, estReservationBloquante, estReservationRdvCourante, finReservationMs, SLOT_TEST_MS as SLOT_MS } from "./lib";
 import {
   CLUB_SYNC_ATTEMPT_KEY,
   CLUB_SYNC_COMPLETE_KEY,
@@ -849,14 +849,8 @@ export const getMesReservationsDirectes = authenticatedQuery({
     const maintenantMs = args.maintenantMs ?? Date.now();
     const rows = await ctx.db.query("abo_test_reservations")
       .withIndex("by_candidat_user_id", (q) => q.eq("candidat_user_id", id.userId)).collect();
-    // Même règle que getMesReservationsParPersonne : une réservation passée
-    // sans résultat n'est plus le RDV courant (non annulable, non bloquante) ;
-    // l'afficher figerait le sélecteur de créneaux.
     return rows
-      .filter((reservation) =>
-        estReservationActive(reservation)
-        && reservation.resultat_test === undefined
-        && (finReservationMs(reservation) ?? 0) > maintenantMs)
+      .filter((reservation) => estReservationRdvCourante(reservation, maintenantMs))
       .map((r) => ({
         id: r._id,
         licence: r.candidat_licence ?? "",
@@ -1168,15 +1162,9 @@ export const getMesReservationsParPersonne = authenticatedQuery({
         ).values()];
         // Plus récent d'abord (l'annulée subie la plus récente pour le bandeau).
         rows.sort((a, b) => b._creationTime - a._creationTime);
-        // Seule une réservation à venir (ou en cours) est « le RDV » affiché :
-        // une réservation passée non clôturée ne doit ni être présentée comme
-        // le rendez-vous courant ni masquer le bouton de réservation.
+        // Seule une réservation à venir (ou en cours) est « le RDV » affiché.
         const active =
-          rows.find(
-            (r) =>
-              estReservationActive(r)
-              && (finReservationMs(r) ?? 0) > maintenantMs,
-          ) ?? null;
+          rows.find((r) => estReservationRdvCourante(r, maintenantMs)) ?? null;
         const annulee =
           rows.find(
             (r) =>

@@ -118,3 +118,16 @@ export function estReservationBloquante(
   const fin = finReservationMs(reservation);
   return fin !== null && fin > maintenantMs;
 }
+
+// Réservation affichée comme « RDV courant » pour le candidat : active, sans
+// résultat encore saisi et non terminée. Prédicat unique partagé par les
+// parcours dossier et direct pour éviter toute divergence.
+export function estReservationRdvCourante(
+  reservation: ReservationStatut,
+  maintenantMs: number,
+): boolean {
+  if (reservation.statut !== "active") return false;
+  if (reservation.resultat_test !== undefined) return false;
+  const fin = finReservationMs(reservation);
+  return fin !== null && fin > maintenantMs;
+}

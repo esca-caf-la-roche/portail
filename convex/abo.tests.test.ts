@@ -1993,6 +1993,43 @@ describe("réservation de test d'autonomie", () => {
     })).rejects.toThrow("déjà une réservation");
   });
 
+  test("notifie par e-mail une personne dossier sans licence malgré une réservation passée non clôturée", async () => {
+    const t = convexTest(schema, modules);
+    const { userId, personneId } = await creerPersonne(t, {});
+    const lotId = await t.run(async (ctx) => {
+      await ctx.db.insert("abo_test_reservations", {
+        personne_id: personneId,
+        tranche: "2026-09-24T15:00:00.000Z",
+        tranche_fin: "2026-09-24T15:20:00.000Z",
+        statut: "active",
+      });
+      await ctx.db.insert("abo_test_attentes_notifications", {
+        user_id: userId,
+        type_candidat: "dossier",
+        personne_id: personneId,
+        cle_candidat: `dossier:${personneId}`,
+        statut: "en_attente",
+        cree_le: Date.now(),
+        modifie_le: Date.now(),
+      });
+      return await ctx.db.insert("abo_test_notification_lots", {
+        mode: "nouveaux_creneaux",
+        statut: "en_attente",
+        ouvert_le: Date.now(),
+        envoi_prevu_le: Date.now() + 30 * 60_000,
+        phase_preparation: "attentes",
+      });
+    });
+
+    await t.mutation(internal.abo.testNotifications.preparerLot, { lotId });
+    const envois = await t.run((ctx) => ctx.db.query("abo_test_notification_envois").collect());
+    expect(envois).toHaveLength(1);
+    expect(envois[0]).toMatchObject({
+      destinataire: "abo@example.test",
+      personnes: ["Test Candidate"],
+    });
+  });
+
   test("refuse explicitement une licence directe invalide", async () => {
     const t = convexTest(schema, modules);
     rateLimiterTest.register(t);
