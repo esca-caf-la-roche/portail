@@ -542,7 +542,8 @@ informés par e-mail. Pour ces deux statuts,
 l'information est envoyée même sans inscription préalable à l'alerte, à
 condition que la personne ait au moins 16 ans, ne soit pas élève d'un cours et
 n'ait aucune réservation encore bloquante. Une tentative terminée **Non
-validée** ou **Absente** n'empêche donc pas de prévenir d'un nouveau créneau.
+validée**, **Absente**, ou une réservation passée sans résultat n'empêche donc
+pas de prévenir d'un nouveau créneau.
 
 Le premier créneau réellement ajouté par le staff ouvre une fenêtre fixe de
 30 minutes ; les créations et ajouts de capacité de cette fenêtre sont
