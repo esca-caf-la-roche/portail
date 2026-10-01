@@ -30,7 +30,7 @@ import { components, internal } from "../_generated/api";
 import { requireAboIdentity, requireAboAdmin } from "./auth";
 import { parisWallToUtcMs } from "./config";
 import { getAboStaffActifsIds, getAboStaffActifsParId } from "../users";
-import { canoniserLicence, normaliserNomPrenom } from "./lib";
+import { canoniserLicence, normaliserNomPrenom, estReservationBloquante, estReservationRdvCourante, finReservationMs, SLOT_TEST_MS as SLOT_MS } from "./lib";
 import {
   CLUB_SYNC_ATTEMPT_KEY,
   CLUB_SYNC_COMPLETE_KEY,
@@ -43,7 +43,6 @@ import {
   ouvrirLotNotification,
 } from "./testNotifications";
 
-const SLOT_MS = 20 * 60 * 1000; // slot de base = 20 min
 const MAX_CRENEAUX_STAFF = 200;
 const MAX_CANDIDATS_DIRECTS_PAR_COMPTE = 10;
 const MAX_PERSONNES_PAR_LICENCE = 50;
@@ -109,12 +108,6 @@ async function exigerNomStaffConfigure(
 
 function estReservationActive(r: Doc<"abo_test_reservations">): boolean {
   return r.statut === "active";
-}
-
-function estReservationBloquante(r: Doc<"abo_test_reservations">): boolean {
-  return r.statut === "active"
-    && r.resultat_test !== "non_valide"
-    && r.resultat_test !== "absent";
 }
 
 function estReservationAnnulable(
@@ -186,13 +179,6 @@ type AllocationReservations = {
   nonAffectees: Doc<"abo_test_reservations">[];
   hypothetiquesAffectees: number;
 };
-
-function finReservationMs(reservation: Doc<"abo_test_reservations">): number | null {
-  const debut = Date.parse(reservation.tranche);
-  if (!Number.isFinite(debut)) return null;
-  const fin = reservation.tranche_fin ? Date.parse(reservation.tranche_fin) : Number.NaN;
-  return Number.isFinite(fin) && fin > debut ? fin : debut + 3 * SLOT_MS;
-}
 
 type ReservationAAllouer = {
   cle: string;
@@ -602,7 +588,7 @@ async function reservationActive(
     .query("abo_test_reservations")
     .withIndex("by_personne", (q) => q.eq("personne_id", personneId))
     .collect();
-  return rows.find(estReservationBloquante) ?? null;
+  return rows.find((r) => estReservationBloquante(r, Date.now())) ?? null;
 }
 
 type EligibiliteDirecte = {
@@ -819,7 +805,7 @@ async function reservationActivePourLicence(
     .query("abo_test_reservations")
     .withIndex("by_candidat_licence", (q) => q.eq("candidat_licence", licence))
     .collect();
-  if (directes.some(estReservationBloquante)) return true;
+  if (directes.some((r) => estReservationBloquante(r, Date.now()))) return true;
   const personnes = await ctx.db
     .query("abo_personnes")
     .withIndex("by_licence", (q) => q.eq("licence", licence))
@@ -829,7 +815,7 @@ async function reservationActivePourLicence(
       .query("abo_test_reservations")
       .withIndex("by_personne", (q) => q.eq("personne_id", personne._id))
       .collect();
-    if (reservations.some(estReservationBloquante)) return true;
+    if (reservations.some((r) => estReservationBloquante(r, Date.now()))) return true;
   }
   return false;
 }
@@ -864,7 +850,7 @@ export const getMesReservationsDirectes = authenticatedQuery({
     const rows = await ctx.db.query("abo_test_reservations")
       .withIndex("by_candidat_user_id", (q) => q.eq("candidat_user_id", id.userId)).collect();
     return rows
-      .filter((reservation) => estReservationActive(reservation) && reservation.resultat_test === undefined)
+      .filter((reservation) => estReservationRdvCourante(reservation, maintenantMs))
       .map((r) => ({
         id: r._id,
         licence: r.candidat_licence ?? "",
@@ -1176,7 +1162,9 @@ export const getMesReservationsParPersonne = authenticatedQuery({
         ).values()];
         // Plus récent d'abord (l'annulée subie la plus récente pour le bandeau).
         rows.sort((a, b) => b._creationTime - a._creationTime);
-        const active = rows.find(estReservationActive) ?? null;
+        // Seule une réservation à venir (ou en cours) est « le RDV » affiché.
+        const active =
+          rows.find((r) => estReservationRdvCourante(r, maintenantMs)) ?? null;
         const annulee =
           rows.find(
             (r) =>

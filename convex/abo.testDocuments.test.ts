@@ -92,6 +92,64 @@ describe("archive des tests d'autonomie", () => {
     expect(rechercheALaFin[0]).toMatchObject({ personneId, reservationPassee: true });
   });
 
+  test("expose la réservation passée pour saisir le résultat depuis la recherche par licence", async () => {
+    const t = convexTest(schema, modules);
+    const { admin } = await creerAdmin(t);
+    const reservationId = await t.run(async (ctx) => {
+      const ownerId = await ctx.db.insert("users", { email: "hareau@example.test" });
+      const dossierId = await ctx.db.insert("abo_dossiers", {
+        email: "hareau@example.test",
+        statut_dossier: "validee",
+        date_soumission: "2026-09-01T00:00:00.000Z",
+        owner_id: ownerId,
+      });
+      const personneId = await ctx.db.insert("abo_personnes", {
+        dossier_id: dossierId,
+        nom: "HAREAU",
+        prenom: "Emilie",
+        nom_prenom_normalise: "hareau emilie",
+        licence: "748020279187",
+        licence_statut: "annuaire_valide",
+        etape_demande: true,
+        etape_validation: "validee",
+        etape_licence: true,
+        etape_test_autonomie: "requis",
+        etape_inscription_site: false,
+        etape_photo: false,
+        etape_paiement: false,
+        etape_abonnement_valide: false,
+      });
+      return await ctx.db.insert("abo_test_reservations", {
+        personne_id: personneId,
+        tranche: "2026-09-24T15:00:00.000Z",
+        tranche_fin: "2026-09-24T15:20:00.000Z",
+        statut: "active",
+      });
+    });
+
+    const avant = await admin.query(api.abo.testDocuments.rechercherCandidatParLicence, {
+      licence: "748020279187",
+      avant: "2026-09-30T00:00:00.000Z",
+    });
+    expect(avant[0]).toMatchObject({
+      reservationId,
+      reservationPassee: true,
+      resultatTest: null,
+      nom: "HAREAU",
+      prenom: "Emilie",
+    });
+
+    await admin.mutation(api.abo.testDocuments.renseignerResultatTest, {
+      reservationId,
+      resultat: "absent",
+    });
+    const apres = await admin.query(api.abo.testDocuments.rechercherCandidatParLicence, {
+      licence: "748020279187",
+      avant: "2026-09-30T00:00:00.000Z",
+    });
+    expect(apres[0]).toMatchObject({ reservationId, resultatTest: "absent" });
+  });
+
   test("masque un créneau terminé quand le site confirme l'autonomie", async () => {
     const t = convexTest(schema, modules);
     const { admin } = await creerAdmin(t);

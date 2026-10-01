@@ -10,6 +10,7 @@ import {
 } from "../_generated/server";
 import { authenticatedMutation, authenticatedQuery } from "../customFunctions";
 import { requireAboIdentity } from "./auth";
+import { estReservationBloquante } from "./lib";
 
 const DELAI_REGROUPEMENT_MS = 30 * 60 * 1_000;
 const TAILLE_LOT_EMAIL = 25;
@@ -32,12 +33,6 @@ function emailValide(email: string): boolean {
 
 function licenceValide(licence: string): boolean {
   return /^(?:\d{12}|\d{14})$/.test(licence.trim());
-}
-
-function estReservationBloquante(r: Doc<"abo_test_reservations">): boolean {
-  return r.statut === "active"
-    && r.resultat_test !== "non_valide"
-    && r.resultat_test !== "absent";
 }
 
 async function scrapEligibleNotificationForcee(
@@ -78,7 +73,7 @@ async function reservationActivePourLicence(ctx: Ctx, licence: string): Promise<
     .query("abo_test_reservations")
     .withIndex("by_candidat_licence", (q) => q.eq("candidat_licence", licence))
     .collect();
-  if (directes.some(estReservationBloquante)) return true;
+  if (directes.some((r) => estReservationBloquante(r, Date.now()))) return true;
 
   const personnes = await ctx.db
     .query("abo_personnes")
@@ -89,9 +84,22 @@ async function reservationActivePourLicence(ctx: Ctx, licence: string): Promise<
       .query("abo_test_reservations")
       .withIndex("by_personne", (q) => q.eq("personne_id", personne._id))
       .collect();
-    if (reservations.some(estReservationBloquante)) return true;
+    if (reservations.some((r) => estReservationBloquante(r, Date.now()))) return true;
   }
   return false;
+}
+
+// Réservation bloquante d'une personne (parcours dossier), même règle
+// temporelle que reservationActivePourLicence : une réservation passée sans
+// résultat n'est plus annulable, donc ne doit plus bloquer ni supprimer les
+// alertes.
+async function reservationBloquantePourPersonne(ctx: Ctx, personneId: Id<"abo_personnes">): Promise<boolean> {
+  const reservations = await ctx.db
+    .query("abo_test_reservations")
+    .withIndex("by_personne", (q) => q.eq("personne_id", personneId))
+    .collect();
+  const maintenant = Date.now();
+  return reservations.some((r) => estReservationBloquante(r, maintenant));
 }
 
 async function candidatDirectEligible(
@@ -313,7 +321,7 @@ export const suivrePersonneDossier = authenticatedMutation({
     }
     if (
       (personne.licence && await reservationActivePourLicence(ctx, personne.licence)) ||
-      (!personne.licence && (await ctx.db.query("abo_test_reservations").withIndex("by_personne", (q) => q.eq("personne_id", personne._id)).collect()).some((r) => r.statut === "active"))
+      (!personne.licence && await reservationBloquantePourPersonne(ctx, personne._id))
     ) {
       throw new ConvexError({ code: "P0011", message: "Cette personne a déjà une réservation." });
     }
@@ -372,11 +380,7 @@ async function contexteDestinataire(
         await personneDossierEligible(ctx, personne, userDocId) &&
         !(personne.licence && await reservationActivePourLicence(ctx, personne.licence))
       ) {
-        const reservations = await ctx.db
-          .query("abo_test_reservations")
-          .withIndex("by_personne", (q) => q.eq("personne_id", personne._id))
-          .collect();
-        if (!reservations.some((r) => r.statut === "active")) {
+        if (!(await reservationBloquantePourPersonne(ctx, personne._id))) {
           personnes.push(`${personne.prenom} ${personne.nom}`.trim());
         }
       }

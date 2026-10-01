@@ -69,3 +69,65 @@ export function estSeptembreParis(nowMs: number): boolean {
   }).format(new Date(nowMs));
   return Number(mois) === 9;
 }
+
+// ── Réservations de test d'autonomie : primitives partagées ──────────────
+// Slot de base d'un créneau de test (20 min) et durée de repli d'une
+// réservation historique (40/60 min) dépourvue de tranche_fin.
+export const SLOT_TEST_MS = 20 * 60 * 1000;
+export const DUREE_RESERVATION_LEGACY_MS = 3 * SLOT_TEST_MS;
+
+// Fin d'une réservation en ms (fallback legacy si tranche_fin absente/invalide).
+export function finReservationMs(reservation: {
+  tranche: string;
+  tranche_fin?: string;
+}): number | null {
+  const debut = Date.parse(reservation.tranche);
+  if (!Number.isFinite(debut)) return null;
+  const fin = reservation.tranche_fin
+    ? Date.parse(reservation.tranche_fin)
+    : Number.NaN;
+  return Number.isFinite(fin) && fin > debut
+    ? fin
+    : debut + DUREE_RESERVATION_LEGACY_MS;
+}
+
+type ReservationStatut = {
+  statut: "active" | "annulee";
+  resultat_test?: "valide" | "non_valide" | "absent";
+  tranche: string;
+  tranche_fin?: string;
+};
+
+// Une tentative « validée » bloque durablement (on ne repasse pas un test
+// réussi). « Non validée » ou « Absente » reste un historique non bloquant. Une
+// réservation passée sans résultat renseigné (absence non marquée) ne bloque
+// plus : le créneau passé n'étant plus annulable, la bloquer enfermerait
+// l'utilisateur dans une impasse (erreur P0011 sans issue).
+export function estReservationBloquante(
+  reservation: ReservationStatut,
+  maintenantMs: number,
+): boolean {
+  if (reservation.statut !== "active") return false;
+  if (
+    reservation.resultat_test === "non_valide" ||
+    reservation.resultat_test === "absent"
+  ) {
+    return false;
+  }
+  if (reservation.resultat_test === "valide") return true;
+  const fin = finReservationMs(reservation);
+  return fin !== null && fin > maintenantMs;
+}
+
+// Réservation affichée comme « RDV courant » pour le candidat : active, sans
+// résultat encore saisi et non terminée. Prédicat unique partagé par les
+// parcours dossier et direct pour éviter toute divergence.
+export function estReservationRdvCourante(
+  reservation: ReservationStatut,
+  maintenantMs: number,
+): boolean {
+  if (reservation.statut !== "active") return false;
+  if (reservation.resultat_test !== undefined) return false;
+  const fin = finReservationMs(reservation);
+  return fin !== null && fin > maintenantMs;
+}

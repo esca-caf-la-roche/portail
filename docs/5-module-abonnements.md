@@ -509,7 +509,13 @@ et le prénom du licencié pour la campagne courante. Plusieurs licenciés peuve
 ainsi être rattachés au même compte familial ; une reconnexion relit ces
 rattachements sans relancer la synchronisation. L'éligibilité est néanmoins
 réévaluée au moment de réserver et une licence ne peut avoir qu'une réservation
-active, y compris entre le parcours direct et le suivi d'une demande.
+active, y compris entre le parcours direct et le suivi d'une demande. Une
+tentative **Validée** bloque durablement toute nouvelle réservation ; une
+tentative **Non validée** ou **Absente** reste visible comme historique sans
+bloquer. Une réservation passée dont le résultat n'a jamais été renseigné
+(absence non marquée) ne bloque plus non plus et n'est plus affichée comme le
+rendez-vous courant : le créneau passé n'étant plus annulable, la bloquer
+enfermerait l'utilisateur dans une impasse.
 
 Si cette licence est ensuite rattachée à une personne validée d'un dossier,
 la réservation directe apparaît aussi dans son suivi lorsque l'identité
@@ -578,7 +584,10 @@ futurs ; les rendez-vous terminés ne sont pas mélangés à ce total. Un candid
 n'apparaît dans **Résultats des créneaux terminés** qu'à la fin de son créneau,
 y compris pour une ancienne réservation d'une durée différente. Le staff peut
 alors qualifier la tentative comme **Validée**, **Non validée** ou **Absente** ;
-une absence ou une non-validation permet de reprendre un rendez-vous. Une
+une absence ou une non-validation permet de reprendre un rendez-vous. La
+recherche par numéro de licence (numéro complet, 6 ou 4 derniers chiffres)
+retrouve aussi la réservation passée du licencié et permet d'y qualifier le
+résultat directement, sans passer par la liste des créneaux. Une
 absence ne demande aucun justificatif. En revanche, le formulaire du test doit
 être déposé dans Drive avant d'enregistrer un résultat validé ou non validé.
 Le nom historique `NOM Prénom` est conservé pour un test validé ; un test non
