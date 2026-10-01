@@ -33,6 +33,55 @@ async function creerAdmin(t: ReturnType<typeof convexTest>) {
 }
 
 describe("règles Abonnements : N-1, vague 2, suppression et anomalies", () => {
+  test("une conversation lue reste à traiter jusqu'à sa clôture et se rouvre à un nouveau message", async () => {
+    const t = createTest();
+    const demandeur = await creerUtilisateur(t, "message@example.test");
+    const admin = await creerAdmin(t);
+    const dossierId = await t.run(async (ctx) => {
+      const user = (await ctx.db.query("users").collect()).find((row) => row.email === "message@example.test");
+      if (!user) throw new Error("Utilisateur demandeur absent du test.");
+      const dossierId = await ctx.db.insert("abo_dossiers", {
+        owner_id: user._id,
+        email: "message@example.test",
+        statut_dossier: "nouvelle_demande",
+        date_soumission: "2026-08-07T12:00:00.000Z",
+      });
+      await ctx.db.insert("abo_personnes", {
+        dossier_id: dossierId,
+        nom: "Martin",
+        prenom: "Léa",
+        nom_prenom_normalise: "MARTIN LEA",
+        licence_statut: "inconnu",
+        etape_demande: true,
+        etape_validation: "en_attente",
+        etape_licence: false,
+        etape_inscription_site: false,
+        etape_photo: false,
+        etape_paiement: false,
+        etape_abonnement_valide: false,
+      });
+      return dossierId;
+    });
+
+    await demandeur.mutation(api.abo.messages.envoyerMessage, { dossierId, contenu: "Bonjour" });
+    await expect(admin.mutation(api.abo.messages.cloturerConversation, { dossierId })).rejects.toThrow("Lisez les nouveaux messages");
+    await admin.mutation(api.abo.messages.marquerLu, { dossierId });
+    await admin.mutation(api.abo.messages.cloturerConversation, { dossierId });
+    expect((await admin.query(api.abo.messages.listerConversationsAdmin, {
+      statut: "cloturee", recherche: "", paginationOpts: { cursor: null, numItems: 25 },
+    })).page).toHaveLength(1);
+
+    await demandeur.mutation(api.abo.messages.envoyerMessage, { dossierId, contenu: "J'ai une autre question" });
+    const aTraiter = await admin.query(api.abo.messages.listerConversationsAdmin, {
+      statut: "a_traiter", recherche: "lea", paginationOpts: { cursor: null, numItems: 25 },
+    });
+    expect(aTraiter.page).toMatchObject([{
+      dossierId,
+      demandeurNom: "Léa Martin",
+      messagesNonLusAdmin: 1,
+    }]);
+  });
+
   test("refuse une personne N-1 par nom/prénom normalisé", async () => {
     const t = createTest();
     const candidat = await creerUtilisateur(t, "n1@example.test");

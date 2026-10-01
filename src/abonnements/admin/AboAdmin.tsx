@@ -33,7 +33,6 @@ const TABS: { id: Vue; label: string }[] = [
 export default function AboAdmin() {
   const me = useQuery(api.abo.identity.me);
   const peutGererConfiguration = useQuery(api.abo.config.peutGererConfiguration);
-  const messagesNonLus = useQuery(api.abo.messages.messagesNonLusAdmin);
   const testsATraiter = useQuery(api.abo.testDocuments.listArchives, {
     filtre: "a_traiter",
   });
@@ -51,7 +50,6 @@ export default function AboAdmin() {
   );
 
   const compteurs: Partial<Record<Vue, number>> = {
-    messages: messagesNonLus?.reduce((total, message) => total + message.count, 0),
     tests: testsATraiter?.length,
     reglements: reglementsATraiter,
   };

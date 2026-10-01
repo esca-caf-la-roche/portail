@@ -37,6 +37,46 @@ export const migrateAboElevesEnCoursLectureAVerifierLicence = migrations.define(
   },
 });
 
+// Migration de la boîte de travail Abonnements. Toute conversation historique
+// est initialement à traiter : on privilégie un faux positif temporaire à la
+// perte silencieuse d'un message ancien. Idempotente si un nouveau message crée
+// sa projection pendant le backfill.
+export const migrateAboConversations = migrations.define({
+  table: "abo_dossiers",
+  migrateOne: async (ctx, dossier) => {
+    const existe = await ctx.db
+      .query("abo_conversations")
+      .withIndex("by_dossier", (q) => q.eq("dossier_id", dossier._id))
+      .first();
+    if (existe) return;
+    const messages = await ctx.db
+      .query("abo_messages")
+      .withIndex("by_dossier", (q) => q.eq("dossier_id", dossier._id))
+      .order("desc")
+      .take(201);
+    const dernier = messages[0];
+    if (!dernier) return;
+    const personne = await ctx.db
+      .query("abo_personnes")
+      .withIndex("by_dossier", (q) => q.eq("dossier_id", dossier._id))
+      .first();
+    const demandeurNom = personne ? `${personne.prenom} ${personne.nom}`.trim() : dossier.email;
+    await ctx.db.insert("abo_conversations", {
+      dossier_id: dossier._id,
+      statut: "a_traiter",
+      dernier_message_le: dernier._creationTime,
+      dernier_message_auteur: dernier.auteur_role,
+      dernier_message_extrait: dernier.contenu.replace(/\s+/g, " ").trim().slice(0, 180),
+      demandeur_nom: demandeurNom,
+      demandeur_email: dossier.email,
+      recherche: `${demandeurNom} ${dossier.email}`.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLocaleLowerCase("fr"),
+      // État conservateur : le premier affichage lit tout le fil avant toute clôture.
+      messages_non_lus_admin: 1,
+      messages_non_lus_user: messages.filter((message) => !message.lu_par_user).length,
+    });
+  },
+});
+
 export const migrateSaisonsTransactions = migrations.define({
   table: "transactions",
   migrateOne: async (ctx, t) => {

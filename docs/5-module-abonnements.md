@@ -174,6 +174,13 @@ booléen avec les inspections paginées associées, puis seulement retirer les
 booléens du schéma lors d'un déploiement ultérieur. Une valeur historique
 `false` devient `inconnu`, jamais `non` ni `bloque`.
 
+La projection de boîte de travail `abo_conversations` suit aussi ce cycle. Après
+le déploiement qui l'ajoute, exécuter `migrations:migrateAboConversations` d'abord
+en DEV puis, après contrôle de la file Messages, en PROD avec accord explicite.
+Chaque fil historique est initialement **À traiter** : cette prudence évite de
+masquer un ancien message. La migration est idempotente et reprend sans écraser
+un fil créé ou actualisé pendant son exécution.
+
 Les adresses historiques de `users` suivent la même discipline : exécuter
 d'abord l'inspection interne paginée
 `migrations:inspectUsersEmailCanonique`, traiter manuellement tout compteur
@@ -708,8 +715,9 @@ déploiement `npx.cmd convex dev` actif.
   re-scrap) ; demande → `accuse` ; création/annulation de créneau → `test_annule`.
 - [ ] **Messagerie 🔒** : message instantané des deux côtés (réactivité Convex) ;
   un owner ne voit que son fil. L'espace admin affiche un compteur temps réel et
-  une boîte de réception « Messages » qui priorise les conversations non lues ;
-  l'ouverture du fil permet de les lire et d'y répondre. Un email
+   une boîte de travail « Messages » qui priorise les conversations à traiter ;
+   l'ouverture du fil marque les messages lus sans clôturer le suivi. La clôture
+   est explicite et un nouveau message de l'abonné rouvre le fil. Un email
   `nouveau_message` prévient l'abonné d'une réponse administrative.
 - [ ] **Non-régression compta** : login staff `google-otp` inchangé ; tuiles
   Comptabilité/Paiements/Budget intactes ; table `dossiers` (cours) non impactée.

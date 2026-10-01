@@ -7,10 +7,70 @@
 // endpoint vérifie l'appartenance du dossier (owner) ou le rôle admin via
 // requireOwnedDossier / requireAboAdmin. 🔒 Non-lu géré par 2 booléens.
 
+import { paginationOptsValidator, paginationResultValidator } from "convex/server";
 import { v, ConvexError } from "convex/values";
 import { authenticatedQuery, authenticatedMutation } from "../customFunctions";
 import { internal } from "../_generated/api";
+import type { MutationCtx } from "../_generated/server";
 import { requireOwnedDossier, requireAboAdmin, getAboIdentity } from "./auth";
+import type { Doc, Id } from "../_generated/dataModel";
+
+const extrait = (contenu: string) => contenu.replace(/\s+/g, " ").trim().slice(0, 180);
+const normaliserRecherche = (texte: string) => texte
+  .normalize("NFD")
+  .replace(/\p{Diacritic}/gu, "")
+  .toLocaleLowerCase("fr");
+
+async function identiteDemandeur(ctx: MutationCtx, dossierId: Id<"abo_dossiers">) {
+  const dossier = await ctx.db.get(dossierId);
+  if (!dossier) throw new ConvexError({ code: "404", message: "Dossier introuvable." });
+  const personne = await ctx.db
+    .query("abo_personnes")
+    .withIndex("by_dossier", (q) => q.eq("dossier_id", dossierId))
+    .first();
+  const nom = personne ? `${personne.prenom} ${personne.nom}`.trim() : dossier.email;
+  return { nom, email: dossier.email };
+}
+
+async function mettreAJourConversation(
+  ctx: MutationCtx,
+  dossierId: Id<"abo_dossiers">,
+  message: Pick<Doc<"abo_messages">, "auteur_role" | "contenu" | "_creationTime">,
+) {
+  const conversation = await ctx.db
+    .query("abo_conversations")
+    .withIndex("by_dossier", (q) => q.eq("dossier_id", dossierId))
+    .first();
+  const entrant = message.auteur_role === "utilisateur";
+  if (conversation) {
+    await ctx.db.patch(conversation._id, {
+      statut: entrant ? "a_traiter" : conversation.statut,
+      dernier_message_le: message._creationTime,
+      dernier_message_auteur: message.auteur_role,
+      dernier_message_extrait: extrait(message.contenu),
+      messages_non_lus_admin: entrant
+        ? conversation.messages_non_lus_admin + 1
+        : conversation.messages_non_lus_admin,
+      messages_non_lus_user: entrant
+        ? conversation.messages_non_lus_user
+        : conversation.messages_non_lus_user + 1,
+    });
+    return;
+  }
+  const demandeur = await identiteDemandeur(ctx, dossierId);
+  await ctx.db.insert("abo_conversations", {
+    dossier_id: dossierId,
+    statut: entrant ? "a_traiter" : "cloturee",
+    dernier_message_le: message._creationTime,
+    dernier_message_auteur: message.auteur_role,
+    dernier_message_extrait: extrait(message.contenu),
+    demandeur_nom: demandeur.nom,
+    demandeur_email: demandeur.email,
+    recherche: normaliserRecherche(`${demandeur.nom} ${demandeur.email}`),
+    messages_non_lus_admin: entrant ? 1 : 0,
+    messages_non_lus_user: entrant ? 0 : 1,
+  });
+}
 
 // ── envoyerMessage : owner ou admin poste dans le fil du dossier ─────────
 export const envoyerMessage = authenticatedMutation({
@@ -26,7 +86,7 @@ export const envoyerMessage = authenticatedMutation({
     }
 
     const estAdmin = identity.aboRole === "admin";
-    await ctx.db.insert("abo_messages", {
+    const messageId = await ctx.db.insert("abo_messages", {
       dossier_id: args.dossierId,
       auteur_id: identity.userId,
       auteur_role: estAdmin ? "admin" : "utilisateur",
@@ -35,6 +95,8 @@ export const envoyerMessage = authenticatedMutation({
       lu_par_admin: estAdmin,
       lu_par_user: !estAdmin,
     });
+    const message = await ctx.db.get(messageId);
+    if (message) await mettreAJourConversation(ctx, args.dossierId, message);
 
     // Notification email de l'ABONNÉ quand un ADMIN écrit (l'abonné ne surveille
     // pas le tableau de bord). Le sens inverse (abonné → club) est signalé aux
@@ -93,6 +155,15 @@ export const marquerLu = authenticatedMutation({
         maj++;
       }
     }
+    const conversation = await ctx.db
+      .query("abo_conversations")
+      .withIndex("by_dossier", (q) => q.eq("dossier_id", args.dossierId))
+      .first();
+    if (conversation && (estAdmin ? conversation.messages_non_lus_admin > 0 : conversation.messages_non_lus_user > 0)) {
+      await ctx.db.patch(conversation._id, estAdmin
+        ? { messages_non_lus_admin: 0 }
+        : { messages_non_lus_user: 0 });
+    }
     return maj;
   },
 });
@@ -117,17 +188,77 @@ export const mesMessagesNonLus = authenticatedQuery({
 });
 
 // ── messagesNonLusAdmin : nb de non-lus par dossier (badges admin) ───────
-export const messagesNonLusAdmin = authenticatedQuery({
-  args: {},
-  handler: async (ctx) => {
+const conversationValidator = v.object({
+  dossierId: v.id("abo_dossiers"),
+  demandeurNom: v.string(),
+  demandeurEmail: v.string(),
+  statut: v.union(v.literal("a_traiter"), v.literal("cloturee")),
+  dernierMessageLe: v.number(),
+  dernierMessageAuteur: v.union(v.literal("utilisateur"), v.literal("admin")),
+  dernierMessageExtrait: v.string(),
+  messagesNonLusAdmin: v.number(),
+});
+
+export const listerConversationsAdmin = authenticatedQuery({
+  args: {
+    statut: v.union(v.literal("a_traiter"), v.literal("cloturee")),
+    recherche: v.string(),
+    paginationOpts: paginationOptsValidator,
+  },
+  returns: paginationResultValidator(conversationValidator),
+  handler: async (ctx, args) => {
     await requireAboAdmin(ctx);
-    const messages = await ctx.db.query("abo_messages").collect();
-    const parDossier = new Map<string, number>();
-    for (const m of messages) {
-      if (m.lu_par_admin) continue;
-      const cle = m.dossier_id as unknown as string;
-      parDossier.set(cle, (parDossier.get(cle) ?? 0) + 1);
+    const recherche = normaliserRecherche(args.recherche.trim());
+    const query = recherche
+      ? ctx.db.query("abo_conversations").withSearchIndex("search_recherche", (q) =>
+        q.search("recherche", recherche).eq("statut", args.statut))
+      : ctx.db.query("abo_conversations")
+        .withIndex("by_statut_and_dernier_message_le", (q) => q.eq("statut", args.statut))
+        .order("desc");
+    const result = await query.paginate(args.paginationOpts);
+    return {
+      ...result,
+      page: result.page.map((conversation) => ({
+        dossierId: conversation.dossier_id,
+        demandeurNom: conversation.demandeur_nom,
+        demandeurEmail: conversation.demandeur_email,
+        statut: conversation.statut,
+        dernierMessageLe: conversation.dernier_message_le,
+        dernierMessageAuteur: conversation.dernier_message_auteur,
+        dernierMessageExtrait: conversation.dernier_message_extrait,
+        messagesNonLusAdmin: conversation.messages_non_lus_admin,
+      })),
+    };
+  },
+});
+
+export const cloturerConversation = authenticatedMutation({
+  args: { dossierId: v.id("abo_dossiers") },
+  handler: async (ctx, args) => {
+    await requireAboAdmin(ctx);
+    const conversation = await ctx.db
+      .query("abo_conversations")
+      .withIndex("by_dossier", (q) => q.eq("dossier_id", args.dossierId))
+      .first();
+    if (!conversation) throw new ConvexError({ code: "404", message: "Conversation introuvable." });
+    if (conversation.messages_non_lus_admin > 0) {
+      throw new ConvexError({ code: "CONVERSATION_NON_LUE", message: "Lisez les nouveaux messages avant de clôturer la conversation." });
     }
-    return Array.from(parDossier, ([dossierId, count]) => ({ dossierId, count }));
+    if (conversation.statut !== "cloturee") await ctx.db.patch(conversation._id, { statut: "cloturee" });
+    return null;
+  },
+});
+
+export const reouvrirConversation = authenticatedMutation({
+  args: { dossierId: v.id("abo_dossiers") },
+  handler: async (ctx, args) => {
+    await requireAboAdmin(ctx);
+    const conversation = await ctx.db
+      .query("abo_conversations")
+      .withIndex("by_dossier", (q) => q.eq("dossier_id", args.dossierId))
+      .first();
+    if (!conversation) throw new ConvexError({ code: "404", message: "Conversation introuvable." });
+    if (conversation.statut !== "a_traiter") await ctx.db.patch(conversation._id, { statut: "a_traiter" });
+    return null;
   },
 });

@@ -128,15 +128,18 @@ npm run build
 ### Scénario ciblé — Messagerie Abonnements
 
 1. avec un compte public `abo-otp`, envoyer un message depuis le suivi d'un
-   dossier ; avec un compte staff ayant la tuile `abonnements`, vérifier que le
-   compteur de l'onglet « Messages » se met à jour sans rechargement ;
+   dossier ; avec un compte staff ayant la tuile `abonnements`, vérifier que la
+   conversation apparaît sans rechargement dans « À traiter » ;
 2. ouvrir « Messages » : la conversation doit être visible dans « À traiter »,
    indépendamment du statut du dossier, avec son nombre de messages non lus ;
 3. ouvrir le fil, vérifier l'historique, répondre, puis vérifier côté compte
-   public la réponse et la notification email associée ;
-4. revenir dans « Toutes les conversations » et vérifier que le fil reste
-   consultable après rechargement ; retirer ensuite la tuile à un compte staff
-   et vérifier le refus de route et du compteur backend.
+   public la réponse et la notification email associée. La conversation doit
+   rester à traiter après lecture et rechargement ;
+4. cliquer **Marquer traité**, vérifier son déplacement vers « Clôturées », puis
+   envoyer un nouveau message public : le fil doit revenir dans « À traiter » ;
+5. rechercher le nom avec et sans accent, puis créer plus de 25 conversations et
+   vérifier « Charger les conversations suivantes ». Retirer ensuite la tuile à
+   un compte staff et vérifier le refus de route et des endpoints backend.
 
 ### Scénario ciblé — Prévisualisation du suivi comme l'abonné
 
