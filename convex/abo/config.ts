@@ -783,6 +783,11 @@ export const purgerComptesPublics = internalMutation({
           .withIndex("by_dossier", (q) => q.eq("dossier_id", d._id))
           .collect();
         for (const m of messages) await ctx.db.delete(m._id);
+        const conversation = await ctx.db
+          .query("abo_conversations")
+          .withIndex("by_dossier", (q) => q.eq("dossier_id", d._id))
+          .first();
+        if (conversation) await ctx.db.delete(conversation._id);
         const logs = await ctx.db
           .query("abo_email_log")
           .withIndex("by_dossier", (q) => q.eq("dossier_id", d._id))

@@ -76,15 +76,7 @@ export default function Dossiers({
     recharger: rechargerEleves,
   } = useQueryPonctuelle(api.abo.compteur.getElevesEnCours, SANS_ARGUMENTS, versionSources);
   const compteur = useQuery(api.abo.compteur.compteurPublic, { maintenantMs });
-  const nonLus = useQuery(api.abo.messages.messagesNonLusAdmin);
   const validerPersonne = useMutation(api.abo.demandes.validerPersonne);
-
-  // Map dossierId → nb de messages non lus par les admins (badges 💬).
-  const nonLusParDossier = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const n of nonLus ?? []) m.set(n.dossierId, n.count);
-    return m;
-  }, [nonLus]);
 
   // Tables de matching « élève en cours » : par licence (fiable), repli par
   // nom+prénom normalisé (homonymes possibles — indicatif). Valeur = horaire.
@@ -307,14 +299,6 @@ export default function Dossiers({
             <article key={d.id} className="abo-admin-card abo-admin-dossier-card">
               <div className="abo-admin-card-header">
                 <span className="abo-admin-toolbar">
-                  {(nonLusParDossier.get(d.id) ?? 0) > 0 && (
-                    <span
-                      title="Messages non lus"
-                      className="abo-admin-badge abo-admin-badge--unread"
-                    >
-                      💬 {nonLusParDossier.get(d.id)}
-                    </span>
-                  )}
                   <span className="abo-admin-meta">{d.email}</span>
                 </span>
                 <Link

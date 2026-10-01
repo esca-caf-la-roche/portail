@@ -141,10 +141,10 @@ ensuite.
 
 ### À quoi sert cet onglet ?
 
-L'onglet **Messages** est la boîte de réception partagée des bénévoles. Le
-badge placé à côté de son nom dans la barre d'onglets donne le total des
-messages non lus. Par défaut, l'écran montre uniquement les conversations
-**À traiter** ; le bouton **Toutes les conversations** élargit la liste.
+L'onglet **Messages** est la boîte de travail partagée des bénévoles. Par
+défaut, il montre les conversations **À traiter** ; l'onglet **Clôturées**
+permet de retrouver les échanges terminés. La recherche porte sur le nom et
+l'e-mail du demandeur, et les listes se chargent progressivement.
 
 Le fil est partagé entre le demandeur et tous les admins Abonnements. Il est
 attaché au **dossier** et non à une personne : un message est donc commun à
@@ -155,10 +155,18 @@ détail d'une personne dans l'onglet **Dossiers**.
 
 1. Ouvrir l'onglet **Messages**, puis cliquer **Voir et répondre** sur une
    conversation.
-2. Lire le fil ; son ouverture marque les messages comme lus côté admin.
+2. Lire le fil ; son ouverture marque les messages comme lus côté admin, mais
+   ne le retire pas de la file **À traiter**.
 3. Saisir la réponse et cliquer **Envoyer**. `Ctrl + Entrée` (ou `Cmd + Entrée`
    sur macOS) envoie également le message.
-4. Le demandeur voit la réponse en temps réel dans son portail.
+4. Une fois le suivi réellement terminé, cliquer **Marquer traité**. Un nouveau
+   message de l'abonné·e rouvre automatiquement la conversation ; l'équipe peut
+   aussi choisir **Remettre à traiter**.
+5. Le demandeur voit la réponse en temps réel dans son portail.
+
+Le badge **non lu** et l'état **À traiter** sont distincts : lire un message ne
+signifie pas que la question est résolue. Le brouillon est conservé pendant la
+session de navigation du navigateur et n'est supprimé qu'après un envoi réussi.
 
 Les e-mails transactionnels liés aux Abonnements ne reçoivent pas les réponses
 par e-mail. Ils orientent explicitement le demandeur vers cette messagerie :

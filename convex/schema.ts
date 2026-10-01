@@ -996,6 +996,26 @@ export default defineSchema({
     lu_par_user: v.boolean(),
   }).index("by_dossier", ["dossier_id"]),
 
+  // SAISON-EXEMPT: file opérationnelle de la campagne Abonnements, hors sélecteur comptable.
+  abo_conversations: defineTable({
+    dossier_id: v.id("abo_dossiers"),
+    statut: v.union(v.literal("a_traiter"), v.literal("cloturee")),
+    dernier_message_le: v.number(),
+    dernier_message_auteur: v.union(v.literal("utilisateur"), v.literal("admin")),
+    dernier_message_extrait: v.string(),
+    demandeur_nom: v.string(),
+    demandeur_email: v.string(),
+    recherche: v.string(),
+    messages_non_lus_admin: v.number(),
+    messages_non_lus_user: v.number(),
+  })
+    .index("by_dossier", ["dossier_id"])
+    .index("by_statut_and_dernier_message_le", ["statut", "dernier_message_le"])
+    .searchIndex("search_recherche", {
+      searchField: "recherche",
+      filterFields: ["statut"],
+    }),
+
   // Historique des demandes retirées par leur auteur (audit léger).
   abo_demandes_supprimees: defineTable({
     email: v.string(),

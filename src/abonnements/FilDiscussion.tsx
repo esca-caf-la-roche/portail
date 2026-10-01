@@ -35,7 +35,11 @@ export default function FilDiscussion({
   const envoyer = useMutation(api.abo.messages.envoyerMessage);
   const marquerLu = useMutation(api.abo.messages.marquerLu);
 
-  const [texte, setTexte] = useState("");
+  const cleBrouillon = `abo-message-brouillon-${dossierId}`;
+  const [texte, setTexte] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return window.sessionStorage.getItem(cleBrouillon) ?? "";
+  });
   const [envoiEnCours, setEnvoiEnCours] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const finRef = useRef<HTMLDivElement>(null);
@@ -60,6 +64,7 @@ export default function FilDiscussion({
     try {
       await envoyer({ dossierId, contenu });
       setTexte("");
+      window.sessionStorage.removeItem(cleBrouillon);
     } catch (err) {
       setErreur(aboError(err).message);
     } finally {
@@ -115,7 +120,12 @@ export default function FilDiscussion({
       <form onSubmit={soumettre} style={{ display: "flex", gap: "0.5rem" }}>
         <textarea
           value={texte}
-          onChange={(e) => setTexte(e.target.value)}
+          onChange={(e) => {
+            const prochain = e.target.value;
+            setTexte(prochain);
+            window.sessionStorage.setItem(cleBrouillon, prochain);
+          }}
+          aria-label="Votre réponse"
           placeholder="Votre message…"
           rows={2}
           style={{
@@ -147,7 +157,7 @@ export default function FilDiscussion({
           Envoyer
         </button>
       </form>
-      {erreur && <p style={{ color: "#b91c1c", fontSize: "0.85rem", margin: 0 }}>{erreur}</p>}
+      {erreur && <p role="alert" style={{ color: "#b91c1c", fontSize: "0.85rem", margin: 0 }}>{erreur}</p>}
     </div>
   );
 }

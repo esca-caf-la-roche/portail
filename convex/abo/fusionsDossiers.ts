@@ -336,6 +336,38 @@ export const resoudreConflitDossiers = authenticatedMutation({
         const patch = { dossier_id: dossierDestination._id };
         if (champsModifies(message, patch)) await ctx.db.patch(message._id, patch);
       }
+      const [conversationSource, conversationDestination] = await Promise.all([
+        ctx.db.query("abo_conversations").withIndex("by_dossier", q => q.eq("dossier_id", dossierSupprime._id)).first(),
+        ctx.db.query("abo_conversations").withIndex("by_dossier", q => q.eq("dossier_id", dossierDestination._id)).first(),
+      ]);
+      if (conversationSource && conversationDestination) {
+        const sourceEstDerniere = conversationSource.dernier_message_le > conversationDestination.dernier_message_le;
+        await ctx.db.patch(conversationDestination._id, {
+          statut: conversationSource.statut === "a_traiter" || conversationDestination.statut === "a_traiter"
+            ? "a_traiter"
+            : "cloturee",
+          messages_non_lus_admin: conversationSource.messages_non_lus_admin + conversationDestination.messages_non_lus_admin,
+          messages_non_lus_user: conversationSource.messages_non_lus_user + conversationDestination.messages_non_lus_user,
+          ...(sourceEstDerniere ? {
+            dernier_message_le: conversationSource.dernier_message_le,
+            dernier_message_auteur: conversationSource.dernier_message_auteur,
+            dernier_message_extrait: conversationSource.dernier_message_extrait,
+          } : {}),
+        });
+        await ctx.db.delete(conversationSource._id);
+      } else if (conversationSource) {
+        const personneDestination = [...charge.personnesA, ...charge.personnesB]
+          .find(personne => personne.dossier_id === dossierDestination._id);
+        const demandeurNom = personneDestination
+          ? `${personneDestination.prenom} ${personneDestination.nom}`.trim()
+          : dossierDestination.email;
+        await ctx.db.patch(conversationSource._id, {
+          dossier_id: dossierDestination._id,
+          demandeur_nom: demandeurNom,
+          demandeur_email: dossierDestination.email,
+          recherche: `${demandeurNom} ${dossierDestination.email}`.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLocaleLowerCase("fr"),
+        });
+      }
       for (const log of sourceLogs) {
         const patch = { dossier_id: dossierDestination._id };
         if (champsModifies(log, patch)) await ctx.db.patch(log._id, patch);
