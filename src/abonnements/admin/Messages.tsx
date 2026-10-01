@@ -110,7 +110,15 @@ function Conversation({
           {conversation.messagesNonLusAdmin > 0 && <strong className="abo-admin-status abo-admin-status--error">{conversation.messagesNonLusAdmin} non lu{conversation.messagesNonLusAdmin > 1 ? "s" : ""}</strong>}
           <strong className={`abo-admin-status ${aTraiter ? "abo-admin-status--warning" : "abo-admin-status--success"}`}>{aTraiter ? "À traiter" : "Clôturée"}</strong>
           <button className="abo-admin-button abo-admin-button--secondary" type="button" onClick={onOuvrir} aria-expanded={ouverte}>{ouverte ? "Fermer le fil" : "Voir et répondre"}</button>
-          <button className="abo-admin-button" type="button" onClick={() => void changerStatut()}>{aTraiter ? "Marquer traité" : "Remettre à traiter"}</button>
+          <button
+            className="abo-admin-button"
+            type="button"
+            onClick={() => void changerStatut()}
+            disabled={aTraiter && conversation.messagesNonLusAdmin > 0}
+            title={aTraiter && conversation.messagesNonLusAdmin > 0 ? "Ouvrez le fil pour lire les nouveaux messages avant de clôturer." : undefined}
+          >
+            {aTraiter && conversation.messagesNonLusAdmin > 0 ? "Lire avant de traiter" : aTraiter ? "Marquer traité" : "Remettre à traiter"}
+          </button>
         </div>
       </div>
       {erreur && <p className="error-message" role="alert">{erreur}</p>}
