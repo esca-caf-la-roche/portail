@@ -1008,6 +1008,9 @@ export default defineSchema({
     recherche: v.string(),
     messages_non_lus_admin: v.number(),
     messages_non_lus_user: v.number(),
+    // WIDEN: les lignes historiques sont incluses progressivement dans le
+    // compteur matérialisé avant le prochain narrowing.
+    compteur_a_traiter_inclus: v.optional(v.boolean()),
   })
     .index("by_dossier", ["dossier_id"])
     .index("by_statut_and_dernier_message_le", ["statut", "dernier_message_le"])
@@ -1015,6 +1018,14 @@ export default defineSchema({
       searchField: "recherche",
       filterFields: ["statut"],
     }),
+
+  // SAISON-EXEMPT: singleton opérationnel de la campagne Abonnements. Il évite
+  // le scan réactif des conversations pour le badge staff.
+  abo_conversations_compteur: defineTable({
+    cle: v.literal("global"),
+    etat: v.union(v.literal("backfill"), v.literal("pret")),
+    a_traiter: v.number(),
+  }).index("by_cle", ["cle"]),
 
   // Historique des demandes retirées par leur auteur (audit léger).
   abo_demandes_supprimees: defineTable({

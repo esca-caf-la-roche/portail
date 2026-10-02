@@ -14,6 +14,10 @@ import { internal } from "../_generated/api";
 import type { MutationCtx } from "../_generated/server";
 import { requireOwnedDossier, requireAboAdmin, getAboIdentity } from "./auth";
 import type { Doc, Id } from "../_generated/dataModel";
+import {
+  ajouterConversationAuCompteur,
+  ajusterCompteurChangementStatut,
+} from "./conversationsCompteur";
 
 const extrait = (contenu: string) => contenu.replace(/\s+/g, " ").trim().slice(0, 180);
 const normaliserRecherche = (texte: string) => texte
@@ -43,8 +47,10 @@ async function mettreAJourConversation(
     .first();
   const entrant = message.auteur_role === "utilisateur";
   if (conversation) {
+    const statutSuivant = entrant ? "a_traiter" : conversation.statut;
+    await ajusterCompteurChangementStatut(ctx, conversation, statutSuivant);
     await ctx.db.patch(conversation._id, {
-      statut: entrant ? "a_traiter" : conversation.statut,
+      statut: statutSuivant,
       dernier_message_le: message._creationTime,
       dernier_message_auteur: message.auteur_role,
       dernier_message_extrait: extrait(message.contenu),
@@ -58,9 +64,11 @@ async function mettreAJourConversation(
     return;
   }
   const demandeur = await identiteDemandeur(ctx, dossierId);
+  const statut = entrant ? "a_traiter" : "cloturee";
+  await ajouterConversationAuCompteur(ctx, statut);
   await ctx.db.insert("abo_conversations", {
     dossier_id: dossierId,
-    statut: entrant ? "a_traiter" : "cloturee",
+    statut,
     dernier_message_le: message._creationTime,
     dernier_message_auteur: message.auteur_role,
     dernier_message_extrait: extrait(message.contenu),
@@ -69,6 +77,7 @@ async function mettreAJourConversation(
     recherche: normaliserRecherche(`${demandeur.nom} ${demandeur.email}`),
     messages_non_lus_admin: entrant ? 1 : 0,
     messages_non_lus_user: entrant ? 0 : 1,
+    compteur_a_traiter_inclus: true,
   });
 }
 
@@ -232,6 +241,21 @@ export const listerConversationsAdmin = authenticatedQuery({
   },
 });
 
+export const compterConversationsATraiter = authenticatedQuery({
+  args: {},
+  returns: v.union(v.number(), v.null()),
+  handler: async (ctx) => {
+    await requireAboAdmin(ctx);
+    const compteur = await ctx.db
+      .query("abo_conversations_compteur")
+      .withIndex("by_cle", (q) => q.eq("cle", "global"))
+      .unique();
+    // Le front masque le badge durant la migration plutôt que d'afficher un
+    // total partiel ou de relancer un scan de compatibilité.
+    return compteur?.etat === "pret" ? compteur.a_traiter : null;
+  },
+});
+
 export const cloturerConversation = authenticatedMutation({
   args: { dossierId: v.id("abo_dossiers") },
   handler: async (ctx, args) => {
@@ -244,7 +268,10 @@ export const cloturerConversation = authenticatedMutation({
     if (conversation.messages_non_lus_admin > 0) {
       throw new ConvexError({ code: "CONVERSATION_NON_LUE", message: "Lisez les nouveaux messages avant de clôturer la conversation." });
     }
-    if (conversation.statut !== "cloturee") await ctx.db.patch(conversation._id, { statut: "cloturee" });
+    if (conversation.statut !== "cloturee") {
+      await ajusterCompteurChangementStatut(ctx, conversation, "cloturee");
+      await ctx.db.patch(conversation._id, { statut: "cloturee" });
+    }
     return null;
   },
 });
@@ -258,7 +285,10 @@ export const reouvrirConversation = authenticatedMutation({
       .withIndex("by_dossier", (q) => q.eq("dossier_id", args.dossierId))
       .first();
     if (!conversation) throw new ConvexError({ code: "404", message: "Conversation introuvable." });
-    if (conversation.statut !== "a_traiter") await ctx.db.patch(conversation._id, { statut: "a_traiter" });
+    if (conversation.statut !== "a_traiter") {
+      await ajusterCompteurChangementStatut(ctx, conversation, "a_traiter");
+      await ctx.db.patch(conversation._id, { statut: "a_traiter" });
+    }
     return null;
   },
 });

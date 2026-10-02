@@ -24,6 +24,7 @@ import { parseHa, poserLienAbo, trouverLienAbo } from "./paiements";
 import { REGLEMENT_DOCUSEAL_URL } from "./reglementsConstants";
 import { champsModifies } from "../dbUtils";
 import { RESET_CAMPAIGN_SYNC_KEYS } from "./syncConstants";
+import { retirerConversationDuCompteur } from "./conversationsCompteur";
 
 const LOT_PURGE_SUIVI_CAMPAGNE = 25;
 // SAISON-EXEMPT: état opérationnel de la campagne Abonnements, distinct de la
@@ -787,7 +788,10 @@ export const purgerComptesPublics = internalMutation({
           .query("abo_conversations")
           .withIndex("by_dossier", (q) => q.eq("dossier_id", d._id))
           .first();
-        if (conversation) await ctx.db.delete(conversation._id);
+        if (conversation) {
+          await retirerConversationDuCompteur(ctx, conversation);
+          await ctx.db.delete(conversation._id);
+        }
         const logs = await ctx.db
           .query("abo_email_log")
           .withIndex("by_dossier", (q) => q.eq("dossier_id", d._id))

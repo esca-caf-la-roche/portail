@@ -33,6 +33,7 @@ import {
   lirePlacesMax,
   programmerRafraichissementCompteurPublic,
 } from "./compteur";
+import { retirerConversationDuCompteur } from "./conversationsCompteur";
 
 const MAX_PERSONNES_PAR_DOSSIER = 10;
 const MAX_LONGUEUR_NOM = 100;
@@ -751,7 +752,10 @@ async function purgerDossier(
     .query("abo_conversations")
     .withIndex("by_dossier", (q) => q.eq("dossier_id", dossierId))
     .first();
-  if (conversation) await ctx.db.delete(conversation._id);
+  if (conversation) {
+    await retirerConversationDuCompteur(ctx, conversation);
+    await ctx.db.delete(conversation._id);
+  }
   const logs = await ctx.db
     .query("abo_email_log")
     .withIndex("by_dossier", (q) => q.eq("dossier_id", dossierId))
