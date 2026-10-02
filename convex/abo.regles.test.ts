@@ -64,9 +64,11 @@ describe("règles Abonnements : N-1, vague 2, suppression et anomalies", () => {
     });
 
     await demandeur.mutation(api.abo.messages.envoyerMessage, { dossierId, contenu: "Bonjour" });
+    expect(await admin.query(api.abo.messages.compterConversationsATraiter, {})).toBe(1);
     await expect(admin.mutation(api.abo.messages.cloturerConversation, { dossierId })).rejects.toThrow("Lisez les nouveaux messages");
     await admin.mutation(api.abo.messages.marquerLu, { dossierId });
     await admin.mutation(api.abo.messages.cloturerConversation, { dossierId });
+    expect(await admin.query(api.abo.messages.compterConversationsATraiter, {})).toBe(0);
     expect((await admin.query(api.abo.messages.listerConversationsAdmin, {
       statut: "cloturee", recherche: "", paginationOpts: { cursor: null, numItems: 25 },
     })).page).toHaveLength(1);
@@ -80,6 +82,7 @@ describe("règles Abonnements : N-1, vague 2, suppression et anomalies", () => {
       demandeurNom: "Léa Martin",
       messagesNonLusAdmin: 1,
     }]);
+    expect(await admin.query(api.abo.messages.compterConversationsATraiter, {})).toBe(1);
   });
 
   test("refuse une personne N-1 par nom/prénom normalisé", async () => {
