@@ -58,7 +58,7 @@ flowchart LR
 | Zone | But principal | Fréquence conseillée |
 |---|---|---|
 | Dossiers | Examiner et décider les demandes | À chaque nouvelle demande / quotidien en période d'ouverture |
-| Messages | Répondre au demandeur depuis son dossier | Dès qu'un badge de message non lu apparaît |
+| Messages | Répondre au demandeur depuis son dossier | Dès que le badge rouge indique des conversations à traiter |
 | Paiements | Suivre les paiements du formulaire HelloAsso | Régulièrement après ouverture du paiement |
 | Anomalies | Détecter les inscriptions directes non autorisées sur le site club | Après chaque synchronisation du site club |
 | Licences | Rattacher chaque demande à la bonne licence | Avant ou pendant l'instruction des dossiers |
@@ -145,6 +145,10 @@ L'onglet **Messages** est la boîte de travail partagée des bénévoles. Par
 défaut, il montre les conversations **À traiter** ; l'onglet **Clôturées**
 permet de retrouver les échanges terminés. La recherche porte sur le nom et
 l'e-mail du demandeur, et les listes se chargent progressivement.
+
+Le badge rouge de l'onglet indique le nombre de conversations encore **À
+traiter**. Il ne compte pas les seuls messages non lus : une conversation lue
+reste affichée dans le badge jusqu'à sa clôture explicite.
 
 Le fil est partagé entre le demandeur et tous les admins Abonnements. Il est
 attaché au **dossier** et non à une personne : un message est donc commun à
