@@ -181,6 +181,21 @@ Chaque fil historique est initialement **À traiter** : cette prudence évite de
 masquer un ancien message. La migration est idempotente et reprend sans écraser
 un fil créé ou actualisé pendant son exécution.
 
+Le badge Messages est un compteur matérialisé : il ne reparcourt pas la file à
+chaque abonnement temps réel. Après le déploiement *widen*, lancer en DEV puis
+en PROD (avec accord explicite) la chaîne
+`migrations:initialiserAboCompteurConversations` →
+`migrations:migrateAboConversationsCompteur` →
+`migrations:activerAboCompteurConversations`, par exemple via `next`. Le badge
+reste volontairement masqué pendant ce backfill ; chaque création, fermeture,
+réouverture, suppression et fusion reste comptée transactionnellement. Le champ
+transitoire `compteur_a_traiter_inclus` ne sera retiré qu'après validation du
+compteur dans les deux environnements.
+
+```bash
+npx convex run migrations:initialiserAboCompteurConversations '{"next":["migrations:migrateAboConversationsCompteur","migrations:activerAboCompteurConversations"]}'
+```
+
 Les adresses historiques de `users` suivent la même discipline : exécuter
 d'abord l'inspection interne paginée
 `migrations:inspectUsersEmailCanonique`, traiter manuellement tout compteur
