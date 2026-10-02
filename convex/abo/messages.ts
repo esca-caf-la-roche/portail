@@ -232,6 +232,29 @@ export const listerConversationsAdmin = authenticatedQuery({
   },
 });
 
+// La campagne est limitée à 1 000 personnes suivies. Cette borne rend le
+// compteur exact tout en évitant une lecture non bornée si la configuration
+// d'une campagne devenait incohérente.
+export const compterConversationsATraiter = authenticatedQuery({
+  args: {},
+  returns: v.number(),
+  handler: async (ctx) => {
+    await requireAboAdmin(ctx);
+    const conversations = await ctx.db
+      .query("abo_conversations")
+      .withIndex("by_statut_and_dernier_message_le", (q) => q.eq("statut", "a_traiter"))
+      // IO-BOUNDED: une campagne Abonnements suit au maximum 1 000 personnes.
+      .take(1_001);
+    if (conversations.length > 1_000) {
+      throw new ConvexError({
+        code: "54000",
+        message: "Le nombre de conversations à traiter dépasse la limite de 1 000.",
+      });
+    }
+    return conversations.length;
+  },
+});
+
 export const cloturerConversation = authenticatedMutation({
   args: { dossierId: v.id("abo_dossiers") },
   handler: async (ctx, args) => {
