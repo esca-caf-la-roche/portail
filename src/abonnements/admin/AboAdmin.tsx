@@ -51,7 +51,9 @@ export default function AboAdmin() {
   );
 
   const compteurs: Partial<Record<Vue, number>> = {
-    messages: messagesATraiter,
+    // Pendant le backfill du compteur matérialisé, l'API retourne `null` : ne
+    // pas afficher un total partiel ni faire échouer le rendu de la page.
+    messages: messagesATraiter ?? undefined,
     tests: testsATraiter?.length,
     reglements: reglementsATraiter,
   };
