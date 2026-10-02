@@ -9,6 +9,11 @@ import { champsModifies } from "../dbUtils";
 import { requireAboAdmin } from "./auth";
 import { champsPersonneDepuisScrap } from "./matching";
 import { programmerRafraichissementCompteurPublic } from "./compteur";
+import {
+  ajouterConversationAuCompteur,
+  ajusterCompteurChangementStatut,
+  retirerConversationDuCompteur,
+} from "./conversationsCompteur";
 
 const MAX_PERSONNES = 30;
 const MAX_MESSAGES = 100;
@@ -342,10 +347,26 @@ export const resoudreConflitDossiers = authenticatedMutation({
       ]);
       if (conversationSource && conversationDestination) {
         const sourceEstDerniere = conversationSource.dernier_message_le > conversationDestination.dernier_message_le;
+        const statutFinal = conversationSource.statut === "a_traiter" || conversationDestination.statut === "a_traiter"
+          ? "a_traiter" as const
+          : "cloturee" as const;
+        // Une ligne historique peut encore ne pas être incluse pendant le
+        // backfill. Transférer son marqueur à la destination évite de compter
+        // deux fois (ou de perdre) une conversation fusionnée.
+        const destinationIncluse = Boolean(
+          conversationDestination.compteur_a_traiter_inclus ||
+          conversationSource.compteur_a_traiter_inclus,
+        );
+        // Retirer les deux contributions avant de matérialiser l'unique fil
+        // restant. Chaque étape est dans cette même transaction.
+        await ajusterCompteurChangementStatut(ctx, conversationDestination, "cloturee");
+        await retirerConversationDuCompteur(ctx, conversationSource);
+        if (destinationIncluse) {
+          await ajouterConversationAuCompteur(ctx, statutFinal);
+        }
         await ctx.db.patch(conversationDestination._id, {
-          statut: conversationSource.statut === "a_traiter" || conversationDestination.statut === "a_traiter"
-            ? "a_traiter"
-            : "cloturee",
+          statut: statutFinal,
+          compteur_a_traiter_inclus: destinationIncluse ? true : undefined,
           messages_non_lus_admin: conversationSource.messages_non_lus_admin + conversationDestination.messages_non_lus_admin,
           messages_non_lus_user: conversationSource.messages_non_lus_user + conversationDestination.messages_non_lus_user,
           ...(sourceEstDerniere ? {
