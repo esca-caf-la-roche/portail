@@ -8,6 +8,10 @@ import { authenticatedMutation as mutation } from "./customFunctions";
 import { requireAdmin } from "./access";
 import { canoniserEmailUnique } from "./emailValidation";
 import schema from "./schema";
+import {
+  ajouterConversationAuCompteur,
+  inclureConversationHistoriqueDansCompteur,
+} from "./abo/conversationsCompteur";
 
 export const migrations = new Migrations<DataModel, typeof schema>(
   components.migrations,
@@ -61,6 +65,7 @@ export const migrateAboConversations = migrations.define({
       .withIndex("by_dossier", (q) => q.eq("dossier_id", dossier._id))
       .first();
     const demandeurNom = personne ? `${personne.prenom} ${personne.nom}`.trim() : dossier.email;
+    await ajouterConversationAuCompteur(ctx, "a_traiter");
     await ctx.db.insert("abo_conversations", {
       dossier_id: dossier._id,
       statut: "a_traiter",
@@ -73,7 +78,48 @@ export const migrateAboConversations = migrations.define({
       // État conservateur : le premier affichage lit tout le fil avant toute clôture.
       messages_non_lus_admin: 1,
       messages_non_lus_user: messages.filter((message) => !message.lu_par_user).length,
+      compteur_a_traiter_inclus: true,
     });
+  },
+});
+
+// WIDEN -> MIGRATE -> NARROW du compteur de conversations à traiter. Les trois
+// migrations doivent être lancées dans cet ordre avec `next`; le badge reste
+// masqué tant que la dernière n'a pas marqué le singleton prêt.
+export const initialiserAboCompteurConversations = migrations.define({
+  // Tout envoi de message nécessite déjà un compte Convex : cette table est
+  // donc non vide dès qu'une conversation peut exister, y compris sans dossier.
+  table: "users",
+  batchSize: 1,
+  migrateOne: async (ctx) => {
+    const compteur = await ctx.db
+      .query("abo_conversations_compteur")
+      .withIndex("by_cle", (q) => q.eq("cle", "global"))
+      .unique();
+    if (!compteur) {
+      await ctx.db.insert("abo_conversations_compteur", {
+        cle: "global",
+        etat: "backfill",
+        a_traiter: 0,
+      });
+    }
+  },
+});
+
+export const migrateAboConversationsCompteur = migrations.define({
+  table: "abo_conversations",
+  batchSize: 50,
+  migrateOne: async (ctx, conversation) => {
+    await inclureConversationHistoriqueDansCompteur(ctx, conversation);
+  },
+});
+
+export const activerAboCompteurConversations = migrations.define({
+  table: "abo_conversations_compteur",
+  migrateOne: async (ctx, compteur) => {
+    if (compteur.etat !== "pret") {
+      await ctx.db.patch(compteur._id, { etat: "pret" });
+    }
   },
 });
 
