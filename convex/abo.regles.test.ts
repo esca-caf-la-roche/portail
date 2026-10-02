@@ -4,6 +4,7 @@ import rateLimiterTest from "@convex-dev/rate-limiter/test";
 import { describe, expect, test } from "vitest";
 import { api, internal } from "./_generated/api";
 import schema from "./schema";
+import { inclureConversationHistoriqueDansCompteur } from "./abo/conversationsCompteur";
 
 const modules = import.meta.glob("./**/*.ts");
 const MAINTENANT_MS = Date.parse("2026-08-07T12:00:00.000Z");
@@ -38,6 +39,9 @@ describe("règles Abonnements : N-1, vague 2, suppression et anomalies", () => {
     const demandeur = await creerUtilisateur(t, "message@example.test");
     const admin = await creerAdmin(t);
     const dossierId = await t.run(async (ctx) => {
+      await ctx.db.insert("abo_conversations_compteur", {
+        cle: "global", etat: "pret", a_traiter: 0,
+      });
       const user = (await ctx.db.query("users").collect()).find((row) => row.email === "message@example.test");
       if (!user) throw new Error("Utilisateur demandeur absent du test.");
       const dossierId = await ctx.db.insert("abo_dossiers", {
@@ -83,6 +87,88 @@ describe("règles Abonnements : N-1, vague 2, suppression et anomalies", () => {
       messagesNonLusAdmin: 1,
     }]);
     expect(await admin.query(api.abo.messages.compterConversationsATraiter, {})).toBe(1);
+  });
+
+  test("masque le badge pendant le backfill puis compte une conversation historique", async () => {
+    const t = createTest();
+    const admin = await creerAdmin(t);
+    await t.run(async (ctx) => {
+      const ownerId = await ctx.db.insert("users", { email: "historique@example.test" });
+      const dossierId = await ctx.db.insert("abo_dossiers", {
+        owner_id: ownerId, email: "historique@example.test", statut_dossier: "nouvelle_demande", date_soumission: "2026-08-07T12:00:00.000Z",
+      });
+      const conversationId = await ctx.db.insert("abo_conversations", {
+        dossier_id: dossierId, statut: "a_traiter", dernier_message_le: MAINTENANT_MS,
+        dernier_message_auteur: "utilisateur", dernier_message_extrait: "Historique",
+        demandeur_nom: "Historique", demandeur_email: "historique@example.test",
+        recherche: "historique historique@example.test", messages_non_lus_admin: 0, messages_non_lus_user: 0,
+      });
+      const conversation = await ctx.db.get(conversationId);
+      if (!conversation) throw new Error("Conversation historique absente.");
+      await inclureConversationHistoriqueDansCompteur(ctx, conversation);
+    });
+    expect(await admin.query(api.abo.messages.compterConversationsATraiter, {})).toBeNull();
+    await t.run(async (ctx) => {
+      const compteur = await ctx.db.query("abo_conversations_compteur").withIndex("by_cle", (q) => q.eq("cle", "global")).unique();
+      if (!compteur) throw new Error("Compteur absent.");
+      await ctx.db.patch(compteur._id, { etat: "pret" });
+    });
+    expect(await admin.query(api.abo.messages.compterConversationsATraiter, {})).toBe(1);
+  });
+
+  test("retire du compteur une conversation supprimée avec son dernier dossier", async () => {
+    const t = createTest();
+    const candidat = await creerUtilisateur(t, "effacement@example.test");
+    const personneId = await t.run(async (ctx) => {
+      await ctx.db.insert("abo_conversations_compteur", { cle: "global", etat: "pret", a_traiter: 1 });
+      const owner = await ctx.db.query("users").filter((q) => q.eq(q.field("email"), "effacement@example.test")).unique();
+      if (!owner) throw new Error("Utilisateur fixture introuvable.");
+      const dossierId = await ctx.db.insert("abo_dossiers", { owner_id: owner._id, email: owner.email!, statut_dossier: "nouvelle_demande", date_soumission: "2026-08-07T12:00:00.000Z" });
+      const personneId = await ctx.db.insert("abo_personnes", { dossier_id: dossierId, nom: "Efface", prenom: "Moi", nom_prenom_normalise: "EFFACE MOI", licence_statut: "inconnu", etape_demande: true, etape_validation: "en_attente", etape_licence: false, etape_inscription_site: false, etape_photo: false, etape_paiement: false, etape_abonnement_valide: false });
+      await ctx.db.insert("abo_conversations", { dossier_id: dossierId, statut: "a_traiter", dernier_message_le: MAINTENANT_MS, dernier_message_auteur: "utilisateur", dernier_message_extrait: "À supprimer", demandeur_nom: "Efface Moi", demandeur_email: owner.email!, recherche: "efface moi effacement@example.test", messages_non_lus_admin: 0, messages_non_lus_user: 0, compteur_a_traiter_inclus: true });
+      return personneId;
+    });
+    await candidat.mutation(api.abo.demandes.supprimerPersonne, { personneId });
+    const compteur = await t.run((ctx) => ctx.db.query("abo_conversations_compteur").withIndex("by_cle", (q) => q.eq("cle", "global")).unique());
+    expect(compteur?.a_traiter).toBe(0);
+  });
+
+  test("conserve une seule conversation à traiter lors de la fusion de deux dossiers", async () => {
+    const t = createTest();
+    const admin = await creerAdmin(t);
+    const { personneAId, personneBId, dossierBId } = await t.run(async (ctx) => {
+      await ctx.db.insert("abo_conversations_compteur", { cle: "global", etat: "pret", a_traiter: 2 });
+      const ownerA = await ctx.db.insert("users", { email: "fusion-a@example.test" });
+      const ownerB = await ctx.db.insert("users", { email: "fusion-b@example.test" });
+      const dossierAId = await ctx.db.insert("abo_dossiers", { owner_id: ownerA, email: "fusion-a@example.test", statut_dossier: "nouvelle_demande", date_soumission: "2026-08-07T12:00:00.000Z" });
+      const dossierBId = await ctx.db.insert("abo_dossiers", { owner_id: ownerB, email: "fusion-b@example.test", statut_dossier: "nouvelle_demande", date_soumission: "2026-08-07T12:00:00.000Z" });
+      const personneAId = await ctx.db.insert("abo_personnes", { dossier_id: dossierAId, nom: "Fusion", prenom: "A", nom_prenom_normalise: "FUSION A", licence: "123456789012", licence_statut: "saisie", etape_demande: true, etape_validation: "en_attente", etape_licence: true, etape_inscription_site: false, etape_photo: false, etape_paiement: false, etape_abonnement_valide: false });
+      const personneBId = await ctx.db.insert("abo_personnes", { dossier_id: dossierBId, nom: "Fusion", prenom: "B", nom_prenom_normalise: "FUSION B", licence: "123456789012", licence_statut: "saisie", etape_demande: true, etape_validation: "en_attente", etape_licence: true, etape_inscription_site: false, etape_photo: false, etape_paiement: false, etape_abonnement_valide: false });
+      for (const [dossier_id, demandeur_email] of [[dossierAId, "fusion-a@example.test"], [dossierBId, "fusion-b@example.test"]] as const) {
+        await ctx.db.insert("abo_conversations", { dossier_id, statut: "a_traiter", dernier_message_le: MAINTENANT_MS, dernier_message_auteur: "utilisateur", dernier_message_extrait: "À fusionner", demandeur_nom: "Fusion", demandeur_email, recherche: `fusion ${demandeur_email}`, messages_non_lus_admin: 0, messages_non_lus_user: 0, compteur_a_traiter_inclus: true });
+      }
+      return { personneAId, personneBId, dossierBId };
+    });
+    const apercu = await admin.query(api.abo.fusionsDossiers.getApercuRepartitionDossiers, { personneAId, personneBId });
+    await admin.mutation(api.abo.fusionsDossiers.resoudreConflitDossiers, {
+      personneAId, personneBId, revision: apercu.revision, mode: "conserver_b",
+      affectations: [{ personneId: personneAId, dossierId: dossierBId }],
+    });
+    expect(await admin.query(api.abo.messages.compterConversationsATraiter, {})).toBe(1);
+  });
+
+  test("décrémente le compteur pendant la purge de campagne", async () => {
+    const t = createTest();
+    await t.run(async (ctx) => {
+      await ctx.db.insert("abo_conversations_compteur", { cle: "global", etat: "pret", a_traiter: 1 });
+      const ownerId = await ctx.db.insert("users", { email: "purge@example.test" });
+      await ctx.db.insert("abo_profiles", { userId: ownerId, email: "purge@example.test", role: "utilisateur" });
+      const dossierId = await ctx.db.insert("abo_dossiers", { owner_id: ownerId, email: "purge@example.test", statut_dossier: "nouvelle_demande", date_soumission: "2026-08-07T12:00:00.000Z" });
+      await ctx.db.insert("abo_conversations", { dossier_id: dossierId, statut: "a_traiter", dernier_message_le: MAINTENANT_MS, dernier_message_auteur: "utilisateur", dernier_message_extrait: "À purger", demandeur_nom: "Purge", demandeur_email: "purge@example.test", recherche: "purge purge@example.test", messages_non_lus_admin: 0, messages_non_lus_user: 0, compteur_a_traiter_inclus: true });
+    });
+    await t.mutation(internal.abo.config.purgerComptesPublics, {});
+    const compteur = await t.run((ctx) => ctx.db.query("abo_conversations_compteur").withIndex("by_cle", (q) => q.eq("cle", "global")).unique());
+    expect(compteur?.a_traiter).toBe(0);
   });
 
   test("refuse une personne N-1 par nom/prénom normalisé", async () => {
