@@ -53,6 +53,27 @@ export const contexteGoogle = internalQuery({
   }),
 });
 
+// Lecture ponctuelle indexée : au plus 401 documents, projection des identités
+// Google uniquement ; aucun abonnement ni lecture de l'annuaire.
+export const contexteVerification = internalQuery({
+  args: { saison: v.string(), date: v.string() },
+  returns: v.array(v.object({
+    calendarId: v.string(), eventId: v.string(),
+    googleICalUid: v.optional(v.string()), googleOccurrenceStart: v.string(),
+  })),
+  handler: async (ctx, args) => {
+    const creneaux = await ctx.db.query("planning_salaries_creneaux")
+      .withIndex("by_saison_and_date", (q) => q.eq("saison", args.saison).eq("date", args.date))
+      .take(MAX_CRENEAUX_PAR_SAISON + 1);
+    if (creneaux.length > MAX_CRENEAUX_PAR_SAISON) throw erreur("PLANNING_VOLUME", "Trop d'événements à vérifier.");
+    return creneaux.map((c) => ({
+      calendarId: c.googleCalendarId, eventId: c.googleEventId,
+      ...(c.googleICalUid ? { googleICalUid: c.googleICalUid } : {}),
+      googleOccurrenceStart: c.googleOccurrenceStart,
+    }));
+  },
+});
+
 export const reserverSync = internalMutation({
   args: { saison: v.string(), maintenant: v.number(), forcer: v.boolean() },
   returns: v.object({ lancee: v.boolean(), startedAt: v.union(v.null(), v.number()) }),

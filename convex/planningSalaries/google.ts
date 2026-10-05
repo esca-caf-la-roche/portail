@@ -295,7 +295,7 @@ export const synchroniser = authenticatedAction({
   },
 });
 
-// Vérification ponctuelle : 51 ressources, 60 requêtes au total, 90 secondes.
+// Vérification ponctuelle des occurrences locales : 60 requêtes, 90 secondes.
 // Un dépassement bloque le mail ; aucun import ni nouveau cron.
 export const verifierAbsenceSalarie = internalAction({
   args: { saison: v.string(), date: v.string() },
@@ -309,67 +309,63 @@ export const verifierAbsenceSalarie = internalAction({
     }
     try {
       const deadline = Date.now() + 90_000;
-      const contexte = await ctx.runQuery(internal.planningSalaries.syncDb.contexteGoogle, {});
-      if (contexte.resources.length > 50) throw new ConvexError("Annuaire trop volumineux.");
+      const occurrences: Array<{ calendarId: string; eventId: string; googleICalUid?: string; googleOccurrenceStart: string }> =
+        await ctx.runQuery(internal.planningSalaries.syncDb.contexteVerification, args);
       const restantInitial = deadline - Date.now();
       if (restantInitial <= 0) throw new ConvexError("Vérification Google expirée.");
       const calendar = calendrierGoogle(AbortSignal.timeout(restantInitial));
-      const jour = Date.parse(`${args.date}T00:00:00Z`);
-      let occurrences = 0;
-      let absence = true;
+      let absence = occurrences.length > 0;
       let requetes = 0;
-      for (const resource of new Set([PLACEHOLDER_RESOURCE, ...contexte.resources.map((r) => r.resourceCalendarId.toLowerCase())])) {
-        let pageToken: string | undefined;
-        for (let page = 0; page < 5; page += 1) {
-          const restant = deadline - Date.now();
-          if (++requetes > 60 || restant <= 0) throw new ConvexError("Budget de vérification Google dépassé.");
+      const options = () => {
+        const restant = deadline - Date.now();
+        if (++requetes > 60 || restant <= 0) throw new ConvexError("Budget de vérification Google dépassé.");
+        const timeout = Math.min(10_000, restant);
+        return { timeout, retry: false as const, signal: AbortSignal.timeout(timeout) };
+      };
+      for (const occurrence of occurrences) {
+        let event: calendar_v3.Schema$Event;
+        if (occurrence.googleICalUid) {
+          const instant = Date.parse(occurrence.googleOccurrenceStart);
+          if (!Number.isFinite(instant)) throw new ConvexError("Occurrence Google invalide.");
           const response = await calendar.events.list({
-            calendarId: resource, timeMin: new Date(jour - 24 * 3600_000).toISOString(),
-            timeMax: new Date(jour + 48 * 3600_000).toISOString(),
-            singleEvents: true, showDeleted: false, maxResults: 250, pageToken,
-          }, { timeout: Math.min(10_000, restant), retry: false, signal: AbortSignal.timeout(Math.min(10_000, restant)) });
-          if (Date.now() >= deadline) throw new ConvexError("Vérification Google expirée.");
-          for (const event of response.data.items ?? []) {
-            if (!event.start?.dateTime && !event.start?.date) throw new ConvexError("Événement Google incomplet.");
-            if (dateParis(event.start?.dateTime ?? event.start?.date ?? "") === args.date &&
-              (!event.id || (!event.end?.dateTime && !event.end?.date))) {
-              throw new ConvexError("Événement Google incomplet.");
-            }
-            const lu = lireEvenement(event, resource);
-            if (lu?.date !== args.date) continue;
-            if (event.status !== "confirmed" || !Array.isArray(event.attendees) ||
-              event.attendees.length === 0 || event.attendees.some((a) =>
-                !a.email || !/^[^\s@]+@[^\s@]+$/.test(a.email) ||
-                (a.resource !== undefined && typeof a.resource !== "boolean") ||
-                (a.responseStatus !== undefined && (typeof a.responseStatus !== "string" ||
-                  !["needsAction", "declined", "tentative", "accepted"].includes(a.responseStatus))))) {
-              throw new ConvexError("Métadonnées Google ambiguës.");
-            }
-            if (!event.attendees.some((a) => a.email?.toLowerCase() === resource)) {
-              throw new ConvexError("Ressource Google non confirmée dans les participants.");
-            }
-            if (event.attendees.some((a) => a.email?.toLowerCase() === resource &&
-              (a.responseStatus === "declined" || a.responseStatus === "tentative"))) {
-              throw new ConvexError("Participation de la ressource Google incertaine.");
-            }
-            occurrences += 1;
-            if (occurrences > MAX_CRENEAUX_PAR_SAISON) throw new ConvexError("Trop d'événements à vérifier.");
-            if (resource !== PLACEHOLDER_RESOURCE) absence = false;
-            // Une copie temporaire peut encore subsister après une attribution.
-            if (event.attendees.some((a) =>
-              (a.resource || a.email?.toLowerCase().endsWith("@resource.calendar.google.com")) &&
-              a.email?.toLowerCase() !== PLACEHOLDER_RESOURCE)) absence = false;
-          }
-          pageToken = response.data.nextPageToken ?? undefined;
-          if (!pageToken) break;
+            calendarId: occurrence.calendarId, iCalUID: occurrence.googleICalUid,
+            singleEvents: true, showDeleted: false, maxResults: 10,
+            timeMin: new Date(instant - 36 * 3600_000).toISOString(),
+            timeMax: new Date(instant + 36 * 3600_000).toISOString(),
+          }, options());
+          if (response.data.nextPageToken) throw new ConvexError("Lecture Google tronquée.");
+          const correspondances = (response.data.items ?? []).filter((e) =>
+            e.iCalUID === occurrence.googleICalUid && memeOccurrence(
+              e.originalStartTime?.dateTime ?? e.originalStartTime?.date ?? e.start?.dateTime ?? e.start?.date,
+              occurrence.googleOccurrenceStart,
+            ));
+          if (correspondances.length !== 1) throw new ConvexError("Copie organisatrice de l'événement Google introuvable ou ambiguë.");
+          event = correspondances[0]!;
+        } else {
+          event = (await calendar.events.get({ calendarId: occurrence.calendarId, eventId: occurrence.eventId }, options())).data;
+          if (event.id !== occurrence.eventId || !memeOccurrence(
+            event.originalStartTime?.dateTime ?? event.originalStartTime?.date ?? event.start?.dateTime ?? event.start?.date,
+            occurrence.googleOccurrenceStart,
+          )) throw new ConvexError("Occurrence Google différente.");
         }
-        if (pageToken) throw new ConvexError("Lecture Google tronquée.");
+        if (Date.now() >= deadline) throw new ConvexError("Vérification Google expirée.");
+        if (event.status !== "confirmed" || event.attendeesOmitted ||
+          (event.organizer?.email && event.organizer.email !== occurrence.calendarId) ||
+          lireEvenement(event, occurrence.calendarId)?.date !== args.date) {
+          throw new ConvexError("Métadonnées Google ambiguës.");
+        }
+        // Seul cet email EXACT signifie « À déterminer ». Ni l'annuaire,
+        // ni resource, ni responseStatus ne définissent la présence salariée.
+        if (event.attendees?.length !== 1 || event.attendees[0]?.email !== PLACEHOLDER_RESOURCE) {
+          absence = false;
+          break;
+        }
       }
       const valide = await ctx.runMutation(internal.planningSalaries.syncDb.libererVerification, {
         saison: args.saison, startedAt: reservation.startedAt,
       });
       if (!valide) throw new ConvexError("Vérification Google expirée.");
-      return absence && occurrences > 0;
+      return absence;
     } catch (cause) {
       await ctx.runMutation(internal.planningSalaries.syncDb.marquerEchecSync, {
         saison: args.saison, startedAt: reservation.startedAt, message: "Vérification Google de l'alerte impossible.",

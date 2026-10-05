@@ -15,7 +15,10 @@ vi.mock("emailjs", () => ({ SMTPClient: class {
 } }));
 vi.mock("googleapis", () => ({ google: {
   auth: { OAuth2: class { setCredentials() {} } },
-  calendar: () => ({ events: { list: googleList } }),
+  calendar: () => ({ events: { list: googleList, get: async (args: { calendarId: string; eventId: string }, options: unknown) => {
+    const response = await googleList(args, options);
+    return { data: response.data.items?.[0] ?? {} };
+  } } }),
 } }));
 
 async function fixture() {
@@ -75,6 +78,10 @@ async function fixture() {
 describe("planning des salariés du samedi", () => {
   async function alerteFixture() {
     const f = await fixture();
+    await f.t.run(async (ctx) => {
+      await ctx.db.delete(f.secondCreneauId);
+      await ctx.db.patch(f.creneauId, { googleCalendarId: PLACEHOLDER_RESOURCE, googleEventId: "event", googleOccurrenceStart: "2026-09-05" });
+    });
     const alerteId = await f.t.run((ctx) => ctx.db.insert("planning_salaries_alertes", {
       saison: "2026-27", date: "2026-09-05", statut: "planifiee", echeanceAt: Date.parse("2026-08-31T07:00:00Z"),
       tentatives: 0, createdAt: 1, updatedAt: 1,
@@ -123,7 +130,7 @@ describe("planning des salariés du samedi", () => {
       expect(scheduled.map((s) => s.scheduledTime - Date.now())).toEqual([60_000, 120_000]);
       await f.t.action(internal.planningSalaries.alertes.envoyer, { alerteId: f.alerteId });
       expect(smtpSend).toHaveBeenCalledTimes(3);
-      expect(googleList).toHaveBeenCalledTimes(6);
+       expect(googleList).toHaveBeenCalledTimes(3);
     });
   });
 
@@ -165,7 +172,7 @@ describe("planning des salariés du samedi", () => {
     });
   });
 
-  test("les métadonnées ambiguës et une ressource sans flag bloquent SMTP", async () => {
+  test("les métadonnées incomplètes bloquent SMTP ; plusieurs participants suppriment l'alerte", async () => {
     await avecTransport(async () => {
       for (const metadata of [
         { status: "tentative", attendees: [{ email: PLACEHOLDER_RESOURCE }] },
@@ -179,8 +186,47 @@ describe("planning des salariés du samedi", () => {
           id: "event", start: { date: "2026-09-05" }, end: { date: "2026-09-06" }, ...metadata,
         }] : [] } }));
         await f.t.action(internal.planningSalaries.alertes.envoyer, { alerteId: f.alerteId });
-        expect(await f.t.run((ctx) => ctx.db.get(f.alerteId))).toMatchObject({ statut: metadata.attendees?.some((a) => "email" in a && a.email === "alice@resource.calendar.google.com") ? "obsolete" : "echec" });
+        expect(await f.t.run((ctx) => ctx.db.get(f.alerteId))).toMatchObject({ statut: metadata.status === "confirmed" ? "obsolete" : "echec" });
       }
+      expect(smtpSend).not.toHaveBeenCalled();
+    });
+  });
+
+  test("seul le placeholder exact unique déclenche SMTP, indépendamment des flags et réponses", async () => {
+    await avecTransport(async () => {
+      for (const responseStatus of [undefined, "accepted", "declined", "tentative", "needsAction"]) {
+        for (const email of [PLACEHOLDER_RESOURCE, "inconnue@resource.calendar.google.com", "salarie@example.test", PLACEHOLDER_RESOURCE.toUpperCase()]) {
+          const f = await alerteFixture();
+          smtpSend.mockClear();
+          googleList.mockResolvedValue({ data: { items: [{ id: "event", status: "confirmed",
+            start: { date: "2026-09-05" }, end: { date: "2026-09-06" }, attendees: [{ email, responseStatus }],
+          }] } });
+          await f.t.action(internal.planningSalaries.alertes.envoyer, { alerteId: f.alerteId });
+          expect(smtpSend).toHaveBeenCalledTimes(email === PLACEHOLDER_RESOURCE ? 1 : 0);
+        }
+      }
+      for (const attendees of [[], [{ email: PLACEHOLDER_RESOURCE }, { email: PLACEHOLDER_RESOURCE }]]) {
+        const f = await alerteFixture();
+        smtpSend.mockClear();
+        googleList.mockResolvedValue({ data: { items: [{ id: "event", status: "confirmed",
+          start: { date: "2026-09-05" }, end: { date: "2026-09-06" }, attendees,
+        }] } });
+        await f.t.action(internal.planningSalaries.alertes.envoyer, { alerteId: f.alerteId });
+        expect(smtpSend).not.toHaveBeenCalled();
+      }
+    });
+  });
+
+  test("résout la copie organisatrice par UID et occurrence sans examiner un autre cours", async () => {
+    await avecTransport(async () => {
+      const f = await alerteFixture();
+      await f.t.run((ctx) => ctx.db.patch(f.creneauId, { googleCalendarId: "organisateur@example.test", googleICalUid: "cours-uid" }));
+      googleList.mockResolvedValue({ data: { items: [
+        { id: "autre", iCalUID: "autre-uid", start: { date: "2026-09-05" } },
+        { id: "copie-organisatrice", iCalUID: "cours-uid", status: "confirmed", start: { date: "2026-09-05" }, end: { date: "2026-09-06" }, attendees: [{ email: "externe@example.test" }] },
+      ] } });
+      await f.t.action(internal.planningSalaries.alertes.envoyer, { alerteId: f.alerteId });
+      expect(googleList).toHaveBeenCalledWith(expect.objectContaining({ calendarId: "organisateur@example.test", iCalUID: "cours-uid" }), expect.any(Object));
       expect(smtpSend).not.toHaveBeenCalled();
     });
   });
@@ -205,16 +251,51 @@ describe("planning des salariés du samedi", () => {
     });
   });
 
-  test("le plafond global arrête la pagination à 60 requêtes", async () => {
+  test("une copie participante, une occurrence différente ou des participants tronqués bloquent SMTP", async () => {
+    await avecTransport(async () => {
+      for (const metadata of [
+        { organizer: { email: "autre-organisateur@example.test" } },
+        { start: { date: "2026-09-12" } },
+        { attendeesOmitted: true },
+      ]) {
+        const f = await alerteFixture();
+        googleList.mockResolvedValue({ data: { items: [{ id: "event", status: "confirmed",
+          start: { date: "2026-09-05" }, end: { date: "2026-09-06" },
+          attendees: [{ email: PLACEHOLDER_RESOURCE }], ...metadata,
+        }] } });
+        await f.t.action(internal.planningSalaries.alertes.envoyer, { alerteId: f.alerteId });
+        expect(await f.t.run((ctx) => ctx.db.get(f.alerteId))).toMatchObject({ statut: "echec", tentatives: 1 });
+      }
+      expect(smtpSend).not.toHaveBeenCalled();
+    });
+  });
+
+  test("une résolution UID tronquée, absente ou doublonnée échoue sans mail", async () => {
+    await avecTransport(async () => {
+      const event = { id: "organisateur", iCalUID: "cours-uid", status: "confirmed",
+        start: { date: "2026-09-05" }, end: { date: "2026-09-06" }, attendees: [{ email: PLACEHOLDER_RESOURCE }],
+      };
+      for (const data of [{ items: [event], nextPageToken: "suite" }, { items: [] }, { items: [event, event] }]) {
+        const f = await alerteFixture();
+        await f.t.run((ctx) => ctx.db.patch(f.creneauId, { googleICalUid: "cours-uid" }));
+        googleList.mockResolvedValue({ data });
+        await f.t.action(internal.planningSalaries.alertes.envoyer, { alerteId: f.alerteId });
+        expect(await f.t.run((ctx) => ctx.db.get(f.alerteId))).toMatchObject({ statut: "echec", tentatives: 1 });
+      }
+      expect(smtpSend).not.toHaveBeenCalled();
+    });
+  });
+
+  test("le plafond global arrête la vérification à 60 requêtes", async () => {
     await avecTransport(async () => {
       const f = await alerteFixture();
       await f.t.run(async (ctx) => {
-        for (let i = 0; i < 49; i += 1) await ctx.db.insert("planning_salaries_annuaire", {
-          prenom: "Extra", email: `extra${i}@example.test`, emailNormalise: `extra${i}@example.test`, resourceCalendarId: `extra${i}@resource.calendar.google.com`,
-          resourceCalendarIdNormalise: `extra${i}@resource.calendar.google.com`, actif: true, createdAt: 1, updatedAt: 1,
-        });
+        const c = await ctx.db.get(f.creneauId);
+        if (!c) throw new Error("Fixture absente");
+        const { _id, _creationTime, ...doc } = c;
+        void _id; void _creationTime;
+        for (let i = 0; i < 60; i += 1) await ctx.db.insert("planning_salaries_creneaux", doc);
       });
-      googleList.mockImplementation(async ({ pageToken }: { pageToken?: string }) => ({ data: { items: [], nextPageToken: pageToken ? undefined : "page-2" } }));
       await f.t.action(internal.planningSalaries.alertes.envoyer, { alerteId: f.alerteId });
       expect(googleList).toHaveBeenCalledTimes(60);
       expect(smtpSend).not.toHaveBeenCalled();
@@ -227,13 +308,13 @@ describe("planning des salariés du samedi", () => {
     vi.stubEnv("GOOGLE_CALENDAR_OAUTH_CLIENT_SECRET", "test");
     vi.stubEnv("GOOGLE_CALENDAR_OAUTH_REFRESH_TOKEN", "test");
     try {
-      const f = await fixture();
+      const f = await alerteFixture();
       const args = { saison: "2026-27", date: "2026-09-05" };
       googleList.mockImplementation(async ({ calendarId }: { calendarId: string }) => ({ data: { items: calendarId === PLACEHOLDER_RESOURCE ? [{
-        id: "event", status: "confirmed", attendees: [{ email: PLACEHOLDER_RESOURCE }], start: { dateTime: "2026-09-05T12:00:00+02:00" }, end: { dateTime: "2026-09-05T14:00:00+02:00" },
+        id: "event", status: "confirmed", attendees: [{ email: PLACEHOLDER_RESOURCE }], start: { date: "2026-09-05" }, end: { date: "2026-09-06" },
       }] : [] } }));
       expect(await f.t.action(internal.planningSalaries.google.verifierAbsenceSalarie, args)).toBe(true);
-      googleList.mockImplementation(async ({ calendarId }: { calendarId: string }) => ({ data: { items: [{ id: "event", status: "confirmed", attendees: [{ email: calendarId }], start: { date: args.date }, end: { date: "2026-09-06" } }] } }));
+      googleList.mockImplementation(async () => ({ data: { items: [{ id: "event", status: "confirmed", attendees: [{ email: "externe@example.test" }], start: { date: args.date }, end: { date: "2026-09-06" } }] } }));
       expect(await f.t.action(internal.planningSalaries.google.verifierAbsenceSalarie, args)).toBe(false);
       googleList.mockRejectedValue(new Error("panne Google"));
       await expect(f.t.action(internal.planningSalaries.google.verifierAbsenceSalarie, args)).rejects.toThrow("panne Google");

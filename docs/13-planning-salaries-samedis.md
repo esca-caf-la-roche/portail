@@ -187,12 +187,21 @@ retrait. Une modification faite directement dans Google doit donc être suivie
 d'une synchronisation du module pour mettre à jour les alertes. Avant chaque
 tentative d'envoi déjà planifiée, une lecture Google ponctuelle vérifie la date
 sous le même verrou serveur (sans renouveler la fraîcheur du snapshot saisonnier).
-Une ressource salariée, même partielle, supprime le rappel. Une panne, une lecture
+Les créneaux locaux du samedi sont lus par index (400 maximum), puis chaque
+occurrence est vérifiée sur son calendrier organisateur : UID iCalendar et
+début d'occurrence identifient la copie lorsque son ID diffère. Aucun balayage
+de l'annuaire ni des calendriers participants n'est nécessaire.
+Seul un participant unique dont l'email est exactement
+`c_1885o4bj2rlv4gijgd278pfg9rub0@resource.calendar.google.com` autorise le rappel.
+Tout autre email unique signifie salarié présent, indépendamment de l'annuaire,
+du flag `resource` et de `responseStatus`. Zéro ou plusieurs participants ne
+permettent pas de conclure à une absence : aucun mail. Tous les créneaux doivent
+confirmer le placeholder unique pour envoyer le rappel.
+Une panne, une lecture
 tronquée ou un verrou occupé bloque l'envoi et suit les trois tentatives puis
-la relance manuelle. Seuls les événements confirmés avec des participants et une
-ressource cohérents permettent de conclure ; une adresse de calendrier ressource
-est reconnue même sans le flag Google `resource`. La vérification est plafonnée
-à 60 requêtes au total, cinq pages par ressource et 90 secondes ; chaque requête
+la relance manuelle. Un événement non confirmé, une occurrence introuvable ou
+ambiguë et une liste de participants tronquée bloquent également l'envoi.
+La vérification est plafonnée à 60 requêtes au total et 90 secondes ; chaque requête
 a un timeout de dix secondes au plus, sans retry réseau automatique. Un
 dépassement bloque le mail, même si la lecture n'est pas terminée.
 Une dernière lecture locale juste avant SMTP bloque une
@@ -250,7 +259,7 @@ Côté Google :
 
 La lecture est faite par l'OAuth hors-ligne de la boîte du club, exclusivement
 dans les calendriers de ressources configurés dans l'annuaire et dans **À
-déterminer**. Pour modifier les participants, le module utilise la copie
+déterminer** pour la synchronisation. Pour vérifier l'alerte ou modifier les participants, le module utilise la copie
 organisatrice de l'événement avec cette même identité. Cette solution ne demande
 ni rôle super-administrateur ni délégation au niveau du domaine. Si
 l'autorisation est révoquée ou expire, il faut relancer le script de

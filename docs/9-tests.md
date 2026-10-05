@@ -431,7 +431,10 @@ des intentions locales face à un snapshot ancien, même après traitement Googl
 Les tests orchestrent également `alertes.envoyer` jusqu'au vrai transport du
 module (Google et SMTP simulés) : succès, trois échecs SMTP et délais de reprise,
 affectation concurrente, récupération après échec du contexte initial,
-métadonnées Google ambiguës, ressource sans flag et expiration du budget temps.
+métadonnées Google ambiguës, résolution UID/occurrence sur la copie organisatrice,
+placeholder exact unique, email ordinaire ou ressource inconnue sans flags,
+réponses accepted/declined/tentative/needsAction sans inférence d'absence,
+zéro ou plusieurs participants sans mail, et plafonds de requêtes et de temps.
 
 ### Priorité 3 : parcours navigateur
 
