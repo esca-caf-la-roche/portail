@@ -4,6 +4,7 @@ import { internalAction as action } from "./_generated/server";
 import { v } from "convex/values";
 import { SMTPClient } from "emailjs";
 import { canoniserEmailUnique } from "./emailValidation";
+import { internal } from "./_generated/api";
 
 export const AVERTISSEMENT_REPONSE_EMAIL_ABO =
   "Merci de ne pas répondre à cet e-mail : votre réponse ne sera pas prise en compte. " +
@@ -197,13 +198,14 @@ export const sendSamediEmail = action({
 // portail staff, comme la tuile Samedis, sans exposer d'endpoint arbitraire.
 export const sendPlanningSalariesEmail = action({
   args: {
+    alerteId: v.optional(v.id("planning_salaries_alertes")),
     to: v.string(),
     bcc: v.array(v.string()),
     subject: v.string(),
     text: v.string(),
   },
-  returns: v.null(),
-  handler: async (_ctx, args) => {
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
     const senderEmail = process.env.EMAIL_SENDER;
     const senderPassword = process.env.EMAIL_PASSWORD;
     if (!senderEmail || !senderPassword) {
@@ -214,6 +216,14 @@ export const sendPlanningSalariesEmail = action({
       .filter((email) => email !== destinataire);
     const client = creerTransporteur(senderEmail, senderPassword);
     try {
+      // Dernière lecture locale après préparation SMTP, avant l'effet externe.
+      // Sans alerteId, ce transport sert aussi aux codes OTP du module.
+      if (args.alerteId) {
+        const contexte = await ctx.runQuery(internal.planningSalaries.alertes.contexte, {
+          alerteId: args.alerteId, maintenant: Date.now(),
+        });
+        if (!contexte) return false;
+      }
       await client.sendAsync({
         from: `Escalade CAF La Roche-Bonneville <${senderEmail}>`,
         to: destinataire,
@@ -221,7 +231,7 @@ export const sendPlanningSalariesEmail = action({
         subject: args.subject,
         text: args.text,
       });
-      return null;
+      return true;
     } finally {
       client.smtp.close();
     }

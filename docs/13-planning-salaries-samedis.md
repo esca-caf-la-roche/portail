@@ -127,6 +127,9 @@ Un mélange de ressources sur une même date n'est jamais arbitré automatiqueme
 le samedi reste à déterminer jusqu'à ce qu'une personne le prenne, ce qui remet
 alors tous ses événements sur la même ressource. Une opération locale en cours
 reste prioritaire afin qu'une lecture Google ne l'écrase pas avant sa fin.
+Une intention locale modifiée après le début d'une lecture reste également
+prioritaire, même si son opération Google est déjà terminée ; cette protection
+couvre aussi la purge des occurrences absentes du snapshot ancien.
 
 ## Compteurs
 
@@ -181,7 +184,21 @@ et peut être relancé. Le même transport SMTP sert aux codes OTP du module.
 Il n'existe pas de balayage périodique : la planification des alertes est
 réconciliée après une synchronisation Google et après une affectation ou un
 retrait. Une modification faite directement dans Google doit donc être suivie
-d'une synchronisation du module pour mettre à jour les alertes.
+d'une synchronisation du module pour mettre à jour les alertes. Avant chaque
+tentative d'envoi déjà planifiée, une lecture Google ponctuelle vérifie la date
+sous le même verrou serveur (sans renouveler la fraîcheur du snapshot saisonnier).
+Une ressource salariée, même partielle, supprime le rappel. Une panne, une lecture
+tronquée ou un verrou occupé bloque l'envoi et suit les trois tentatives puis
+la relance manuelle. Seuls les événements confirmés avec des participants et une
+ressource cohérents permettent de conclure ; une adresse de calendrier ressource
+est reconnue même sans le flag Google `resource`. La vérification est plafonnée
+à 60 requêtes au total, cinq pages par ressource et 90 secondes ; chaque requête
+a un timeout de dix secondes au plus, sans retry réseau automatique. Un
+dépassement bloque le mail, même si la lecture n'est pas terminée.
+Une dernière lecture locale juste avant SMTP bloque une
+affectation survenue pendant la vérification. Les tâches et relances pour un
+samedi passé sont refusées. Il reste une fenêtre irréductible entre cette lecture
+et l'acceptation SMTP : Convex et Google/SMTP ne partagent pas de transaction.
 
 ## Configuration Convex et Google
 

@@ -133,21 +133,24 @@ export const reconcilierSaison = internalMutation({
 });
 
 export const contexte = internalQuery({
-  args: { alerteId: v.id("planning_salaries_alertes") },
-  returns: v.union(v.null(), v.object({ date: v.string(), groupes: v.array(v.string()), bcc: v.array(v.string()) })),
+  args: { alerteId: v.id("planning_salaries_alertes"), maintenant: v.number() },
+  returns: v.union(v.null(), v.object({ saison: v.string(), date: v.string(), groupes: v.array(v.string()), bcc: v.array(v.string()) })),
   handler: async (ctx, args) => {
     const alerte = await ctx.db.get(args.alerteId);
-    if (!alerte || alerte.statut === "envoyee" || alerte.statut === "annulee") return null;
+    if (!alerte || alerte.statut !== "en_cours") return null;
+    const finSamedi = parisWallToUtcMs(`${alerte.date}T23:59`);
+    if (finSamedi === null || args.maintenant > finSamedi) return null;
     const creneaux = await ctx.db.query("planning_salaries_creneaux")
       .withIndex("by_saison_and_date", (q) => q.eq("saison", alerte.saison).eq("date", alerte.date)).take(MAX_CRENEAUX_PAR_SAISON + 1);
     if (
-      creneaux.length === 0 ||
+      creneaux.length === 0 || creneaux.length > MAX_CRENEAUX_PAR_SAISON ||
       await aUneAffectation(ctx, alerte.saison, alerte.date, creneaux)
     ) return null;
     const groupes = creneaux.map((creneau) => creneau.groupe);
     const salaries = await ctx.db.query("planning_salaries_annuaire")
       .withIndex("by_actif", (q) => q.eq("actif", true)).take(MAX_SALARIES + 1);
-    return { date: alerte.date, groupes, bcc: salaries.map((s) => s.email) };
+    if (salaries.length > MAX_SALARIES) throw new ConvexError("Annuaire trop volumineux.");
+    return { saison: alerte.saison, date: alerte.date, groupes, bcc: salaries.map((s) => s.email) };
   },
 });
 
@@ -157,6 +160,7 @@ export const marquerResultat = internalMutation({
   handler: async (ctx, args) => {
     const alerte = await ctx.db.get(args.alerteId);
     if (!alerte || alerte.statut === "envoyee") return { retry: false, tentatives: alerte?.tentatives ?? 0 };
+    if (!args.succes && alerte.statut !== "en_cours") return { retry: false, tentatives: alerte.tentatives };
     const tentatives = alerte.tentatives + 1;
     await ctx.db.patch(alerte._id, args.succes
       ? { statut: "envoyee", tentatives, envoyeeAt: Date.now(), scheduledFunctionId: undefined, derniereErreur: undefined, updatedAt: Date.now() }
@@ -170,10 +174,15 @@ export const preparerEnvoi = internalMutation({
   returns: v.boolean(),
   handler: async (ctx, args) => {
     const alerte = await ctx.db.get(args.alerteId);
-    if (!alerte || (alerte.statut !== "planifiee" && alerte.statut !== "echec")) {
+    if (!alerte || alerte.tentatives >= 3 || (alerte.statut !== "planifiee" && alerte.statut !== "echec")) {
       return false;
     }
     const now = Date.now();
+    const finSamedi = parisWallToUtcMs(`${alerte.date}T23:59`);
+    if (finSamedi === null || now > finSamedi) {
+      await ctx.db.patch(alerte._id, { statut: "obsolete", scheduledFunctionId: undefined, updatedAt: now });
+      return false;
+    }
     const echeanceAt = echeanceAlerte(alerte.date);
     if (now < echeanceAt) {
       const scheduledFunctionId = await ctx.scheduler.runAt(
@@ -224,19 +233,32 @@ export const envoyer = internalAction({
       args,
     );
     if (!doitEnvoyer) return null;
-    const donnees: { date: string; groupes: string[]; bcc: string[] } | null =
-      await ctx.runQuery(internal.planningSalaries.alertes.contexte, args);
-    if (!donnees) {
-      await ctx.runMutation(internal.planningSalaries.alertes.marquerObsolete, args);
-      return null;
-    }
     try {
-      await ctx.runAction(internal.email.sendPlanningSalariesEmail, {
+      const donnees: { saison: string; date: string; groupes: string[]; bcc: string[] } | null =
+        await ctx.runQuery(internal.planningSalaries.alertes.contexte, { ...args, maintenant: Date.now() });
+      if (!donnees) {
+        await ctx.runMutation(internal.planningSalaries.alertes.marquerObsolete, args);
+        return null;
+      }
+      const absence = await ctx.runAction(internal.planningSalaries.google.verifierAbsenceSalarie, {
+        saison: donnees.saison, date: donnees.date,
+      });
+      const confirme = await ctx.runQuery(internal.planningSalaries.alertes.contexte, { ...args, maintenant: Date.now() });
+      if (!absence || !confirme) {
+        await ctx.runMutation(internal.planningSalaries.alertes.marquerObsolete, args);
+        return null;
+      }
+      const envoye = await ctx.runAction(internal.email.sendPlanningSalariesEmail, {
+        alerteId: args.alerteId,
         to: "escalade@caflarochebonneville.fr",
-        bcc: donnees.bcc,
+        bcc: confirme.bcc,
         subject: `URGENT — samedi ${donnees.date} sans moniteur`,
         text: `Le samedi ${donnees.date} approche et aucun salarié ne le prend encore en charge.\n\nGroupes concernés :\n${donnees.groupes.map((g) => `- ${g}`).join("\n")}\n\nMerci à un salarié de prendre en charge ce samedi.`,
       });
+      if (!envoye) {
+        await ctx.runMutation(internal.planningSalaries.alertes.marquerObsolete, args);
+        return null;
+      }
       await ctx.runMutation(internal.planningSalaries.alertes.marquerResultat, { ...args, succes: true });
     } catch (cause) {
       const resultat: { retry: boolean; tentatives: number } = await ctx.runMutation(internal.planningSalaries.alertes.marquerResultat, {

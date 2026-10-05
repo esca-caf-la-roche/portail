@@ -424,6 +424,15 @@ boîte du club et le refus d'accès au calendrier organisateur. Google Calendar 
 SMTP doivent être simulés ; un test réel doit rester limité à un événement non
 critique et vérifier l'absence de notification Google.
 
+`npm test -- convex/planningSalaries.test.ts` couvre aussi le dernier contrôle
+d'affectation locale, le refus d'une tâche passée, la vérification Google du
+samedi (absence, salarié externe, panne et verrou occupé), et la conservation
+des intentions locales face à un snapshot ancien, même après traitement Google.
+Les tests orchestrent également `alertes.envoyer` jusqu'au vrai transport du
+module (Google et SMTP simulés) : succès, trois échecs SMTP et délais de reprise,
+affectation concurrente, récupération après échec du contexte initial,
+métadonnées Google ambiguës, ressource sans flag et expiration du budget temps.
+
 ### Priorité 3 : parcours navigateur
 
 Ajouter ensuite quelques scénarios e2e ciblés :

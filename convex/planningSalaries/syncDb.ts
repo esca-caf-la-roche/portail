@@ -127,8 +127,13 @@ export const appliquerSync = internalMutation({
       throw erreur("PLANNING_VOLUME", "Trop d'opérations Google pour cette saison.");
     }
     const creneauxAvecSaga = new Set(
-      operationsLocales.filter((operation) => operation.statut !== "traitee").map((operation) => operation.creneauId),
+      operationsLocales.filter((operation) => operation.statut !== "traitee" || operation.updatedAt >= args.startedAt).map((operation) => operation.creneauId),
     );
+    const datesProtegees = new Set([
+      ...affectationsExistantes.filter((a) => a.updatedAt >= args.startedAt).map((a) => a.date),
+      ...operationsLocales.filter((o) => o.statut !== "traitee" || o.updatedAt >= args.startedAt)
+        .map((o) => o.date ?? creneauxExistants.find((c) => c._id === o.creneauId)?.date),
+    ]);
     const affectationParDate = new Map(
       affectationsExistantes
         .filter((affectation) => affectation.date !== undefined)
@@ -160,7 +165,7 @@ export const appliquerSync = internalMutation({
           .unique();
       const doc = { ...event, saison, syncedAt: args.startedAt, updatedAt: args.startedAt };
       const creneauId = existant?._id ?? await ctx.db.insert("planning_salaries_creneaux", doc);
-      if (existant && champsModifies(existant, doc, ["syncedAt", "updatedAt"])) {
+      if (existant && !datesProtegees.has(existant.date) && champsModifies(existant, doc, ["syncedAt", "updatedAt"])) {
         await ctx.db.patch(existant._id, doc);
         modifications += 1;
       } else if (!existant) modifications += 1;
@@ -175,6 +180,7 @@ export const appliquerSync = internalMutation({
     // ressource. Un mélange reste « À déterminer » et pourra être réparé en un
     // clic, qui créera une opération pour chaque événement.
     for (const [date, evenements] of evenementsParDate) {
+      if (datesProtegees.has(date)) continue;
       const ids = creneauxParDate.get(date) ??
         new Set<Id<"planning_salaries_creneaux">>();
       if ([...ids].some((id) => creneauxAvecSaga.has(id))) continue;
@@ -222,7 +228,7 @@ export const appliquerSync = internalMutation({
     // date entière ne contient plus aucun événement.
     for (const creneau of creneauxExistants) {
       const cle = `${creneau.googleICalUid ?? creneau.googleEventId}\u0000${creneau.googleOccurrenceStart}`;
-      if (clesVues.has(cle)) continue;
+      if (clesVues.has(cle) || datesProtegees.has(creneau.date)) continue;
       for (const operation of operationsLocales) {
         if (operation.creneauId === creneau._id) {
           await ctx.db.delete(operation._id);
@@ -232,7 +238,7 @@ export const appliquerSync = internalMutation({
       modifications += 1;
     }
     for (const affectation of affectationsExistantes) {
-      if (affectation.date && !evenementsParDate.has(affectation.date)) {
+      if (affectation.date && !datesProtegees.has(affectation.date) && !evenementsParDate.has(affectation.date)) {
         await ctx.db.delete(affectation._id);
       }
     }
@@ -244,6 +250,20 @@ export const appliquerSync = internalMutation({
       updatedAt: Date.now(),
     });
     return modifications;
+  },
+});
+
+// La vérification d'alerte ne renouvelle pas la fraîcheur du snapshot saisonnier.
+export const libererVerification = internalMutation({
+  args: { saison: v.string(), startedAt: v.number() },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const sync = await ctx.db.query("planning_salaries_sync")
+      .withIndex("by_saison_and_cle", (q) => q.eq("saison", args.saison).eq("cle", "google_calendar")).unique();
+    if (!sync || sync.statut !== "en_cours" || sync.updatedAt !== args.startedAt ||
+      !sync.verrouJusqua || sync.verrouJusqua <= Date.now()) return false;
+    await ctx.db.patch(sync._id, { statut: "ok", verrouJusqua: undefined, updatedAt: Date.now() });
+    return true;
   },
 });
 

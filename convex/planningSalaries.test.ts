@@ -7,6 +7,16 @@ import { migrerAffectationPlanningVersSamedi } from "./migrations";
 import { bornesSaison, PLACEHOLDER_RESOURCE } from "./planningSalaries/lib";
 
 const modules = import.meta.glob("./**/*.ts");
+const googleList = vi.hoisted(() => vi.fn());
+const smtpSend = vi.hoisted(() => vi.fn());
+vi.mock("emailjs", () => ({ SMTPClient: class {
+  smtp = { close: vi.fn() };
+  sendAsync = smtpSend;
+} }));
+vi.mock("googleapis", () => ({ google: {
+  auth: { OAuth2: class { setCredentials() {} } },
+  calendar: () => ({ events: { list: googleList } }),
+} }));
 
 async function fixture() {
   const t = convexTest(schema, modules);
@@ -63,6 +73,217 @@ async function fixture() {
 }
 
 describe("planning des salariés du samedi", () => {
+  async function alerteFixture() {
+    const f = await fixture();
+    const alerteId = await f.t.run((ctx) => ctx.db.insert("planning_salaries_alertes", {
+      saison: "2026-27", date: "2026-09-05", statut: "planifiee", echeanceAt: Date.parse("2026-08-31T07:00:00Z"),
+      tentatives: 0, createdAt: 1, updatedAt: 1,
+    }));
+    return { ...f, alerteId };
+  }
+
+  function mockAbsenceGoogle() {
+    googleList.mockReset().mockImplementation(async ({ calendarId }: { calendarId: string }) => ({ data: { items:
+      calendarId === PLACEHOLDER_RESOURCE ? [{ id: "event", status: "confirmed", attendees: [{ email: PLACEHOLDER_RESOURCE }],
+        start: { date: "2026-09-05" }, end: { date: "2026-09-06" } }] : [],
+    } }));
+  }
+
+  async function avecTransport(testCase: () => Promise<void>) {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-31T07:00:00Z"));
+    for (const name of ["GOOGLE_CALENDAR_OAUTH_CLIENT_ID", "GOOGLE_CALENDAR_OAUTH_CLIENT_SECRET", "GOOGLE_CALENDAR_OAUTH_REFRESH_TOKEN", "EMAIL_SENDER", "EMAIL_PASSWORD"]) vi.stubEnv(name, "test@example.test");
+    smtpSend.mockReset().mockResolvedValue({});
+    mockAbsenceGoogle();
+    try { await testCase(); } finally { vi.useRealTimers(); vi.unstubAllEnvs(); }
+  }
+
+  test("orchestre Google puis SMTP et marque le succès sans double envoi", async () => {
+    await avecTransport(async () => {
+      const f = await alerteFixture();
+      await f.t.action(internal.planningSalaries.alertes.envoyer, { alerteId: f.alerteId });
+      expect(smtpSend).toHaveBeenCalledTimes(1);
+      expect(googleList.mock.invocationCallOrder[0]).toBeLessThan(smtpSend.mock.invocationCallOrder[0]!);
+      expect(await f.t.run((ctx) => ctx.db.get(f.alerteId))).toMatchObject({ statut: "envoyee", tentatives: 1, envoyeeAt: Date.now() });
+      await f.t.action(internal.planningSalaries.alertes.envoyer, { alerteId: f.alerteId });
+      expect(smtpSend).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  test("trois échecs SMTP recontrôlent Google et plafonnent les reprises", async () => {
+    await avecTransport(async () => {
+      const f = await alerteFixture();
+      smtpSend.mockRejectedValue(new Error("SMTP indisponible"));
+      for (let tentative = 1; tentative <= 3; tentative += 1) {
+        await f.t.action(internal.planningSalaries.alertes.envoyer, { alerteId: f.alerteId });
+        expect(await f.t.run((ctx) => ctx.db.get(f.alerteId))).toMatchObject({ statut: "echec", tentatives: tentative, derniereErreur: "SMTP indisponible" });
+      }
+      const scheduled = await f.t.run((ctx) => ctx.db.system.query("_scheduled_functions").collect());
+      expect(scheduled).toHaveLength(2);
+      expect(scheduled.map((s) => s.scheduledTime - Date.now())).toEqual([60_000, 120_000]);
+      await f.t.action(internal.planningSalaries.alertes.envoyer, { alerteId: f.alerteId });
+      expect(smtpSend).toHaveBeenCalledTimes(3);
+      expect(googleList).toHaveBeenCalledTimes(6);
+    });
+  });
+
+  test("une affectation concurrente pendant Google supprime le passage SMTP", async () => {
+    await avecTransport(async () => {
+      const f = await alerteFixture();
+      const original = googleList.getMockImplementation()!;
+      googleList.mockImplementationOnce(async (...args) => {
+        await f.t.run((ctx) => ctx.db.insert("planning_salaries_affectations", {
+          saison: "2026-27", date: "2026-09-05", salarieId: f.aliceId, resourceCalendarIdSnapshot: "alice@resource.calendar.google.com",
+          createdBy: f.managerId, updatedBy: f.managerId, createdAt: Date.now(), updatedAt: Date.now(),
+        }));
+        return original(...args);
+      });
+      await f.t.action(internal.planningSalaries.alertes.envoyer, { alerteId: f.alerteId });
+      expect(smtpSend).not.toHaveBeenCalled();
+      expect(await f.t.run((ctx) => ctx.db.get(f.alerteId))).toMatchObject({ statut: "obsolete", tentatives: 0 });
+    });
+  });
+
+  test("un échec du contexte initial quitte en_cours et peut récupérer", async () => {
+    await avecTransport(async () => {
+      const f = await alerteFixture();
+      const surplus = await f.t.run(async (ctx) => {
+        const ids = [];
+        for (let i = 0; i < 50; i += 1) ids.push(await ctx.db.insert("planning_salaries_annuaire", {
+          prenom: "Extra", email: `extra${i}@example.test`, emailNormalise: `extra${i}@example.test`, resourceCalendarId: `extra${i}@resource.calendar.google.com`,
+          resourceCalendarIdNormalise: `extra${i}@resource.calendar.google.com`, actif: true, createdAt: 1, updatedAt: 1,
+        }));
+        return ids;
+      });
+      await f.t.action(internal.planningSalaries.alertes.envoyer, { alerteId: f.alerteId });
+      expect(await f.t.run((ctx) => ctx.db.get(f.alerteId))).toMatchObject({ statut: "echec", tentatives: 1 });
+      expect(smtpSend).not.toHaveBeenCalled();
+      await f.t.run(async (ctx) => { for (const id of surplus) await ctx.db.delete(id); });
+      await f.t.action(internal.planningSalaries.alertes.envoyer, { alerteId: f.alerteId });
+      expect(smtpSend).toHaveBeenCalledTimes(1);
+      expect(await f.t.run((ctx) => ctx.db.get(f.alerteId))).toMatchObject({ statut: "envoyee", tentatives: 2 });
+    });
+  });
+
+  test("les métadonnées ambiguës et une ressource sans flag bloquent SMTP", async () => {
+    await avecTransport(async () => {
+      for (const metadata of [
+        { status: "tentative", attendees: [{ email: PLACEHOLDER_RESOURCE }] },
+        { status: undefined, attendees: [{ email: PLACEHOLDER_RESOURCE }] },
+        { status: "confirmed", attendees: undefined },
+        { status: "confirmed", attendees: [{ resource: true }] },
+        { status: "confirmed", attendees: [{ email: PLACEHOLDER_RESOURCE }, { email: "alice@resource.calendar.google.com" }] },
+      ]) {
+        const f = await alerteFixture();
+        googleList.mockImplementation(async ({ calendarId }: { calendarId: string }) => ({ data: { items: calendarId === PLACEHOLDER_RESOURCE ? [{
+          id: "event", start: { date: "2026-09-05" }, end: { date: "2026-09-06" }, ...metadata,
+        }] : [] } }));
+        await f.t.action(internal.planningSalaries.alertes.envoyer, { alerteId: f.alerteId });
+        expect(await f.t.run((ctx) => ctx.db.get(f.alerteId))).toMatchObject({ statut: metadata.attendees?.some((a) => "email" in a && a.email === "alice@resource.calendar.google.com") ? "obsolete" : "echec" });
+      }
+      expect(smtpSend).not.toHaveBeenCalled();
+    });
+  });
+
+  test("le deadline et le timeout réseau bloquent le mail", async () => {
+    await avecTransport(async () => {
+      const f = await alerteFixture();
+      googleList.mockImplementationOnce(async (_args, options) => {
+        expect(options).toMatchObject({ timeout: 10_000, retry: false });
+        expect(options.signal).toBeDefined();
+        vi.setSystemTime(Date.now() + 90_001);
+        return { data: { items: [] } };
+      });
+      await f.t.action(internal.planningSalaries.alertes.envoyer, { alerteId: f.alerteId });
+      expect(await f.t.run((ctx) => ctx.db.get(f.alerteId))).toMatchObject({ statut: "echec", tentatives: 1 });
+      expect(googleList).toHaveBeenCalledTimes(1);
+      expect(smtpSend).not.toHaveBeenCalled();
+      googleList.mockRejectedValueOnce(new Error("timeout réseau"));
+      await f.t.action(internal.planningSalaries.alertes.envoyer, { alerteId: f.alerteId });
+      expect(await f.t.run((ctx) => ctx.db.get(f.alerteId))).toMatchObject({ statut: "echec", tentatives: 2, derniereErreur: "timeout réseau" });
+      expect(smtpSend).not.toHaveBeenCalled();
+    });
+  });
+
+  test("le plafond global arrête la pagination à 60 requêtes", async () => {
+    await avecTransport(async () => {
+      const f = await alerteFixture();
+      await f.t.run(async (ctx) => {
+        for (let i = 0; i < 49; i += 1) await ctx.db.insert("planning_salaries_annuaire", {
+          prenom: "Extra", email: `extra${i}@example.test`, emailNormalise: `extra${i}@example.test`, resourceCalendarId: `extra${i}@resource.calendar.google.com`,
+          resourceCalendarIdNormalise: `extra${i}@resource.calendar.google.com`, actif: true, createdAt: 1, updatedAt: 1,
+        });
+      });
+      googleList.mockImplementation(async ({ pageToken }: { pageToken?: string }) => ({ data: { items: [], nextPageToken: pageToken ? undefined : "page-2" } }));
+      await f.t.action(internal.planningSalaries.alertes.envoyer, { alerteId: f.alerteId });
+      expect(googleList).toHaveBeenCalledTimes(60);
+      expect(smtpSend).not.toHaveBeenCalled();
+      expect(await f.t.run((ctx) => ctx.db.get(f.alerteId))).toMatchObject({ statut: "echec", tentatives: 1, derniereErreur: "Budget de vérification Google dépassé." });
+    });
+  });
+
+  test("vérifie Google et bloque un salarié externe, une panne et un verrou occupé", async () => {
+    vi.stubEnv("GOOGLE_CALENDAR_OAUTH_CLIENT_ID", "test");
+    vi.stubEnv("GOOGLE_CALENDAR_OAUTH_CLIENT_SECRET", "test");
+    vi.stubEnv("GOOGLE_CALENDAR_OAUTH_REFRESH_TOKEN", "test");
+    try {
+      const f = await fixture();
+      const args = { saison: "2026-27", date: "2026-09-05" };
+      googleList.mockImplementation(async ({ calendarId }: { calendarId: string }) => ({ data: { items: calendarId === PLACEHOLDER_RESOURCE ? [{
+        id: "event", status: "confirmed", attendees: [{ email: PLACEHOLDER_RESOURCE }], start: { dateTime: "2026-09-05T12:00:00+02:00" }, end: { dateTime: "2026-09-05T14:00:00+02:00" },
+      }] : [] } }));
+      expect(await f.t.action(internal.planningSalaries.google.verifierAbsenceSalarie, args)).toBe(true);
+      googleList.mockImplementation(async ({ calendarId }: { calendarId: string }) => ({ data: { items: [{ id: "event", status: "confirmed", attendees: [{ email: calendarId }], start: { date: args.date }, end: { date: "2026-09-06" } }] } }));
+      expect(await f.t.action(internal.planningSalaries.google.verifierAbsenceSalarie, args)).toBe(false);
+      googleList.mockRejectedValue(new Error("panne Google"));
+      await expect(f.t.action(internal.planningSalaries.google.verifierAbsenceSalarie, args)).rejects.toThrow("panne Google");
+      await f.t.mutation(internal.planningSalaries.syncDb.reserverSync, { saison: args.saison, maintenant: Date.now(), forcer: true });
+      googleList.mockClear();
+      await expect(f.t.action(internal.planningSalaries.google.verifierAbsenceSalarie, args)).rejects.toThrow("synchronisation en cours");
+      expect(googleList).not.toHaveBeenCalled();
+    } finally { vi.unstubAllEnvs(); }
+  });
+
+  test("bloque une affectation locale lors du dernier contrôle et un envoi passé", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-08-31T07:00:00Z"));
+      const f = await fixture();
+      const alerteId = await f.t.run((ctx) => ctx.db.insert("planning_salaries_alertes", {
+        saison: "2026-27", date: "2026-09-05", statut: "planifiee", echeanceAt: Date.now(), tentatives: 0, createdAt: 1, updatedAt: 1,
+      }));
+      expect(await f.t.mutation(internal.planningSalaries.alertes.preparerEnvoi, { alerteId })).toBe(true);
+      expect(await f.t.query(internal.planningSalaries.alertes.contexte, { alerteId, maintenant: Date.now() })).not.toBeNull();
+      await f.t.run((ctx) => ctx.db.insert("planning_salaries_affectations", {
+        saison: "2026-27", date: "2026-09-05", salarieId: f.aliceId, resourceCalendarIdSnapshot: "alice@resource.calendar.google.com",
+        createdBy: f.managerId, updatedBy: f.managerId, createdAt: Date.now(), updatedAt: Date.now(),
+      }));
+      expect(await f.t.query(internal.planningSalaries.alertes.contexte, { alerteId, maintenant: Date.now() })).toBeNull();
+      await f.t.run((ctx) => ctx.db.patch(alerteId, { statut: "echec" }));
+      vi.setSystemTime(new Date("2026-09-06T00:00:00Z"));
+      expect(await f.t.mutation(internal.planningSalaries.alertes.preparerEnvoi, { alerteId })).toBe(false);
+      expect(await f.t.run((ctx) => ctx.db.get(alerteId))).toMatchObject({ statut: "obsolete" });
+    } finally { vi.useRealTimers(); }
+  });
+
+  test("un snapshot ancien ne purge pas une intention locale même déjà traitée", async () => {
+    const f = await fixture();
+    await f.t.run(async (ctx) => {
+      await ctx.db.insert("planning_salaries_sync", { saison: "2026-27", cle: "google_calendar", statut: "en_cours", verrouJusqua: 1000, updatedAt: 100 });
+      await ctx.db.insert("planning_salaries_google_operations", {
+        saison: "2026-27", date: "2026-09-05", creneauId: f.creneauId, type: "remplacer_ressource", idempotencyKey: "recent",
+        sourceResourceCalendarId: PLACEHOLDER_RESOURCE, targetResourceCalendarId: "alice@resource.calendar.google.com", statut: "traitee", tentatives: 1, createdAt: 101, updatedAt: 102,
+      });
+      await ctx.db.insert("planning_salaries_affectations", {
+        saison: "2026-27", date: "2026-09-05", salarieId: f.aliceId, resourceCalendarIdSnapshot: "alice@resource.calendar.google.com",
+        createdBy: f.managerId, updatedBy: f.managerId, createdAt: 101, updatedAt: 101,
+      });
+    });
+    await f.t.mutation(internal.planningSalaries.syncDb.appliquerSync, { saison: "2026-27", startedAt: 100, acteurUserId: f.managerId, evenements: [] });
+    expect(await f.t.run((ctx) => ctx.db.query("planning_salaries_affectations").collect())).toHaveLength(1);
+    expect(await f.t.run((ctx) => ctx.db.query("planning_salaries_creneaux").collect())).toHaveLength(2);
+  });
+
   test("dérive les bornes septembre-août", () => {
     expect(bornesSaison("2026-27")).toMatchObject({
       dateDebut: "2026-09-01",
