@@ -3,14 +3,50 @@ import { useConvex, useMutation, useQuery } from "convex/react";
 import type { Infer } from "convex/values";
 import { api } from "../../convex/_generated/api";
 import type { Doc } from "../../convex/_generated/dataModel";
-import { normaliserTexte, planValidator, type AmbassadeurFields } from "../../convex/competitionModel";
+import {
+  CATEGORIES,
+  CIVILITES,
+  GROUPES,
+  normaliserTexte,
+  planValidator,
+  type AmbassadeurFields,
+} from "../../convex/competitionModel";
 import { useSeason } from "../contexts/SeasonContext";
 import { chargerExportSaison, erreurCompetition, exporterCompetition, lireFichierCompetition } from "../utils/competitionExcel";
 import "./Competition.css";
 
-const EMPTY: AmbassadeurFields = { nom: "", prenom: "", dateNaissance: "", civilite: "", categories: "", colonne1: "", groupe: "", email: "" };
-const LABELS: Record<keyof AmbassadeurFields, string> = { nom: "Nom", prenom: "Prénom", dateNaissance: "Date de naissance", civilite: "Civilité", categories: "Catégories", colonne1: "Colonne 1", groupe: "Quels groupe", email: "Email" };
+const EMPTY: AmbassadeurFields = { nom: "", prenom: "", dateNaissance: "", civilite: "", categories: "", groupe: "", email: "" };
+
+// Source unique de vérité du tableau et du formulaire : chaque champ du modèle
+// est décrit une fois, typé par `keyof AmbassadeurFields`. Aucune colonne
+// surnuméraire ou désynchronisée ne peut apparaître (Colonne 1 a été retirée).
+type Champ = {
+  cle: keyof AmbassadeurFields;
+  label: string;
+  type: "text" | "date" | "email" | "select";
+  options?: readonly string[];
+  required?: boolean;
+  maxLength?: number;
+};
+const CHAMPS: Champ[] = [
+  { cle: "nom", label: "Nom", type: "text", required: true },
+  { cle: "prenom", label: "Prénom", type: "text", required: true },
+  { cle: "dateNaissance", label: "Date de naissance", type: "date", required: true },
+  { cle: "civilite", label: "Civilité", type: "select", options: CIVILITES },
+  { cle: "categories", label: "Catégorie", type: "select", options: CATEGORIES },
+  { cle: "groupe", label: "Quel groupe", type: "select", options: GROUPES },
+  { cle: "email", label: "Email", type: "email", maxLength: 254 },
+];
+
 type Plan = Infer<typeof planValidator>;
+
+function formatDate(iso: string): string {
+  return iso ? iso.split("-").reverse().join("/") : "—";
+}
+
+function StatutSignature({ signe }: { signe: boolean }) {
+  return <span className={`competition-badge competition-badge--${signe ? "signe" : "attente"}`}>{signe ? "Signé" : "Non signé"}</span>;
+}
 
 export default function Competition() {
   const { season } = useSeason();
@@ -28,6 +64,7 @@ function CompetitionSeason({ saison }: { saison: string }) {
   const [pageNumber, setPageNumber] = useState(1);
   const page = useQuery(api.competition.list, saison ? { saison, paginationOpts: { cursor, numItems: 50, maximumRowsRead: 100 } } : "skip");
   const [search, setSearch] = useState("");
+  const [category, setCategory] = useState("");
   const [group, setGroup] = useState("");
   const [signed, setSigned] = useState("");
   const [editing, setEditing] = useState<Doc<"competition_ambassadeurs"> | "new" | null>(null);
@@ -42,16 +79,17 @@ function CompetitionSeason({ saison }: { saison: string }) {
   const [exportBatches, setExportBatches] = useState<Doc<"competition_ambassadeurs">[][] | null>(null);
   const formRef = useRef<HTMLHeadingElement>(null);
   const rows = page?.page ?? [];
-  const groups = [...new Set(rows.map((r) => r.groupe))].sort();
   const needle = normaliserTexte(search);
-  const visible = rows.filter((r) => (!group || r.groupe === group) && (!signed || r.partenariatSigne === (signed === "oui")) && normaliserTexte(`${r.nom} ${r.prenom} ${r.email} ${r.categories}`).includes(needle));
+  const visible = rows.filter((r) => (!category || r.categories === category) && (!group || r.groupe === group) && (!signed || r.partenariatSigne === (signed === "oui")) && normaliserTexte(`${r.nom} ${r.prenom} ${r.email} ${r.categories}`).includes(needle));
+  const signes = visible.filter((r) => r.partenariatSigne).length;
+  const filtresActifs = Boolean(search || category || group || signed);
 
   function openForm(doc: Doc<"competition_ambassadeurs"> | "new") {
     setEditing(doc);
     setDeleting(null);
     setPlans(null);
     setError("");
-    setFields(doc === "new" ? EMPTY : { nom: doc.nom, prenom: doc.prenom, dateNaissance: doc.dateNaissance, civilite: doc.civilite, categories: doc.categories, colonne1: doc.colonne1, groupe: doc.groupe, email: doc.email });
+    setFields(doc === "new" ? EMPTY : { nom: doc.nom, prenom: doc.prenom, dateNaissance: doc.dateNaissance, civilite: doc.civilite, categories: doc.categories, groupe: doc.groupe, email: doc.email });
     setSignature(doc === "new" ? false : doc.partenariatSigne);
     requestAnimationFrame(() => formRef.current?.focus());
   }
@@ -72,14 +110,29 @@ function CompetitionSeason({ saison }: { saison: string }) {
     });
   }
 
+  function resetFiltres() {
+    setSearch(""); setCategory(""); setGroup(""); setSigned("");
+  }
+
   return <div className="competition-page">
-    <header className="page-header"><h1>Compétition · Arkose</h1><p className="subtitle">Saison : {saison} · Ambassadeurs et partenariats</p></header>
-    <p>La case « Partenariat signé » est un suivi manuel, sans envoi ni signature électronique.</p>
-    {error && <p className="competition-notice" role="alert">{error}</p>}
-    {message && <p className="competition-notice" role="status">{message}</p>}
-    <div className="competition-toolbar">
+    <header className="competition-header">
+      <div>
+        <h1>Compétition · Arkose</h1>
+        <p className="subtitle">Saison : {saison} · Ambassadeurs et partenariats</p>
+      </div>
+      <div className="competition-stats" aria-label="Résumé">
+        <span className="competition-stat"><strong>{visible.length}</strong> fiche(s)</span>
+        <span className="competition-stat competition-stat--signe"><strong>{signes}</strong> signé(s)</span>
+        <span className="competition-stat competition-stat--attente"><strong>{visible.length - signes}</strong> non signé(s)</span>
+      </div>
+    </header>
+    <p className="competition-hint">La case « Partenariat signé » est un suivi manuel, sans envoi ni signature électronique. Civilité, catégorie et groupe sont des valeurs choisies dans des listes.</p>
+    {error && <p className="competition-notice competition-notice--error" role="alert">{error}</p>}
+    {message && <p className="competition-notice competition-notice--info" role="status">{message}</p>}
+
+    <div className="competition-toolbar competition-toolbar--principal">
       <button type="button" className="btn-primary" disabled={busy} onClick={() => openForm("new")}>Ajouter un ambassadeur</button>
-      <label className="competition-file">Importer XLSX (200 lignes, 2 Mo)
+      <label className="competition-file competition-file--button">Importer XLSX <span>(200 lignes, 2 Mo)</span>
         <input type="file" accept=".xlsx" disabled={busy} onChange={(event) => {
           const file = event.target.files?.[0]; event.target.value = "";
           if (!file) return;
@@ -96,9 +149,11 @@ function CompetitionSeason({ saison }: { saison: string }) {
         const batches = await chargerExportSaison((cursor) => convex.query(api.competition.list, { saison, paginationOpts: { cursor, numItems: 50, maximumRowsRead: 100 } }));
         setExportBatches(batches);
         setMessage(`${batches.reduce((n, b) => n + b.length, 0)} fiche(s) préparée(s), saison entière ${saison}.`);
-      })}>Préparer l’export de toute la saison (maximum 2000)</button>
+      })}>Préparer l’export de la saison (max. 2000)</button>
     </div>
+
     {exportBatches && <section className="competition-panel" aria-label="Export complet de la saison">
+      <h2>Export de la saison {saison}</h2>
       <p>Export de toute la saison, sans les filtres de la liste. Téléchargez chaque lot (200 fiches maximum) pour conserver l’ensemble. Évitez les modifications pendant la préparation paginée ; les révisions protègent la réimportation si les données changent ensuite.</p>
       <div className="competition-toolbar">{exportBatches.map((batch, i) => <button key={i} className="btn-secondary" disabled={busy} onClick={() => void operation(async () => {
         await exporterCompetition(batch, saison, `-lot-${i + 1}-sur-${exportBatches.length}`);
@@ -110,8 +165,19 @@ function CompetitionSeason({ saison }: { saison: string }) {
       <form onSubmit={save}>
         <fieldset disabled={busy} className="competition-fields">
           <legend>Identité et coordonnées</legend>
-          {(Object.keys(LABELS) as (keyof AmbassadeurFields)[]).map((key) => <label key={key}>{LABELS[key]}{["nom", "prenom", "dateNaissance"].includes(key) ? " *" : ""}
-            <input type={key === "dateNaissance" ? "date" : key === "email" ? "email" : "text"} required={["nom", "prenom", "dateNaissance"].includes(key)} maxLength={key === "email" ? 254 : 200} min={key === "dateNaissance" ? "1900-01-01" : undefined} max={key === "dateNaissance" ? "2100-12-31" : undefined} value={fields[key]} onChange={(e) => setFields({ ...fields, [key]: e.target.value })} />
+          {CHAMPS.map((champ) => <label key={champ.cle}>{champ.label}{champ.required ? " *" : ""}
+            {champ.type === "select" ? <select value={fields[champ.cle]} onChange={(e) => setFields({ ...fields, [champ.cle]: e.target.value })}>
+              <option value="">—</option>
+              {champ.options?.map((option) => <option key={option} value={option}>{option}</option>)}
+            </select> : <input
+              type={champ.type}
+              required={champ.required}
+              maxLength={champ.maxLength ?? (champ.cle === "dateNaissance" ? 10 : 200)}
+              min={champ.type === "date" ? "1900-01-01" : undefined}
+              max={champ.type === "date" ? "2100-12-31" : undefined}
+              value={fields[champ.cle]}
+              onChange={(e) => setFields({ ...fields, [champ.cle]: e.target.value })}
+            />}
           </label>)}
           <label className="competition-check"><input type="checkbox" checked={signature} onChange={(e) => setSignature(e.target.checked)} /> Partenariat signé (confirmation manuelle)</label>
         </fieldset>
@@ -122,10 +188,10 @@ function CompetitionSeason({ saison }: { saison: string }) {
     {plans && <section className="competition-panel" aria-labelledby="competition-import-title">
       <h2 id="competition-import-title">Prévisualisation · saison {saison}</h2>
       <p>{plans.filter((p) => p.action === "creation").length} création(s), {plans.filter((p) => p.action === "modification").length} modification(s), {plans.filter((p) => p.action === "identique").length} inchangée(s). Aucune suppression.</p>
-      <p>Sans colonne « Partenariat signé », les signatures existantes sont conservées. Si elle est présente, ses valeurs Oui/Non les remplacent.</p>
-      <div className="competition-scroll"><table><caption>Fiches à importer · différences avant → après</caption><thead><tr>{Object.values(LABELS).map((label) => <th key={label}>{label}</th>)}<th>Partenariat signé</th><th>Action</th></tr></thead><tbody>{plans.map((p, i) => <tr key={i}>
-        {(Object.keys(LABELS) as (keyof AmbassadeurFields)[]).map((key) => <td key={key}>{p.before && p.before[key] !== p.row[key] ? <><span>Avant : {p.before[key] || "(vide)"}</span><br /><strong>Après : {p.row[key] || "(vide)"}</strong></> : p.row[key] || "(vide)"}</td>)}
-        <td>{p.before && p.row.partenariatSigne !== undefined && p.before.partenariatSigne !== p.row.partenariatSigne ? `Avant : ${p.before.partenariatSigne ? "Oui" : "Non"} → Après : ${p.row.partenariatSigne ? "Oui" : "Non"}` : (p.row.partenariatSigne ?? p.before?.partenariatSigne ?? false) ? "Oui" : "Non"}</td><td>{p.action}</td>
+      <p>Sans colonne « Partenariat signé », les signatures existantes sont conservées. Si elle est présente, ses valeurs Oui/Non les remplacent. L’ancienne colonne « Colonne 1 », si elle est présente dans un ancien fichier, est ignorée.</p>
+      <div className="competition-scroll"><table><caption>Fiches à importer · différences avant → après</caption><thead><tr>{CHAMPS.map((champ) => <th key={champ.cle}>{champ.label}</th>)}<th>Partenariat signé</th><th>Action</th></tr></thead><tbody>{plans.map((p, i) => <tr key={i}>
+        {CHAMPS.map((champ) => <td key={champ.cle}>{p.before && p.before[champ.cle] !== p.row[champ.cle] ? <span className="competition-diff"><span>Avant : {p.before[champ.cle] || "(vide)"}</span><strong>Après : {p.row[champ.cle] || "(vide)"}</strong></span> : p.row[champ.cle] || "(vide)"}</td>)}
+        <td>{p.before && p.row.partenariatSigne !== undefined && p.before.partenariatSigne !== p.row.partenariatSigne ? `Avant : ${p.before.partenariatSigne ? "Oui" : "Non"} → Après : ${p.row.partenariatSigne ? "Oui" : "Non"}` : <StatutSignature signe={(p.row.partenariatSigne ?? p.before?.partenariatSigne ?? false)} />}</td><td><span className={`competition-action competition-action--${p.action}`}>{p.action}</span></td>
       </tr>)}</tbody></table></div>
       <label className="competition-check"><input type="checkbox" disabled={busy} checked={confirmation} onChange={(e) => setConfirmation(e.target.checked)} /> Je confirme la saison {saison} et ces modifications, y compris les signatures présentes dans le fichier.</label>
       <div className="competition-toolbar"><button className="btn-primary" disabled={busy || !confirmation} onClick={() => void operation(async () => {
@@ -134,28 +200,33 @@ function CompetitionSeason({ saison }: { saison: string }) {
       })}>Confirmer l’import · {saison}</button><button className="btn-secondary" disabled={busy} onClick={() => setPlans(null)}>Annuler</button></div>
     </section>}
 
-    {deleting && <section className="competition-panel" aria-labelledby="competition-delete-title">
+    {deleting && <section className="competition-panel competition-panel--danger" aria-labelledby="competition-delete-title">
       <h2 id="competition-delete-title">Supprimer cette fiche ?</h2><p>{deleting.nom} {deleting.prenom} · {saison}. Cette suppression est définitive.</p>
       <div className="competition-toolbar"><button className="btn-danger" disabled={busy} onClick={() => void operation(async () => {
         await remove({ saison, id: deleting._id, revision: deleting.revision }); setDeleting(null); setMessage("Fiche supprimée.");
       })}>Confirmer la suppression</button><button className="btn-secondary" disabled={busy} onClick={() => setDeleting(null)}>Annuler</button></div>
     </section>}
 
-    <section aria-label="Liste des ambassadeurs">
+    <section className="competition-panel" aria-label="Liste des ambassadeurs">
+      <div className="competition-list-head">
+        <h2>Liste des ambassadeurs</h2>
+        {filtresActifs && <button type="button" className="btn-text competition-reset" disabled={busy} onClick={resetFiltres}>Réinitialiser les filtres</button>}
+      </div>
       <div className="competition-filters">
         <label>Rechercher (nom, email, catégorie)<input type="search" value={search} onChange={(e) => setSearch(e.target.value)} /></label>
-        <label>Groupe<select value={group} onChange={(e) => setGroup(e.target.value)}><option value="">Tous les groupes</option>{groups.filter(Boolean).map((g) => <option key={g}>{g}</option>)}</select></label>
+        <label>Catégorie<select value={category} onChange={(e) => setCategory(e.target.value)}><option value="">Toutes</option>{CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</select></label>
+        <label>Groupe<select value={group} onChange={(e) => setGroup(e.target.value)}><option value="">Tous les groupes</option>{GROUPES.map((g) => <option key={g} value={g}>{g}</option>)}</select></label>
         <label>Partenariat signé<select value={signed} onChange={(e) => setSigned(e.target.value)}><option value="">Tous</option><option value="oui">Signé</option><option value="non">Non signé</option></select></label>
       </div>
-      <p>Recherche et filtres portent sur la page affichée (50 fiches maximum). L’export inclut toute la saison, sans ces filtres. {visible.length} résultat(s).</p>
-      {page === undefined ? <p role="status">Chargement…</p> : visible.length === 0 ? <p>Aucun ambassadeur sur cette page pour ces critères.</p> : <div className="competition-scroll"><table>
+      <p className="competition-scope">Recherche et filtres portent sur la page affichée (50 fiches maximum). L’export inclut toute la saison, sans ces filtres. {visible.length} résultat(s).</p>
+      {page === undefined ? <p role="status">Chargement…</p> : visible.length === 0 ? <p className="competition-empty">Aucun ambassadeur sur cette page pour ces critères.</p> : <div className="competition-scroll"><table>
         <caption>Ambassadeurs · {saison}</caption>
-        <thead><tr><th>Nom</th><th>Prénom</th><th>Naissance</th><th>Civilité</th><th>Catégories</th><th>Colonne 1</th><th>Quels groupe</th><th>Email</th><th>Partenariat signé</th><th>Actions</th></tr></thead>
-        <tbody>{visible.map((r) => <tr key={r._id}><td>{r.nom}</td><td>{r.prenom}</td><td>{r.dateNaissance.split("-").reverse().join("/")}</td><td>{r.civilite}</td><td>{r.categories}</td><td>{r.colonne1}</td><td>{r.groupe}</td><td>{r.email}</td><td>{r.partenariatSigne ? "Oui" : "Non"}</td><td><div className="competition-row-actions"><button className="btn-secondary" disabled={busy} aria-label={`Modifier ${r.prenom} ${r.nom}`} onClick={() => openForm(r)}>Modifier</button><button className="btn-secondary" disabled={busy} aria-label={`Supprimer ${r.prenom} ${r.nom}`} onClick={() => { setDeleting(r); setEditing(null); setPlans(null); }}>Supprimer</button></div></td></tr>)}</tbody>
+        <thead><tr>{CHAMPS.map((champ) => <th key={champ.cle}>{champ.label}</th>)}<th>Partenariat signé</th><th>Actions</th></tr></thead>
+        <tbody>{visible.map((r) => <tr key={r._id}>{CHAMPS.map((champ) => <td key={champ.cle}>{champ.cle === "dateNaissance" ? formatDate(r.dateNaissance) : (r[champ.cle] || "—")}</td>)}<td><StatutSignature signe={r.partenariatSigne} /></td><td><div className="competition-row-actions"><button className="btn-secondary" disabled={busy} aria-label={`Modifier ${r.prenom} ${r.nom}`} onClick={() => openForm(r)}>Modifier</button><button className="btn-secondary btn-secondary--danger" disabled={busy} aria-label={`Supprimer ${r.prenom} ${r.nom}`} onClick={() => { setDeleting(r); setEditing(null); setPlans(null); }}>Supprimer</button></div></td></tr>)}</tbody>
       </table></div>}
-      <div className="competition-toolbar">
+      <div className="competition-toolbar competition-pagination">
         <button className="btn-secondary" disabled={busy || cursor === null} onClick={() => { setCursor(null); setPageNumber(1); setGroup(""); }}>Première page</button>
-        <span>Page {pageNumber}</span>
+        <span className="competition-page-number">Page {pageNumber}</span>
         <button className="btn-secondary" disabled={busy || !page || page.isDone} onClick={() => { if (page) { setPageNumber(pageNumber + 1); setCursor(page.continueCursor); setGroup(""); } }}>Page suivante</button>
       </div>
     </section>

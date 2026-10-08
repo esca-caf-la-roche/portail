@@ -6,7 +6,10 @@ import { resolve } from "node:path";
 // personnelles : chemin hors dépôt obligatoire, suppression après import.
 const [input, output] = process.argv.slice(2);
 const headers = ["Nom", "Prénom", "Date de naissance", "Civilité", "Catégories", "Colonne 1", "Quels groupe", "Email"];
-const keys = ["nom", "prenom", "dateNaissance", "civilite", "categories", "colonne1", "groupe", "email"];
+// « Colonne 1 » (index 5) est supprimée du modèle applicatif : elle reste lue
+// depuis la source pour la détection de doublons, mais n'est plus exportée.
+// `null` marque un index source sans champ de sortie.
+const keys = ["nom", "prenom", "dateNaissance", "civilite", "categories", null, "groupe", "email"];
 try {
   if (!input || !output || process.argv.length !== 4) throw new Error();
   const target = resolve(output);
@@ -25,6 +28,7 @@ try {
   for (const cells of source) {
     if (cells.length > 8) throw new Error();
     const values = keys.map((key, i) => {
+      if (key === null) return null;
       const cell = cells[i];
       if (key !== "dateNaissance") {
         if (cell == null) return "";
@@ -44,7 +48,8 @@ try {
       continue;
     }
     identities.set(identity, fingerprint);
-    rows.push({ ...Object.fromEntries(keys.map((key, i) => [key, values[i]])), saison: "2026-27", partenariatSigne: false });
+    const champs = Object.fromEntries(keys.flatMap((key, i) => (key === null ? [] : [[key, values[i]]])));
+    rows.push({ ...champs, saison: "2026-27", partenariatSigne: false });
   }
   if (rows.length !== 27) throw new Error();
   await writeFile(target, JSON.stringify({ saison: "2026-27", rows }), { flag: "wx", mode: 0o600 });

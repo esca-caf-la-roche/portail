@@ -8,7 +8,7 @@ import { dateExcel, lignesExportExcel, lireLignesExcel } from "./competitionExce
 test("vrai XLSX en mémoire : accents, vides, texte formule, dates, ID et révision", async () => {
   const doc: Doc<"competition_ambassadeurs"> = {
     _id: "fake-id" as Id<"competition_ambassadeurs">, _creationTime: 0, saison: "2026-27",
-    nom: "=Éléonore", prenom: "Rémi", dateNaissance: "2004-02-29", civilite: "", categories: "Élite", colonne1: "", groupe: "Groupe été", email: "remi@example.test",
+    nom: "=Éléonore", prenom: "Rémi", dateNaissance: "2004-02-29", civilite: "Femme", categories: "Compétiteur", groupe: "Groupe Perf.", email: "remi@example.test",
     cleIdentite: "test", partenariatSigne: false, revision: 7, updatedAt: 0, updatedSource: "bootstrap",
   };
   const buffer = await writeXlsxFile(lignesExportExcel([doc]).map((r) => r.map((value) => ({ type: String, value })))).toBuffer();
@@ -18,7 +18,7 @@ test("vrai XLSX en mémoire : accents, vides, texte formule, dates, ID et révis
     throw new Error("Unexpected cell type");
   }));
   const rows = lireLignesExcel(matrix, "2026-27");
-  expect(rows[0]).toMatchObject({ nom: "=Éléonore", prenom: "Rémi", civilite: "", categories: "Élite", colonne1: "", groupe: "Groupe été", email: doc.email, dateNaissance: "2004-02-29", id: doc._id, revision: 7, saison: "2026-27", partenariatSigne: false });
+  expect(rows[0]).toMatchObject({ nom: "=Éléonore", prenom: "Rémi", civilite: "Femme", categories: "Compétiteur", groupe: "Groupe Perf.", email: doc.email, dateNaissance: "2004-02-29", id: doc._id, revision: 7, saison: "2026-27", partenariatSigne: false });
   const dateBuffer = await writeXlsxFile([[{ type: Date, value: new Date("2004-02-29T00:00:00Z"), format: "dd/mm/yyyy" }]]).toBuffer();
   const dateCell = (await readXlsxFile(dateBuffer))[0].data[0][0];
   expect(dateCell).toBeInstanceOf(Date);

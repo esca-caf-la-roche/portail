@@ -1,18 +1,93 @@
 .competition-page { display: grid; gap: 1rem; }
+
+/* En-tête */
+.competition-header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 1rem; }
+.competition-header h1 { margin: 0; }
+.competition-header .subtitle { margin-bottom: 0; }
+.competition-stats { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+.competition-stat {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  padding: 0.45rem 0.8rem; font-weight: 700;
+  background: var(--card); border: var(--border-width) solid var(--foreground);
+  box-shadow: 3px 3px 0 var(--foreground);
+}
+.competition-stat strong { font-size: 1.15rem; }
+.competition-stat--signe { background: var(--success); }
+.competition-stat--attente { background: var(--warning); }
+
+.competition-hint { margin: 0; font-size: 0.92rem; }
+
+/* Panneaux génériques */
 .competition-toolbar, .competition-row-actions { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; }
 .competition-panel, .competition-notice { padding: 1rem; border: 3px solid var(--foreground); background: var(--card); box-shadow: 4px 4px 0 var(--foreground); }
-.competition-notice { background: var(--warning); overflow-wrap: anywhere; }
+.competition-panel > h2 { margin-top: 0; }
+.competition-panel--danger { background: #ffe3e8; }
+.competition-notice { padding: 0.8rem 1rem; font-weight: 600; overflow-wrap: anywhere; }
+.competition-notice--error { background: var(--danger); color: #fff; }
+.competition-notice--info { background: var(--info); }
+.competition-toolbar--principal { padding: 0.85rem; background: var(--card); border: 3px solid var(--foreground); box-shadow: 4px 4px 0 var(--foreground); }
+
+/* Champs de formulaire et filtres */
 .competition-fields, .competition-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 1rem; margin-bottom: 1rem; }
-.competition-page label { display: grid; gap: 0.4rem; }
+.competition-fields legend { font-weight: 800; text-transform: uppercase; padding: 0 0.4rem; }
+.competition-page label { display: grid; gap: 0.4rem; font-weight: 600; }
 .competition-page input:not([type="checkbox"]), .competition-page select { width: 100%; min-width: 0; padding: 0.6rem; border: 2px solid var(--foreground); background: var(--card); color: var(--foreground); }
-.competition-page .competition-check { display: flex; align-items: center; gap: 0.6rem; padding: 0.75rem 0; }
+.competition-page .competition-check { display: flex; align-items: center; gap: 0.6rem; padding: 0.75rem 0; text-transform: none; }
 .competition-check input { width: 1.3rem; height: 1.3rem; flex-shrink: 0; }
+
+/* Import */
 .competition-file { max-width: 100%; }
-.competition-scroll { overflow-x: auto; margin: 1rem 0; border: 3px solid var(--foreground); }
+.competition-file--button {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  min-height: 44px; padding: 0.6rem 1rem; font-weight: 800; text-transform: uppercase;
+  background: var(--card); border: var(--border-width) solid var(--foreground);
+  box-shadow: 3px 3px 0 var(--foreground); cursor: pointer;
+}
+.competition-file--button:hover { background: var(--warning); }
+.competition-file--button span { font-weight: 600; text-transform: none; font-size: 0.8rem; }
+.competition-file--button input { width: 1px; height: 1px; padding: 0; opacity: 0; position: absolute; }
+
+/* Tableau */
+.competition-scroll { overflow-x: auto; margin: 1rem 0; border: 3px solid var(--foreground); box-shadow: 4px 4px 0 var(--foreground); }
 .competition-scroll table { width: 100%; border-collapse: collapse; background: var(--card); }
-.competition-scroll caption { text-align: left; padding: 0.7rem; font-weight: bold; }
-.competition-scroll th, .competition-scroll td { text-align: left; padding: 0.65rem; border: 1px solid var(--foreground); vertical-align: top; }
-.competition-scroll th { background: var(--warning); }
+.competition-scroll caption { text-align: left; padding: 0.7rem 0.85rem; font-weight: bold; background: var(--background); }
+.competition-scroll th, .competition-scroll td { text-align: left; padding: 0.65rem 0.75rem; border: 1px solid var(--foreground); vertical-align: top; }
+.competition-scroll th { background: var(--warning); text-transform: uppercase; font-size: 0.82rem; letter-spacing: 0.02em; }
+.competition-scroll tbody tr:nth-child(even) { background: rgba(0, 0, 0, 0.03); }
+.competition-scroll tbody tr:hover { background: var(--info); }
+.competition-diff { display: grid; gap: 0.15rem; }
+.competition-diff span { opacity: 0.6; text-decoration: line-through; }
+
+/* En-tête de liste, filtres, divers */
+.competition-list-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.competition-list-head h2 { margin: 0; }
+.competition-reset { font-weight: 700; }
+.competition-scope { font-size: 0.88rem; margin: 0 0 0.5rem; }
+.competition-empty { margin: 0.5rem 0; }
+
+/* Badges de statut et d'action */
+.competition-badge {
+  display: inline-flex; align-items: center; padding: 0.25rem 0.6rem;
+  font-size: 0.78rem; font-weight: 800; text-transform: uppercase; white-space: nowrap;
+  border: 2px solid var(--foreground); box-shadow: 2px 2px 0 var(--foreground);
+}
+.competition-badge--signe { background: var(--success); }
+.competition-badge--attente { background: var(--warning); }
+.competition-action { font-weight: 700; text-transform: uppercase; font-size: 0.78rem; padding: 0.2rem 0.5rem; border: 2px solid var(--foreground); }
+.competition-action--creation { background: var(--info); }
+.competition-action--modification { background: var(--orange); }
+.competition-action--identique { background: #e6e6e6; }
+
+/* Pagination et boutons */
+.competition-pagination { justify-content: center; margin-top: 0.5rem; }
+.competition-page-number { font-weight: 700; }
 .competition-page button { min-height: 44px; }
+.btn-secondary--danger { border-color: var(--danger); color: var(--danger); }
+.btn-secondary--danger:hover:not(:disabled) { background: var(--danger); color: #fff; }
 .competition-page :focus-visible { outline: 3px solid var(--foreground); outline-offset: 3px; }
-@media (max-width: 600px) { .competition-toolbar > button { width: 100%; } .competition-panel { padding: 0.75rem; } }
+
+@media (max-width: 600px) {
+  .competition-toolbar > button, .competition-toolbar--principal > *, .competition-file--button { width: 100%; justify-content: center; }
+  .competition-panel { padding: 0.75rem; }
+  .competition-stats { width: 100%; }
+}

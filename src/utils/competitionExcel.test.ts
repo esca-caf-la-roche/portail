@@ -2,10 +2,10 @@ import { describe, expect, test } from "vitest";
 import type { Doc, Id } from "../../convex/_generated/dataModel";
 import { chargerExportSaison, COLONNES, dateExcel, lignesExportExcel, lireLignesExcel } from "./competitionExcel";
 
-const base = ["Exemple", "Camille", "2005-02-03", "", "U21", "", "Groupe A", "camille@example.test"];
+const base = ["Exemple", "Camille", "2005-02-03", "Homme", "Compétiteur", "Groupe Perf.", "camille@example.test"];
 const doc: Doc<"competition_ambassadeurs"> = {
   _id: "fake-id" as Id<"competition_ambassadeurs">, _creationTime: 0, saison: "2026-27",
-  nom: "=nom", prenom: "Camille", dateNaissance: "2005-02-03", civilite: "", categories: "U21", colonne1: "conservée", groupe: "Groupe A", email: "camille@example.test", cleIdentite: "test", partenariatSigne: true, revision: 2, updatedAt: 0, updatedBy: "user" as Id<"users">,
+  nom: "=nom", prenom: "Camille", dateNaissance: "2005-02-03", civilite: "Homme", categories: "Compétiteur", groupe: "Groupe Perf.", email: "camille@example.test", cleIdentite: "test", partenariatSigne: true, revision: 2, updatedAt: 0, updatedBy: "user" as Id<"users">,
 };
 
 describe("XLSX compétition", () => {
@@ -25,14 +25,20 @@ describe("XLSX compétition", () => {
   });
   test("conserve colonne vide, absence de signature et accents des colonnes", () => {
     const rows = lireLignesExcel([[...COLONNES], base], "2026-27");
-    expect(rows[0]).toMatchObject({ nom: "Exemple", dateNaissance: "2005-02-03", colonne1: "" });
+    expect(rows[0]).toMatchObject({ nom: "Exemple", dateNaissance: "2005-02-03", civilite: "Homme", categories: "Compétiteur" });
     expect(rows[0].partenariatSigne).toBeUndefined();
+  });
+  test("accepte et ignore l'ancienne colonne « Colonne 1 »", () => {
+    const rows = lireLignesExcel([[...COLONNES, "Colonne 1"], [...base, "ignorée"]], "2026-27");
+    expect(rows[0]).toMatchObject({ nom: "Exemple", categories: "Compétiteur" });
+    expect(rows[0]).not.toHaveProperty("colonne1");
+    expect(() => lireLignesExcel([[...COLONNES], ["Exemple", "Camille", "2005-02-03", "Homme", "Inconnue", "Groupe Perf.", "camille@example.test"]], "2026-27")).toThrow("Catégorie");
   });
   test("roundtrip export réimportable avec ID, révision, saison et signature", () => {
     const matrix = lignesExportExcel([doc]);
     expect(matrix[1][0]).toBe("=nom");
     const rows = lireLignesExcel(matrix, "2026-27");
-    expect(rows[0]).toMatchObject({ id: doc._id, revision: 2, saison: "2026-27", partenariatSigne: true, colonne1: "conservée", nom: "=nom" });
+    expect(rows[0]).toMatchObject({ id: doc._id, revision: 2, saison: "2026-27", partenariatSigne: true, nom: "=nom", categories: "Compétiteur" });
     expect(() => lireLignesExcel(matrix, "2025-26")).toThrow("saison");
   });
   test("dates UTC, françaises, ISO, bissextiles et ambiguïtés", () => {
