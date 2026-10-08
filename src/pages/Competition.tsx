@@ -1,5 +1,6 @@
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useConvex, useMutation, useQuery } from "convex/react";
+import { Pencil, Trash2 } from "lucide-react";
 import type { Infer } from "convex/values";
 import { api } from "../../convex/_generated/api";
 import type { Doc } from "../../convex/_generated/dataModel";
@@ -78,6 +79,16 @@ function CompetitionSeason({ saison }: { saison: string }) {
   const [message, setMessage] = useState("");
   const [exportBatches, setExportBatches] = useState<Doc<"competition_ambassadeurs">[][] | null>(null);
   const formRef = useRef<HTMLHeadingElement>(null);
+  const deleteCancelRef = useRef<HTMLButtonElement>(null);
+  // La confirmation de suppression est une modale : elle reste visible quelle
+  // que soit la position du tableau et prend le focus (Échap annule).
+  useEffect(() => {
+    if (!deleting) return;
+    deleteCancelRef.current?.focus();
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape" && !busy) setDeleting(null); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [deleting, busy]);
   const rows = page?.page ?? [];
   const needle = normaliserTexte(search);
   const visible = rows.filter((r) => (!category || r.categories === category) && (!group || r.groupe === group) && (!signed || r.partenariatSigne === (signed === "oui")) && normaliserTexte(`${r.nom} ${r.prenom} ${r.email} ${r.categories}`).includes(needle));
@@ -200,12 +211,18 @@ function CompetitionSeason({ saison }: { saison: string }) {
       })}>Confirmer l’import · {saison}</button><button className="btn-secondary" disabled={busy} onClick={() => setPlans(null)}>Annuler</button></div>
     </section>}
 
-    {deleting && <section className="competition-panel competition-panel--danger" aria-labelledby="competition-delete-title">
-      <h2 id="competition-delete-title">Supprimer cette fiche ?</h2><p>{deleting.nom} {deleting.prenom} · {saison}. Cette suppression est définitive.</p>
-      <div className="competition-toolbar"><button className="btn-danger" disabled={busy} onClick={() => void operation(async () => {
-        await remove({ saison, id: deleting._id, revision: deleting.revision }); setDeleting(null); setMessage("Fiche supprimée.");
-      })}>Confirmer la suppression</button><button className="btn-secondary" disabled={busy} onClick={() => setDeleting(null)}>Annuler</button></div>
-    </section>}
+    {deleting && <div className="competition-modal-backdrop" onMouseDown={() => { if (!busy) setDeleting(null); }}>
+      <div className="competition-modal" role="dialog" aria-modal="true" aria-labelledby="competition-delete-title" onMouseDown={(event) => event.stopPropagation()}>
+        <h2 id="competition-delete-title">Supprimer cette fiche ?</h2>
+        <p><strong>{deleting.nom} {deleting.prenom}</strong> · {saison}. Cette suppression est définitive.</p>
+        <div className="competition-toolbar">
+          <button type="button" className="competition-btn-danger" disabled={busy} onClick={() => void operation(async () => {
+            await remove({ saison, id: deleting._id, revision: deleting.revision }); setDeleting(null); setMessage("Fiche supprimée.");
+          })}>Confirmer la suppression</button>
+          <button type="button" ref={deleteCancelRef} className="btn-secondary" disabled={busy} onClick={() => setDeleting(null)}>Annuler</button>
+        </div>
+      </div>
+    </div>}
 
     <section className="competition-panel" aria-label="Liste des ambassadeurs">
       <div className="competition-list-head">
@@ -222,7 +239,7 @@ function CompetitionSeason({ saison }: { saison: string }) {
       {page === undefined ? <p role="status">Chargement…</p> : visible.length === 0 ? <p className="competition-empty">Aucun ambassadeur sur cette page pour ces critères.</p> : <div className="competition-scroll"><table>
         <caption>Ambassadeurs · {saison}</caption>
         <thead><tr>{CHAMPS.map((champ) => <th key={champ.cle}>{champ.label}</th>)}<th>Partenariat signé</th><th>Actions</th></tr></thead>
-        <tbody>{visible.map((r) => <tr key={r._id}>{CHAMPS.map((champ) => <td key={champ.cle}>{champ.cle === "dateNaissance" ? formatDate(r.dateNaissance) : (r[champ.cle] || "—")}</td>)}<td><StatutSignature signe={r.partenariatSigne} /></td><td><div className="competition-row-actions"><button className="btn-secondary" disabled={busy} aria-label={`Modifier ${r.prenom} ${r.nom}`} onClick={() => openForm(r)}>Modifier</button><button className="btn-secondary btn-secondary--danger" disabled={busy} aria-label={`Supprimer ${r.prenom} ${r.nom}`} onClick={() => { setDeleting(r); setEditing(null); setPlans(null); }}>Supprimer</button></div></td></tr>)}</tbody>
+        <tbody>{visible.map((r) => <tr key={r._id}>{CHAMPS.map((champ) => <td key={champ.cle}>{champ.cle === "dateNaissance" ? formatDate(r.dateNaissance) : (r[champ.cle] || "—")}</td>)}<td><StatutSignature signe={r.partenariatSigne} /></td><td><div className="competition-row-actions"><button type="button" className="btn-icon competition-icon-btn" disabled={busy} title="Modifier" aria-label={`Modifier ${r.prenom} ${r.nom}`} onClick={() => openForm(r)}><Pencil size={18} aria-hidden="true" /></button><button type="button" className="btn-icon competition-icon-btn btn-icon--danger" disabled={busy} title="Supprimer" aria-label={`Supprimer ${r.prenom} ${r.nom}`} onClick={() => { setDeleting(r); setEditing(null); setPlans(null); }}><Trash2 size={18} aria-hidden="true" /></button></div></td></tr>)}</tbody>
       </table></div>}
       <div className="competition-toolbar competition-pagination">
         <button className="btn-secondary" disabled={busy || cursor === null} onClick={() => { setCursor(null); setPageNumber(1); setGroup(""); }}>Première page</button>

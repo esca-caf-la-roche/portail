@@ -82,8 +82,18 @@
 .competition-pagination { justify-content: center; margin-top: 0.5rem; }
 .competition-page-number { font-weight: 700; }
 .competition-page button { min-height: 44px; }
-.btn-secondary--danger { border-color: var(--danger); color: var(--danger); }
-.btn-secondary--danger:hover:not(:disabled) { background: var(--danger); color: #fff; }
+.competition-icon-btn { min-height: 0; padding: 0.45rem; border: 2px solid var(--foreground); background: var(--card); box-shadow: 2px 2px 0 var(--foreground); color: var(--foreground); }
+.competition-icon-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.competition-icon-btn.btn-icon--danger { color: var(--danger); border-color: var(--danger); }
+.competition-icon-btn.btn-icon--danger:hover:not(:disabled) { background: var(--danger); color: #fff; }
+
+/* Modale de confirmation de suppression */
+.competition-modal-backdrop { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; padding: 1rem; background: rgba(0, 0, 0, 0.55); }
+.competition-modal { width: 100%; max-width: 30rem; padding: 1.25rem; background: var(--card); border: 3px solid var(--foreground); box-shadow: 6px 6px 0 var(--foreground); }
+.competition-modal h2 { margin-top: 0; }
+.competition-btn-danger { min-height: 44px; padding: 0.75rem 1.5rem; font-family: var(--font-sans); font-weight: 800; text-transform: uppercase; cursor: pointer; color: #fff; background: var(--danger); border: 3px solid var(--foreground); box-shadow: 3px 3px 0 var(--foreground); }
+.competition-btn-danger:hover:not(:disabled) { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--foreground); }
+.competition-btn-danger:disabled { opacity: 0.6; cursor: not-allowed; }
 .competition-page :focus-visible { outline: 3px solid var(--foreground); outline-offset: 3px; }
 
 @media (max-width: 600px) {
