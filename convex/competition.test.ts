@@ -65,6 +65,23 @@ describe("compétition : sécurité, saisons et concurrence", () => {
     expect((await t.mutation(internal.competition.bootstrapInitialSeason, args)).created).toBe(27);
     await expect(staff.query(api.competition.list, { saison, paginationOpts })).rejects.toThrow("attribué");
   });
+  test("setPartenariatSigne : bascule directe, no-op, révision et isolation de saison", async () => {
+    const { t, staff } = await setup();
+    const id = await staff.mutation(api.competition.create, { saison, fields, partenariatSigne: false });
+    const before = await t.run((ctx) => ctx.db.get(id));
+    // No-op : aucune écriture si la valeur ne change pas.
+    await staff.mutation(api.competition.setPartenariatSigne, { saison, id, revision: 1, partenariatSigne: false });
+    expect(await t.run((ctx) => ctx.db.get(id))).toEqual(before);
+    // Bascule signé puis non signé, révision incrémentée à chaque écriture.
+    await staff.mutation(api.competition.setPartenariatSigne, { saison, id, revision: 1, partenariatSigne: true });
+    expect(await t.run((ctx) => ctx.db.get(id))).toMatchObject({ partenariatSigne: true, revision: 2, updatedBy: before!.updatedBy });
+    await staff.mutation(api.competition.setPartenariatSigne, { saison, id, revision: 2, partenariatSigne: false });
+    expect(await t.run((ctx) => ctx.db.get(id))).toMatchObject({ partenariatSigne: false, revision: 3 });
+    // Conflit de révision et isolation de saison.
+    await expect(staff.mutation(api.competition.setPartenariatSigne, { saison, id, revision: 1, partenariatSigne: true })).rejects.toThrow("Conflit");
+    await expect(staff.mutation(api.competition.setPartenariatSigne, { saison: "2025-26", id, revision: 3, partenariatSigne: true })).rejects.toThrow("cette saison");
+  });
+
   test("refuse chaque endpoint aux anonymes, abonnés publics et admins sans tuile", async () => {
     const { t } = await setup();
     const [adminId, publicId] = await t.run(async (ctx) => {
@@ -79,6 +96,7 @@ describe("compétition : sécurité, saisons et concurrence", () => {
       await expect(denied.query(api.competition.previewImport, { saison, rows: [fields] })).rejects.toThrow();
       await expect(denied.mutation(api.competition.create, { saison, fields, partenariatSigne: false })).rejects.toThrow();
       await expect(denied.mutation(api.competition.update, { saison, id: fakeId, revision: 1, fields, partenariatSigne: true })).rejects.toThrow();
+      await expect(denied.mutation(api.competition.setPartenariatSigne, { saison, id: fakeId, revision: 1, partenariatSigne: true })).rejects.toThrow();
       await expect(denied.mutation(api.competition.remove, { saison, id: fakeId, revision: 1 })).rejects.toThrow();
       await expect(denied.mutation(api.competition.importRows, { saison, plans: [] })).rejects.toThrow();
     }

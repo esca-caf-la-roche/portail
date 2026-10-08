@@ -67,6 +67,20 @@ export const update = authenticatedMutation({
   },
 });
 
+// Bascule rapide de la signature depuis la liste, sans ouvrir le formulaire.
+export const setPartenariatSigne = authenticatedMutation({
+  args: { saison: v.string(), id: v.id("competition_ambassadeurs"), revision: v.number(), partenariatSigne: v.boolean() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requireTile(ctx, ctx.userId, "competition");
+    await verifierSaison(ctx, args.saison);
+    const existing = await fiche(ctx, args.saison, args.id, args.revision);
+    if (existing.partenariatSigne === args.partenariatSigne) return null;
+    await ctx.db.patch(args.id, { partenariatSigne: args.partenariatSigne, revision: existing.revision + 1, updatedAt: Date.now(), updatedBy: ctx.userId });
+    return null;
+  },
+});
+
 export const remove = authenticatedMutation({
   args: { saison: v.string(), id: v.id("competition_ambassadeurs"), revision: v.number() },
   returns: v.null(),

@@ -60,6 +60,7 @@ function CompetitionSeason({ saison }: { saison: string }) {
   const convex = useConvex();
   const create = useMutation(api.competition.create);
   const update = useMutation(api.competition.update);
+  const setSigne = useMutation(api.competition.setPartenariatSigne);
   const remove = useMutation(api.competition.remove);
   const importRows = useMutation(api.competition.importRows);
   const [cursor, setCursor] = useState<string | null>(null);
@@ -243,7 +244,10 @@ function CompetitionSeason({ saison }: { saison: string }) {
       {page === undefined ? <p role="status">Chargement…</p> : visible.length === 0 ? <p className="competition-empty">Aucun ambassadeur sur cette page pour ces critères.</p> : <div className="competition-scroll"><table>
         <caption>Ambassadeurs · {saison}</caption>
         <thead><tr>{CHAMPS.map((champ) => <th key={champ.cle}>{champ.label}</th>)}<th>Partenariat signé</th><th>Actions</th></tr></thead>
-        <tbody>{visible.map((r) => <tr key={r._id}>{CHAMPS.map((champ) => <td key={champ.cle}>{champ.cle === "dateNaissance" ? formatDate(r.dateNaissance) : (r[champ.cle] || "—")}</td>)}<td><StatutSignature signe={r.partenariatSigne} /></td><td><div className="competition-row-actions"><button type="button" className="btn-icon competition-icon-btn" disabled={busy} title="Modifier" aria-label={`Modifier ${r.prenom} ${r.nom}`} onClick={() => openForm(r)}><Pencil size={18} aria-hidden="true" /></button><button type="button" className="btn-icon competition-icon-btn btn-icon--danger" disabled={busy} title="Supprimer" aria-label={`Supprimer ${r.prenom} ${r.nom}`} onClick={() => { setDeleting(r); setEditing(null); setPlans(null); setError(""); setMessage(""); }}><Trash2 size={18} aria-hidden="true" /></button></div></td></tr>)}</tbody>
+        <tbody>{visible.map((r) => <tr key={r._id}>{CHAMPS.map((champ) => <td key={champ.cle}>{champ.cle === "dateNaissance" ? formatDate(r.dateNaissance) : (r[champ.cle] || "—")}</td>)}<td><button type="button" className="competition-badge-btn" disabled={busy} aria-pressed={r.partenariatSigne} title={r.partenariatSigne ? "Marquer le partenariat comme non signé" : "Marquer le partenariat comme signé"} aria-label={`${r.partenariatSigne ? "Marquer non signé" : "Marquer signé"} : ${r.prenom} ${r.nom}`} onClick={() => void operation(async () => {
+          await setSigne({ saison, id: r._id, revision: r.revision, partenariatSigne: !r.partenariatSigne });
+          setMessage(r.partenariatSigne ? `Partenariat de ${r.prenom} ${r.nom} marqué non signé.` : `Partenariat de ${r.prenom} ${r.nom} marqué signé.`);
+        })}><StatutSignature signe={r.partenariatSigne} /></button></td><td><div className="competition-row-actions"><button type="button" className="btn-icon competition-icon-btn" disabled={busy} title="Modifier" aria-label={`Modifier ${r.prenom} ${r.nom}`} onClick={() => openForm(r)}><Pencil size={18} aria-hidden="true" /></button><button type="button" className="btn-icon competition-icon-btn btn-icon--danger" disabled={busy} title="Supprimer" aria-label={`Supprimer ${r.prenom} ${r.nom}`} onClick={() => { setDeleting(r); setEditing(null); setPlans(null); setError(""); setMessage(""); }}><Trash2 size={18} aria-hidden="true" /></button></div></td></tr>)}</tbody>
       </table></div>}
       <div className="competition-toolbar competition-pagination">
         <button className="btn-secondary" disabled={busy || cursor === null} onClick={() => { setCursor(null); setPageNumber(1); setGroup(""); }}>Première page</button>

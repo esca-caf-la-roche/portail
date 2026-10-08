@@ -72,6 +72,10 @@
 }
 .competition-badge--signe { background: var(--success); }
 .competition-badge--attente { background: var(--warning); }
+/* Badge cliquable : bascule directe de la signature dans la liste, sans formulaire */
+.competition-badge-btn { min-height: 44px; padding: 0; background: none; border: none; cursor: pointer; font: inherit; }
+.competition-badge-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.competition-badge-btn:hover:not(:disabled) .competition-badge { transform: translate(2px, 2px); box-shadow: none; }
 .competition-action { font-weight: 700; text-transform: uppercase; font-size: 0.78rem; padding: 0.2rem 0.5rem; border: 2px solid var(--foreground); }
 .competition-action--creation { background: var(--info); }
 .competition-action--modification { background: var(--orange); }
