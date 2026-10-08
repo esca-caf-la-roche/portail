@@ -5,6 +5,7 @@ export type SaisonDisponible = {
 
 const MODULES_SAISONNIERS = [
   "/compta",
+  "/competition",
   "/budget",
   "/gestion-samedis",
   "/gestion-planning-salaries-samedis",

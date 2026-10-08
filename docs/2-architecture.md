@@ -52,7 +52,7 @@ tâches internes. Il n'existe pas de serveur HTTP applicatif séparé.
 | Ensemble | Routes principales | Protection |
 |---|---|---|
 | Public ou isolé | `/login`, `/abonnements`, `/compteur`, `/samedis`, `/planning-salaries-samedis` | Selon le parcours et le provider OTP |
-| Staff | `/`, `/compta`, `/paiements`, `/budget`, `/licences-cours`, `/contacts-cours`, `/contacts-cours/copier`, `/remboursements-eleves`, `/gestion-samedis`, `/gestion-planning-salaries-samedis` | `Layout` puis `RequireAccess` |
+| Staff | `/`, `/compta`, `/competition`, `/paiements`, `/budget`, `/licences-cours`, `/contacts-cours`, `/contacts-cours/copier`, `/remboursements-eleves`, `/gestion-samedis`, `/gestion-planning-salaries-samedis` | `Layout` puis `RequireAccess` |
 | Administration | `/configurations`, `/gestion-abonnements` | Rôle admin ou tuile dédiée |
 
 Le routage par hash permet de servir toutes les routes depuis GitHub Pages sans
@@ -112,6 +112,11 @@ Voir [3-authentification.md](3-authentification.md) pour les populations et
 endpoints.
 
 ## Données et saisonnalité
+
+La tuile Compétition `/competition` suit les ambassadeurs Arkose par saison.
+Elle ne synchronise aucune source externe ; sa signature est un suivi manuel.
+Les fiches bloquent la suppression de leur saison. Voir
+[15-competition-arkose.md](15-competition-arkose.md).
 
 La saison est un axe transverse du portail. À chaque entrée dans un module
 saisonnier, le frontend initialise synchroniquement la sélection avec la saison

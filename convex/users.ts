@@ -110,6 +110,7 @@ const dashboardTileValidator = v.union(
   v.literal("compta"),
   v.literal("paiements"),
   v.literal("budget"),
+  v.literal("competition"),
   v.literal("abonnements"),
   v.literal("licences_cours"),
   v.literal("contacts_cours"),

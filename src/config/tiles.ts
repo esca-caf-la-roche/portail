@@ -2,6 +2,7 @@ export const TILE_OPTIONS = [
   { id: "compta", label: "Comptabilité", description: "Gérez les transactions, prévisionnels et analyses.", defaultColor: "bg-info" },
   { id: "paiements", label: "Paiements Escalade", description: "Suivi des paiements pour les cours d'escalade.", defaultColor: "bg-success" },
   { id: "budget", label: "Budget prévisionnel", description: "Masse salariale et simulation d'augmentations.", defaultColor: "bg-warning" },
+  { id: "competition", label: "Compétition", description: "Ambassadeurs Arkose et suivi manuel des partenariats signés par saison.", defaultColor: "bg-orange" },
   { id: "abonnements", label: "Abonnements Escalade", description: "Nouvelles inscriptions aux créneaux autonomes, demandes, compteur et tests.", defaultColor: "bg-primary" },
   { id: "licences_cours", label: "Licences élèves en cours", description: "Vérifie les élèves en cours sans licence valide pour la saison.", defaultColor: "bg-danger" },
   { id: "contacts_cours", label: "Contacts élèves en cours", description: "Retrouvez les coordonnées des élèves et contactez un groupe de cours.", defaultColor: "bg-info" },
