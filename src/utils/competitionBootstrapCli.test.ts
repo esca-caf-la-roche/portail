@@ -2,12 +2,13 @@
 import { expect, test } from "vitest";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import writeXlsxFile from "write-excel-file/node";
 import { COLONNES } from "./competitionExcel";
 
 test("CLI source29 : deux doublons exacts donnent27 ; divergence et mauvais comptes refusés", async () => {
-  const dir = await mkdtemp("C:/Users/jpduheron/AppData/Local/Temp/opencode/competition-cli-");
+  const dir = await mkdtemp(join(tmpdir(), "competition-cli-"));
   const rows = Array.from({ length: 29 }, (_, i) => [`Fictif ${i}`, "Émilie", "03/02/2005", "Mme", "Élite", "colonne conservée", "Groupe été", "test@example.test"]);
   rows[7] = [...rows[4]]; // Lignes Excel 6 et 9.
   rows[27] = [...rows[6]]; // Lignes Excel 8 et 29.
