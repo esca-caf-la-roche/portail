@@ -20,16 +20,20 @@ Une saison contenant des ambassadeurs ne peut pas être supprimée.
 
 La liste est paginée par 50 fiches. Recherche et filtres portent
 uniquement sur la page affichée. L'export charge **toute la saison**, sans ces
-filtres, uniquement au clic, par pages bornées. Il refuse au-delà de 2000 fiches
-ou 100 appels sans produire de fichier partiel. Télécharger chaque lot proposé
-de 200 fiches maximum : 201 fiches produisent deux fichiers, tous réimportables.
-Les lectures paginées ne constituent pas une transaction unique ; éviter les
-modifications concurrentes pendant la préparation. Les révisions restent
-contrôlées à la réimportation. Changer de saison efface formulaire et import
-en cours. L'export ajoute Partenariat signé, Saison, Identifiant et Révision ;
-les cellules sont explicitement textuelles, jamais des formules.
+filtres, uniquement au clic et par pages bornées, puis télécharge en un clic un
+unique fichier **CSV** (séparateur point-virgule et BOM UTF-8, format attendu par
+Excel francophone). Il refuse au-delà de 2000 fiches ou 100 appels sans produire
+de fichier partiel. Les lectures paginées ne constituent pas une transaction
+unique ; éviter les modifications concurrentes pendant la préparation. Les
+révisions restent contrôlées à la réimportation. Changer de saison efface
+formulaire et import en cours. L'export ajoute Partenariat signé, Saison,
+Identifiant et Révision ; les cellules sont explicitement textuelles et une
+valeur commençant par `=`, `+`, `-` ou `@` est préfixée d'une apostrophe
+(anti-injection de formule Excel), retirée à la réimportation.
 
-L'import accepte une feuille XLSX non vide, 2 Mo maximum et 200 lignes.
+L'import accepte une feuille XLSX non vide (source Arkose d'origine) ou un CSV
+produit par l'export, 2 Mo maximum et 200 lignes. Un export de plus de 200 fiches
+doit donc être découpé manuellement pour être réimporté en une fois.
 Importer uniquement des fichiers de confiance : la limite de 2 Mo porte sur
 le fichier compressé, pas sur son contenu décompressé. Le parseur navigateur
 ne borne pas ce dernier ; une bombe ZIP peut encore saturer mémoire ou CPU.
@@ -118,9 +122,10 @@ l'import des anciens fichiers XLSX.
 
 Tests automatisés : `convex/competition.test.ts` (CRUD, accès, saisons,
 révisions, atomicité, idempotence, bootstrap),
-`src/utils/competitionExcel.test.ts` (dates, colonnes, exports 51/200/201/2000,
-refus 2001) et `src/utils/competitionXlsxRoundtrip.test.ts` (vrai XLSX écrit / lu
-en mémoire : accents, vides, texte commençant par `=`, dates, ID et révision).
+`src/utils/competitionExcel.test.ts` (dates, colonnes, exports CSV
+51/200/201/2000, refus 2001, injection de formule, échappement) et
+`src/utils/competitionXlsxImport.test.ts` (vrai XLSX lu en mémoire : accents,
+texte commençant par `=`, vraie cellule date, ID et révision).
 `src/utils/competitionBootstrapCli.test.ts` couvre le vrai script XLSX sur
 29 lignes fictives avec deux doublons exacts, la conservation des sept champs
 retenus (« Colonne 1 » ignorée), le résultat de 27 fiches, les comptes invalides

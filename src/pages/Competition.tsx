@@ -8,12 +8,13 @@ import {
   CATEGORIES,
   CIVILITES,
   GROUPES,
+  MAX_IMPORT,
   normaliserTexte,
   planValidator,
   type AmbassadeurFields,
 } from "../../convex/competitionModel";
 import { useSeason } from "../contexts/SeasonContext";
-import { chargerExportSaison, erreurCompetition, exporterCompetition, lireFichierCompetition } from "../utils/competitionExcel";
+import { chargerToutesLesFiches, erreurCompetition, exporterCompetitionCsv, lireFichierCompetition } from "../utils/competitionExcel";
 import "./Competition.css";
 
 const EMPTY: AmbassadeurFields = { nom: "", prenom: "", dateNaissance: "", civilite: "", categories: "", groupe: "", email: "" };
@@ -77,15 +78,25 @@ function CompetitionSeason({ saison }: { saison: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
-  const [exportBatches, setExportBatches] = useState<Doc<"competition_ambassadeurs">[][] | null>(null);
   const formRef = useRef<HTMLHeadingElement>(null);
+  const deleteModalRef = useRef<HTMLDivElement>(null);
   const deleteCancelRef = useRef<HTMLButtonElement>(null);
   // La confirmation de suppression est une modale : elle reste visible quelle
-  // que soit la position du tableau et prend le focus (Échap annule).
+  // que soit la position du tableau, prend le focus, garde le focus à l'intérieur
+  // et se ferme par Échap.
+  useEffect(() => { if (deleting) deleteCancelRef.current?.focus(); }, [deleting]);
   useEffect(() => {
     if (!deleting) return;
-    deleteCancelRef.current?.focus();
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape" && !busy) setDeleting(null); };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !busy) { setDeleting(null); return; }
+      if (event.key !== "Tab" || !deleteModalRef.current) return;
+      const focusables = deleteModalRef.current.querySelectorAll<HTMLElement>('button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+      if (!focusables.length) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [deleting, busy]);
@@ -138,13 +149,13 @@ function CompetitionSeason({ saison }: { saison: string }) {
       </div>
     </header>
     <p className="competition-hint">La case « Partenariat signé » est un suivi manuel, sans envoi ni signature électronique. Civilité, catégorie et groupe sont des valeurs choisies dans des listes.</p>
-    {error && <p className="competition-notice competition-notice--error" role="alert">{error}</p>}
+    {error && !deleting && <p className="competition-notice competition-notice--error" role="alert">{error}</p>}
     {message && <p className="competition-notice competition-notice--info" role="status">{message}</p>}
 
     <div className="competition-toolbar competition-toolbar--principal">
       <button type="button" className="btn-primary" disabled={busy} onClick={() => openForm("new")}>Ajouter un ambassadeur</button>
-      <label className="competition-file competition-file--button">Importer XLSX <span>(200 lignes, 2 Mo)</span>
-        <input type="file" accept=".xlsx" disabled={busy} onChange={(event) => {
+      <label className="competition-file competition-file--button">Importer XLSX ou CSV <span>(200 lignes, 2 Mo)</span>
+        <input type="file" accept=".xlsx,.csv" disabled={busy} onChange={(event) => {
           const file = event.target.files?.[0]; event.target.value = "";
           if (!file) return;
           setPlans(null); setConfirmation(false); setEditing(null); setDeleting(null);
@@ -156,20 +167,12 @@ function CompetitionSeason({ saison }: { saison: string }) {
         }} />
       </label>
       <button type="button" className="btn-secondary" disabled={busy} onClick={() => void operation(async () => {
-        setExportBatches(null);
-        const batches = await chargerExportSaison((cursor) => convex.query(api.competition.list, { saison, paginationOpts: { cursor, numItems: 50, maximumRowsRead: 100 } }));
-        setExportBatches(batches);
-        setMessage(`${batches.reduce((n, b) => n + b.length, 0)} fiche(s) préparée(s), saison entière ${saison}.`);
-      })}>Préparer l’export de la saison (max. 2000)</button>
+        const rows = await chargerToutesLesFiches((cursor) => convex.query(api.competition.list, { saison, paginationOpts: { cursor, numItems: 50, maximumRowsRead: 100 } }));
+        exporterCompetitionCsv(rows, saison);
+        const limiteImport = rows.length > MAX_IMPORT ? ` Au-delà de ${MAX_IMPORT} fiches, découpez le fichier pour le réimport.` : "";
+        setMessage(`${rows.length} fiche(s) exportée(s) en CSV, saison entière ${saison}.${limiteImport}`);
+      })}>Exporter la saison en CSV (max. 2000)</button>
     </div>
-
-    {exportBatches && <section className="competition-panel" aria-label="Export complet de la saison">
-      <h2>Export de la saison {saison}</h2>
-      <p>Export de toute la saison, sans les filtres de la liste. Téléchargez chaque lot (200 fiches maximum) pour conserver l’ensemble. Évitez les modifications pendant la préparation paginée ; les révisions protègent la réimportation si les données changent ensuite.</p>
-      <div className="competition-toolbar">{exportBatches.map((batch, i) => <button key={i} className="btn-secondary" disabled={busy} onClick={() => void operation(async () => {
-        await exporterCompetition(batch, saison, `-lot-${i + 1}-sur-${exportBatches.length}`);
-      })}>Télécharger lot {i + 1}/{exportBatches.length} ({batch.length} fiches)</button>)}</div>
-    </section>}
 
     {editing && <section className="competition-panel" aria-labelledby="competition-form-title">
       <h2 id="competition-form-title" ref={formRef} tabIndex={-1}>{editing === "new" ? "Nouvel ambassadeur" : "Modifier l’ambassadeur"}</h2>
@@ -212,9 +215,10 @@ function CompetitionSeason({ saison }: { saison: string }) {
     </section>}
 
     {deleting && <div className="competition-modal-backdrop" onMouseDown={() => { if (!busy) setDeleting(null); }}>
-      <div className="competition-modal" role="dialog" aria-modal="true" aria-labelledby="competition-delete-title" onMouseDown={(event) => event.stopPropagation()}>
+      <div ref={deleteModalRef} className="competition-modal" role="dialog" aria-modal="true" aria-labelledby="competition-delete-title" aria-describedby="competition-delete-desc" onMouseDown={(event) => event.stopPropagation()}>
         <h2 id="competition-delete-title">Supprimer cette fiche ?</h2>
-        <p><strong>{deleting.nom} {deleting.prenom}</strong> · {saison}. Cette suppression est définitive.</p>
+        <p id="competition-delete-desc"><strong>{deleting.nom} {deleting.prenom}</strong> · {saison}. Cette suppression est définitive.</p>
+        {error && <p className="competition-notice competition-notice--error" role="alert">{error}</p>}
         <div className="competition-toolbar">
           <button type="button" className="competition-btn-danger" disabled={busy} onClick={() => void operation(async () => {
             await remove({ saison, id: deleting._id, revision: deleting.revision }); setDeleting(null); setMessage("Fiche supprimée.");
@@ -235,11 +239,11 @@ function CompetitionSeason({ saison }: { saison: string }) {
         <label>Groupe<select value={group} onChange={(e) => setGroup(e.target.value)}><option value="">Tous les groupes</option>{GROUPES.map((g) => <option key={g} value={g}>{g}</option>)}</select></label>
         <label>Partenariat signé<select value={signed} onChange={(e) => setSigned(e.target.value)}><option value="">Tous</option><option value="oui">Signé</option><option value="non">Non signé</option></select></label>
       </div>
-      <p className="competition-scope">Recherche et filtres portent sur la page affichée (50 fiches maximum). L’export inclut toute la saison, sans ces filtres. {visible.length} résultat(s).</p>
+      <p className="competition-scope">Recherche et filtres portent sur la page affichée (50 fiches maximum). L’export inclut toute la saison, sans ces filtres, et se réimporte par fichiers de {MAX_IMPORT} fiches maximum. {visible.length} résultat(s).</p>
       {page === undefined ? <p role="status">Chargement…</p> : visible.length === 0 ? <p className="competition-empty">Aucun ambassadeur sur cette page pour ces critères.</p> : <div className="competition-scroll"><table>
         <caption>Ambassadeurs · {saison}</caption>
         <thead><tr>{CHAMPS.map((champ) => <th key={champ.cle}>{champ.label}</th>)}<th>Partenariat signé</th><th>Actions</th></tr></thead>
-        <tbody>{visible.map((r) => <tr key={r._id}>{CHAMPS.map((champ) => <td key={champ.cle}>{champ.cle === "dateNaissance" ? formatDate(r.dateNaissance) : (r[champ.cle] || "—")}</td>)}<td><StatutSignature signe={r.partenariatSigne} /></td><td><div className="competition-row-actions"><button type="button" className="btn-icon competition-icon-btn" disabled={busy} title="Modifier" aria-label={`Modifier ${r.prenom} ${r.nom}`} onClick={() => openForm(r)}><Pencil size={18} aria-hidden="true" /></button><button type="button" className="btn-icon competition-icon-btn btn-icon--danger" disabled={busy} title="Supprimer" aria-label={`Supprimer ${r.prenom} ${r.nom}`} onClick={() => { setDeleting(r); setEditing(null); setPlans(null); }}><Trash2 size={18} aria-hidden="true" /></button></div></td></tr>)}</tbody>
+        <tbody>{visible.map((r) => <tr key={r._id}>{CHAMPS.map((champ) => <td key={champ.cle}>{champ.cle === "dateNaissance" ? formatDate(r.dateNaissance) : (r[champ.cle] || "—")}</td>)}<td><StatutSignature signe={r.partenariatSigne} /></td><td><div className="competition-row-actions"><button type="button" className="btn-icon competition-icon-btn" disabled={busy} title="Modifier" aria-label={`Modifier ${r.prenom} ${r.nom}`} onClick={() => openForm(r)}><Pencil size={18} aria-hidden="true" /></button><button type="button" className="btn-icon competition-icon-btn btn-icon--danger" disabled={busy} title="Supprimer" aria-label={`Supprimer ${r.prenom} ${r.nom}`} onClick={() => { setDeleting(r); setEditing(null); setPlans(null); setError(""); setMessage(""); }}><Trash2 size={18} aria-hidden="true" /></button></div></td></tr>)}</tbody>
       </table></div>}
       <div className="competition-toolbar competition-pagination">
         <button className="btn-secondary" disabled={busy || cursor === null} onClick={() => { setCursor(null); setPageNumber(1); setGroup(""); }}>Première page</button>

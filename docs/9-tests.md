@@ -45,10 +45,11 @@ ne déploie vers DEV ou PROD.
 ## Validation manuelle minimale
 
 Pour Compétition Arkose, voir [15-competition-arkose.md](15-competition-arkose.md).
-`npm test -- convex/competition.test.ts src/utils/competitionExcel.test.ts src/utils/competitionXlsxRoundtrip.test.ts src/utils/competitionBootstrapCli.test.ts`
+`npm test -- convex/competition.test.ts src/utils/competitionExcel.test.ts src/utils/competitionXlsxImport.test.ts src/utils/competitionBootstrapCli.test.ts`
 couvre les droits, saisons, CRUD, conflits, imports atomiques, bootstrap strict
-27 fiches uniques depuis 29 lignes source, l'export saison entier borné et le
-roundtrip binaire XLSX en mémoire.
+27 fiches uniques depuis 29 lignes source, l'export CSV saison entier borné et le
+roundtrip CSV (injection de formule, échappement), ainsi que la lecture d'un vrai
+XLSX en mémoire (cellule date, texte commençant par `=`).
 Le navigateur et l'import PROD ne sont
 pas exécutés par ces tests.
 
