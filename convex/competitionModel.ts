@@ -36,10 +36,6 @@ export const ambassadeurValidator = ambassadeurFields.extend({
   saison: v.string(), cleIdentite: v.string(), partenariatSigne: v.boolean(),
   revision: v.number(), updatedAt: v.number(), updatedBy: v.optional(v.id("users")),
   updatedSource: v.optional(v.literal("bootstrap")),
-  // DEPRECATED : déclaré optionnel le temps de la migration `colonne1`. Un
-  // validateur de retour Convex refuse toute propriété non déclarée : il faut
-  // donc le tolérer jusqu'au NARROW du schéma (voir docs/15-competition-arkose.md).
-  colonne1: v.optional(v.string()),
 });
 export const planValidator = v.object({
   row: importRowValidator,
