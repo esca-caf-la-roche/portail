@@ -1,6 +1,7 @@
 import { defineSchema, defineTable } from "convex/server";
 import { authTables } from "@convex-dev/auth/server";
 import { v } from "convex/values";
+import { ambassadeurFields } from "./competitionModel";
 
 export default defineSchema({
   ...authTables,
@@ -21,7 +22,15 @@ export default defineSchema({
   saisons: defineTable({
     nom: v.string(), // "2025-26"
     isDefault: v.boolean(),
-  }),
+  }).index("by_nom", ["nom"]),
+
+  competition_ambassadeurs: defineTable(ambassadeurFields.extend({
+    saison: v.string(), cleIdentite: v.string(), partenariatSigne: v.boolean(),
+    revision: v.number(), updatedAt: v.number(), updatedBy: v.optional(v.id("users")),
+    updatedSource: v.optional(v.literal("bootstrap")),
+  }))
+    .index("by_saison", ["saison"])
+    .index("by_saison_and_cleIdentite", ["saison", "cleIdentite"]),
 
   previsionnels: defineTable({
     nom: v.string(),
@@ -178,6 +187,7 @@ export default defineSchema({
           v.literal("remboursements_eleves"),
           v.literal("samedis"),
           v.literal("planning_salaries_samedis"),
+          v.literal("competition"),
         ),
         color: v.union(
           v.literal("bg-info"),

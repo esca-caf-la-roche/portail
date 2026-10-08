@@ -23,6 +23,7 @@ le détail métier de chaque module.
 |---|---|---|
 | Tableau de bord `/` | `src/pages/Dashboard.tsx`, `src/config/tiles.ts` | `convex/users.ts`, `convex/abo/compteur.ts` (répartition cours/abonnements matérialisée) |
 | Comptabilité `/compta` | `src/pages/Compta.tsx` | `convex/transactions.ts`, `convex/tiers.ts`, `convex/analytiques.ts`, `convex/typesDocuments.ts` |
+| Compétition `/competition` | `src/pages/Competition.tsx`, `src/utils/competitionExcel.ts` | `convex/competition.ts`, `convex/competitionModel.ts` ; voir [15-competition-arkose.md](15-competition-arkose.md) |
 | Paiements `/paiements/*` | `src/pages/Paiements/` | `convex/paiements.ts`, `convex/helloasso.ts`, `convex/drive.ts` |
 | Budget `/budget/*` | `src/pages/Budget/`, dont `RepartitionRecettes.tsx` | `convex/paie.ts`, `convex/cours.ts`, `convex/previsionnels.ts`, `convex/effectifs.ts`, `convex/budgetRecettes.ts` |
 | Licences `/licences-cours` | `src/pages/LicencesEnCours.tsx` | `convex/abo/licencesEnCours.ts`, `convex/abo/licences.ts`, `convex/abo/sync.ts` |

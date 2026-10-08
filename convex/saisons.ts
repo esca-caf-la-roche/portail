@@ -201,6 +201,12 @@ export const remove = mutation({
       );
     }
 
+    const ambassadeur = await ctx.db.query("competition_ambassadeurs")
+      .withIndex("by_saison", (q) => q.eq("saison", saison.nom)).first();
+    if (ambassadeur) {
+      throw new ConvexError("Cette saison contient des ambassadeurs compétition : supprimez-les d'abord.");
+    }
+
     // Données dérivées, générées automatiquement (createNext / planning des cours) :
     // on les nettoie en cascade pour ne pas laisser d'orphelins.
     await deleteBySaison(ctx, "previsionnels", saison.nom); // lignes auto restantes

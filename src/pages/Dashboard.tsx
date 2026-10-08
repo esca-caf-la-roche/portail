@@ -11,6 +11,7 @@ import {
   HandCoins,
   CalendarCheck,
   Route,
+  Trophy,
   type LucideIcon,
 } from "lucide-react";
 import { useQuery } from "convex/react";
@@ -25,6 +26,7 @@ const TILE_DETAILS: Record<TileId, { icon: LucideIcon; to: string }> = {
   compta: { icon: Calculator, to: "/compta" },
   paiements: { icon: CreditCard, to: "/paiements" },
   budget: { icon: PiggyBank, to: "/budget" },
+  competition: { icon: Trophy, to: "/competition" },
   abonnements: { icon: Mountain, to: "/gestion-abonnements" },
   licences_cours: { icon: ShieldCheck, to: "/licences-cours" },
   contacts_cours: { icon: Contact, to: "/contacts-cours" },
