@@ -89,22 +89,22 @@ aucune écriture. Les données des autres saisons ne sont pas modifiées.
 
 ## Migration — retrait de « Colonne 1 »
 
-Le champ `competition_ambassadeurs.colonne1` est retiré du modèle applicatif
-(import, export, formulaire, tableau) car il était vide partout et sans usage.
-La suppression suit le cycle **widen → migrate → narrow** :
+Le champ `competition_ambassadeurs.colonne1`, vide partout et sans usage, a été
+retiré du modèle applicatif (import, export, formulaire, tableau) et du schéma
+Convex. La suppression a suivi le cycle **widen → migrate → narrow** :
 
-1. **Widen** (déploiement courant) : `colonne1` reste déclaré `v.optional` dans
-   `convex/schema.ts`, marqué `DEPRECATED`, pour que les documents existants
-   restent valides et que les nouvelles écritures (sans le champ) passent.
-2. **Migrate** : lancer `migrations:migrateCompetitionSupprimerColonne1` sur DEV
-   puis PROD (accord explicite requis) pour effacer la valeur existante.
-   Contrôler ensuite qu'aucun document ne porte plus `colonne1`.
-3. **Narrow** (déploiement ultérieur) : supprimer la ligne `colonne1` du schéma
-   une fois tous les documents nettoyés.
+1. **Widen** : `colonne1` est resté déclaré `v.optional` dans
+   `convex/schema.ts` le temps de la migration.
+2. **Migrate** : `migrations:migrateCompetitionSupprimerColonne1` a effacé la
+   valeur sur les 28 documents PROD (2026-10-08), puis le contrôle a confirmé
+   qu'aucun document ne portait plus `colonne1`.
+3. **Narrow** : la ligne `colonne1` a été retirée du schéma et le code de
+   migration supprimé.
 
-Le retrait du champ du schéma ne peut pas être livré en même temps que la
+Le retrait du champ du schéma n'a pas pu être livré en même temps que la
 migration : Convex refuse un déploiement si des documents existants portent un
-champ absent du schéma.
+champ absent du schéma. L'ancienne colonne reste, elle, acceptée puis ignorée à
+l'import des anciens fichiers XLSX.
 
 ## Validation manuelle restant nécessaire
 

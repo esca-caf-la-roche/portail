@@ -28,11 +28,6 @@ export default defineSchema({
     saison: v.string(), cleIdentite: v.string(), partenariatSigne: v.boolean(),
     revision: v.number(), updatedAt: v.number(), updatedBy: v.optional(v.id("users")),
     updatedSource: v.optional(v.literal("bootstrap")),
-    // DEPRECATED (widen → migrate → narrow) : « Colonne 1 » n'a plus aucun
-    // usage côté métier. Le champ reste optionnel le temps que
-    // `migrateCompetitionSupprimerColonne1` efface les valeurs existantes ;
-    // il sera retiré du schéma (narrow) dans un déploiement ultérieur.
-    colonne1: v.optional(v.string()),
   }))
     .index("by_saison", ["saison"])
     .index("by_saison_and_cleIdentite", ["saison", "cleIdentite"]),
