@@ -9,6 +9,9 @@ export const META_COLONNES = ["Partenariat signé", "Saison", "Identifiant", "R�
 export const COLONNES_HISTORIQUES = ["Colonne 1"] as const;
 export const MAX_FILE_BYTES = 2 * 1024 * 1024;
 export const MAX_EXPORT = 2000;
+// Point-virgule : c'est le séparateur qu'Excel francophone attend nativement pour
+// un `.csv`. Une virgule y laisserait tout le contenu dans une seule colonne.
+export const SEPARATEUR_CSV = ";";
 type Cell = string | number | boolean | Date | null;
 
 export function erreurCompetition(error: unknown): string {
@@ -89,14 +92,95 @@ export function lireLignesExcel(data: Cell[][], saison: string): ImportRow[] {
   return rows;
 }
 
-/** Toutes les cellules sont des chaînes explicites : aucune formule Excel exécutée. */
-export function lignesExportExcel(rows: readonly Doc<"competition_ambassadeurs">[]): string[][] {
-  if (rows.length > MAX_IMPORT) throw new Error("Export réimportable limité à 200 fiches. Filtrez ou exportez par pages.");
+/**
+ * Neutralise l'injection de formule : une cellule commençant par `=`, `+`, `-`,
+ * `@`, une tabulation ou un retour est préfixée d'une apostrophe, retirée à la
+ * réimportation. Un CSV n'a pas de type de cellule : sans cette précaution,
+ * Excel exécuterait la formule à l'ouverture d'un fichier pourtant inoffensif
+ * à l'import.
+ */
+function neutraliserFormule(valeur: string): string {
+  return /^[=+\-@\t\r]/.test(valeur) ? `'${valeur}` : valeur;
+}
+
+function restaurerFormule(valeur: string): string {
+  return /^'[=+\-@\t\r]/.test(valeur) ? valeur.slice(1) : valeur;
+}
+
+function celluleCsv(valeur: string): string {
+  const neutralisee = neutraliserFormule(valeur);
+  return /[";\r\n]/.test(neutralisee) ? `"${neutralisee.replace(/"/g, '""')}"` : neutralisee;
+}
+
+/**
+ * Matrice texte canonique (en-têtes, puis fiches) partagée par l'export CSV.
+ * Toutes les cellules sont explicitement textuelles : aucune formule exécutable.
+ */
+export function lignesExport(rows: readonly Doc<"competition_ambassadeurs">[]): string[][] {
+  if (rows.length > MAX_EXPORT) throw new Error("Export refusé : saison supérieure à 2000 fiches. Aucun fichier partiel généré.");
   return [[...COLONNES, ...META_COLONNES], ...rows.map((r) => [r.nom, r.prenom, r.dateNaissance, r.civilite, r.categories, r.groupe, r.email, r.partenariatSigne ? "Oui" : "Non", r.saison, r._id, String(r.revision)])];
 }
 
-/** Chargement ponctuel borné, jamais un abonnement à la saison entière. */
-export async function chargerExportSaison<T>(fetchPage: (cursor: string | null) => Promise<{ page: T[]; isDone: boolean; continueCursor: string }>): Promise<T[][]> {
+/** CSV complet de la saison : BOM UTF-8 (accents Excel) et séparateur point-virgule. */
+export function genererCsv(rows: readonly Doc<"competition_ambassadeurs">[]): string {
+  const lignes = lignesExport(rows).map((ligne) => ligne.map(celluleCsv).join(SEPARATEUR_CSV));
+  return `\uFEFF${lignes.join("\r\n")}\r\n`;
+}
+
+function detecterSeparateur(texte: string): string {
+  const premiere = texte.split(/\r?\n/, 1)[0] ?? "";
+  return (premiere.match(/;/g)?.length ?? 0) >= (premiere.match(/,/g)?.length ?? 0) ? ";" : ",";
+}
+
+/** Parseur CSV RFC 4180 minimal : guillemets, `""` échappé, sauts de ligne internes. */
+export function parserCsv(texte: string): string[][] {
+  const source = texte.replace(/^\uFEFF/, "");
+  const separateur = detecterSeparateur(source);
+  const lignes: string[][] = [];
+  let ligne: string[] = [];
+  let champ = "";
+  let guillemets = false;
+  for (let i = 0; i < source.length; i++) {
+    const c = source[i];
+    if (guillemets) {
+      if (c === '"') {
+        if (source[i + 1] === '"') { champ += '"'; i++; }
+        else guillemets = false;
+      } else champ += c;
+      continue;
+    }
+    if (c === '"') guillemets = true;
+    else if (c === separateur) { ligne.push(champ); champ = ""; }
+    else if (c === "\r" || c === "\n") {
+      if (c === "\r" && source[i + 1] === "\n") i++;
+      ligne.push(champ); champ = "";
+      lignes.push(ligne); ligne = [];
+    } else champ += c;
+  }
+  if (champ !== "" || ligne.length) { ligne.push(champ); lignes.push(ligne); }
+  return lignes;
+}
+
+export function lireLignesCsv(texte: string, saison: string): ImportRow[] {
+  return lireLignesExcel(parserCsv(texte).map((ligne) => ligne.map(restaurerFormule)), saison);
+}
+
+export function exporterCompetitionCsv(rows: readonly Doc<"competition_ambassadeurs">[], saison: string) {
+  const blob = new Blob([genererCsv(rows)], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const lien = document.createElement("a");
+  lien.href = url;
+  lien.download = `ambassadeurs-arkose-${saison}.csv`;
+  document.body.appendChild(lien);
+  lien.click();
+  lien.remove();
+  // Révocation différée : Firefox/Safari annulent le téléchargement si l'URL est
+  // révoquée dans le même tick que le clic.
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+/** Chargement ponctuel borné de toute la saison, jamais un abonnement à la saison entière. */
+export async function chargerToutesLesFiches<T>(fetchPage: (cursor: string | null) => Promise<{ page: T[]; isDone: boolean; continueCursor: string }>): Promise<T[]> {
   const rows: T[] = [];
   const cursors = new Set<string>();
   let cursor: string | null = null;
@@ -104,11 +188,7 @@ export async function chargerExportSaison<T>(fetchPage: (cursor: string | null) 
     const result = await fetchPage(cursor);
     rows.push(...result.page);
     if (rows.length > MAX_EXPORT) throw new Error("Export refusé : saison supérieure à 2000 fiches. Aucun fichier partiel généré.");
-    if (result.isDone) {
-      const batches: T[][] = [];
-      for (let i = 0; i < rows.length; i += MAX_IMPORT) batches.push(rows.slice(i, i + MAX_IMPORT));
-      return batches;
-    }
+    if (result.isDone) return rows;
     if (!result.continueCursor || cursors.has(result.continueCursor)) throw new Error("Pagination interrompue. Aucun export partiel.");
     cursors.add(result.continueCursor);
     cursor = result.continueCursor;
@@ -118,7 +198,8 @@ export async function chargerExportSaison<T>(fetchPage: (cursor: string | null) 
 
 export async function lireFichierCompetition(file: File, saison: string): Promise<ImportRow[]> {
   if (file.size > MAX_FILE_BYTES) throw new Error("Fichier limité à 2 Mo.");
-  if (!/\.xlsx$/i.test(file.name)) throw new Error("Sélectionnez un fichier .xlsx.");
+  if (/\.csv$/i.test(file.name)) return lireLignesCsv(await file.text(), saison);
+  if (!/\.xlsx$/i.test(file.name)) throw new Error("Sélectionnez un fichier .xlsx ou .csv.");
   const { default: readXlsxFile } = await import("read-excel-file/browser");
   const sheets = await readXlsxFile(file);
   const filled = sheets.filter((s) => s.data.length > 0);
@@ -128,10 +209,4 @@ export async function lireFichierCompetition(file: File, saison: string): Promis
     throw new Error("Type de cellule Excel non pris en charge.");
   }));
   return lireLignesExcel(data, saison);
-}
-
-export async function exporterCompetition(rows: readonly Doc<"competition_ambassadeurs">[], saison: string, suffix = "") {
-  const { default: writeXlsxFile } = await import("write-excel-file/browser");
-  const cells = lignesExportExcel(rows).map((r) => r.map((value) => ({ type: String, value })));
-  await writeXlsxFile(cells).toFile(`ambassadeurs-arkose-${saison}${suffix}.xlsx`);
 }

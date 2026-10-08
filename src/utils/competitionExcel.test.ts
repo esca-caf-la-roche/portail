@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import type { Doc, Id } from "../../convex/_generated/dataModel";
-import { chargerExportSaison, COLONNES, dateExcel, lignesExportExcel, lireLignesExcel } from "./competitionExcel";
+import { chargerToutesLesFiches, COLONNES, dateExcel, genererCsv, lignesExport, lireLignesCsv, lireLignesExcel, parserCsv } from "./competitionExcel";
 
 const base = ["Exemple", "Camille", "2005-02-03", "Homme", "Compétiteur", "Groupe Perf.", "camille@example.test"];
 const doc: Doc<"competition_ambassadeurs"> = {
@@ -8,20 +8,31 @@ const doc: Doc<"competition_ambassadeurs"> = {
   nom: "=nom", prenom: "Camille", dateNaissance: "2005-02-03", civilite: "Homme", categories: "Compétiteur", groupe: "Groupe Perf.", email: "camille@example.test", cleIdentite: "test", partenariatSigne: true, revision: 2, updatedAt: 0, updatedBy: "user" as Id<"users">,
 };
 
-describe("XLSX compétition", () => {
-  test.each([51, 200, 201, 2000])("export saison entier %i lignes sans troncature, lots réimportables", async (count) => {
+describe("CSV compétition", () => {
+  test.each([51, 200])("export saison entier %i lignes sans troncature, CSV réimportable", async (count) => {
     const all = Array.from({ length: count }, (_, i) => ({ ...doc, nom: `Exemple ${i}` }));
-    const batches = await chargerExportSaison(async (cursor) => {
+    const rows = await chargerToutesLesFiches(async (cursor) => {
       const start = Number(cursor ?? 0);
       return { page: all.slice(start, start + 50), isDone: start + 50 >= count, continueCursor: String(start + 50) };
     });
-    expect(batches.flat()).toEqual(all);
-    expect(batches.every((b) => b.length <= 200)).toBe(true);
-    expect(batches.flatMap((b) => lireLignesExcel(lignesExportExcel(b), "2026-27"))).toHaveLength(count);
+    expect(rows).toEqual(all);
+    expect(lignesExport(rows)).toHaveLength(count + 1);
+    expect(lireLignesCsv(genererCsv(rows), "2026-27")).toHaveLength(count);
   });
-  test("export refuse 2001 et pagination bloquée sans lot partiel", async () => {
-    await expect(chargerExportSaison(async () => ({ page: Array(2001).fill(doc), isDone: true, continueCursor: "" }))).rejects.toThrow("2000");
-    await expect(chargerExportSaison(async () => ({ page: [], isDone: false, continueCursor: "same" }))).rejects.toThrow("Pagination");
+  test.each([201, 2000])("export saison entier %i lignes en un CSV, réimport API plafonné à 200", async (count) => {
+    const all = Array.from({ length: count }, (_, i) => ({ ...doc, nom: `Exemple ${i}` }));
+    const rows = await chargerToutesLesFiches(async (cursor) => {
+      const start = Number(cursor ?? 0);
+      return { page: all.slice(start, start + 50), isDone: start + 50 >= count, continueCursor: String(start + 50) };
+    });
+    const csv = genererCsv(rows);
+    expect(parserCsv(csv)).toHaveLength(count + 1); // toutes les fiches exportées
+    expect(() => lireLignesCsv(csv, "2026-27")).toThrow("200"); // l'import API reste borné à 200
+  });
+  test("export refuse 2001 et pagination bloquée sans fichier partiel", async () => {
+    await expect(chargerToutesLesFiches(async () => ({ page: Array(2001).fill(doc), isDone: true, continueCursor: "" }))).rejects.toThrow("2000");
+    await expect(chargerToutesLesFiches(async () => ({ page: [], isDone: false, continueCursor: "same" }))).rejects.toThrow("Pagination");
+    await expect(chargerToutesLesFiches(async () => ({ page: Array(2001).fill(doc), isDone: true, continueCursor: "" }))).rejects.toThrow("Aucun fichier partiel");
   });
   test("conserve colonne vide, absence de signature et accents des colonnes", () => {
     const rows = lireLignesExcel([[...COLONNES], base], "2026-27");
@@ -34,12 +45,18 @@ describe("XLSX compétition", () => {
     expect(rows[0]).not.toHaveProperty("colonne1");
     expect(() => lireLignesExcel([[...COLONNES], ["Exemple", "Camille", "2005-02-03", "Homme", "Inconnue", "Groupe Perf.", "camille@example.test"]], "2026-27")).toThrow("Catégorie");
   });
-  test("roundtrip export réimportable avec ID, révision, saison et signature", () => {
-    const matrix = lignesExportExcel([doc]);
-    expect(matrix[1][0]).toBe("=nom");
-    const rows = lireLignesExcel(matrix, "2026-27");
+  test("roundtrip CSV réimportable avec ID, révision, saison et signature", () => {
+    const csv = genererCsv([doc]);
+    // La formule est neutralisée à l'écriture (Excel ne l'exécute pas)…
+    expect(csv).toContain("'=nom");
+    const rows = lireLignesCsv(csv, "2026-27");
     expect(rows[0]).toMatchObject({ id: doc._id, revision: 2, saison: "2026-27", partenariatSigne: true, nom: "=nom", categories: "Compétiteur" });
-    expect(() => lireLignesExcel(matrix, "2025-26")).toThrow("saison");
+    expect(() => lireLignesCsv(csv, "2025-26")).toThrow("saison");
+  });
+  test("CSV : guillemets, point-virgule et saut de ligne encadrés puis restaurés", () => {
+    const special = { ...doc, nom: 'Nom; avec "guillemets"', prenom: "=2+2", email: "" };
+    const rows = lireLignesCsv(genererCsv([special]), "2026-27");
+    expect(rows[0]).toMatchObject({ nom: 'Nom; avec "guillemets"', prenom: "=2+2", email: "" });
   });
   test("dates UTC, françaises, ISO, bissextiles et ambiguïtés", () => {
     expect(dateExcel(new Date("2004-02-29T00:00:00Z"))).toBe("2004-02-29");
