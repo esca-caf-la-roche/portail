@@ -544,6 +544,18 @@ export const migratePlanningSalariesOperationsDate = migrations.define({
   },
 });
 
+// WIDEN → MIGRATE → NARROW : retire « Colonne 1 », vide partout et sans usage.
+// Le schéma élargi conserve `colonne1` optionnel pour accepter les documents
+// existants ; cette migration efface la valeur. Le NARROW (retrait du champ du
+// schéma) est un déploiement ultérieur, après contrôle d'absence de valeur.
+export const migrateCompetitionSupprimerColonne1 = migrations.define({
+  table: "competition_ambassadeurs",
+  migrateOne: async (ctx, ambassadeur) => {
+    if (ambassadeur.colonne1 === undefined) return;
+    await ctx.db.patch(ambassadeur._id, { colonne1: undefined });
+  },
+});
+
 const vInspectionEmailsUtilisateurs = v.object({
   lus: v.number(),
   sans_email: v.number(),

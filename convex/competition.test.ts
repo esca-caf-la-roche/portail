@@ -3,10 +3,10 @@ import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
 import { api, internal } from "./_generated/api";
 import schema from "./schema";
-import type { AmbassadeurFields, ImportRow } from "./competitionModel";
+import { GROUPES, type AmbassadeurFields, type ImportRow } from "./competitionModel";
 
 const modules = import.meta.glob("./**/*.ts");
-const fields: AmbassadeurFields = { nom: "Exemple", prenom: "Camille", dateNaissance: "2005-02-03", civilite: "", categories: "U21", colonne1: "", groupe: "Groupe A", email: "camille@example.test" };
+const fields: AmbassadeurFields = { nom: "Exemple", prenom: "Camille", dateNaissance: "2005-02-03", civilite: "Homme", categories: "Compétiteur", groupe: "Groupe Perf.", email: "camille@example.test" };
 const saison = "2026-27";
 const paginationOpts = { cursor: null, numItems: 50, maximumRowsRead: 100 };
 
@@ -44,7 +44,7 @@ describe("compétition : sécurité, saisons et concurrence", () => {
     expect(await t.mutation(internal.competition.bootstrapInitialSeason, args)).toEqual({ created: 0, unchanged: 27 });
     expect(await t.run((ctx) => ctx.db.query("competition_ambassadeurs").collect())).toEqual(before);
     expect(await t.run((ctx) => ctx.db.query("userSettings").collect())).toEqual(settingsBefore);
-    await expect(t.mutation(internal.competition.bootstrapInitialSeason, { ...args, rows: rows.map((r, i) => i === 26 ? { ...r, groupe: "Divergent" } : r) })).rejects.toThrow("divergentes");
+    await expect(t.mutation(internal.competition.bootstrapInitialSeason, { ...args, rows: rows.map((r, i) => i === 26 ? { ...r, groupe: GROUPES[2] } : r) })).rejects.toThrow("divergentes");
     await expect(t.mutation(internal.competition.bootstrapInitialSeason, { ...args, rows: rows.map((r, i) => i === 26 ? { ...r, partenariatSigne: true } : r) })).rejects.toThrow("27");
     await staff.mutation(api.competition.update, { saison, id: before[26]._id, revision: 1, fields: { ...fields, nom: rows[26].nom }, partenariatSigne: true });
     await expect(t.mutation(internal.competition.bootstrapInitialSeason, args)).rejects.toThrow("divergentes");
@@ -104,7 +104,7 @@ describe("compétition : sécurité, saisons et concurrence", () => {
 
   test("validation dates, champs, saison, pagination et suppression saison", async () => {
     const { staff, saisonId } = await setup();
-    for (const invalid of [{ ...fields, dateNaissance: "2005-02-29" }, { ...fields, nom: "" }, { ...fields, email: "a@b.test,c@d.test" }, { ...fields, groupe: "a".repeat(201) }, { ...fields, colonne1: "a\nb" }]) {
+    for (const invalid of [{ ...fields, dateNaissance: "2005-02-29" }, { ...fields, nom: "" }, { ...fields, email: "a@b.test,c@d.test" }, { ...fields, groupe: "a".repeat(201) }, { ...fields, categories: "Inconnue" }]) {
       await expect(staff.mutation(api.competition.create, { saison, fields: invalid, partenariatSigne: false })).rejects.toThrow();
     }
     await expect(staff.query(api.competition.list, { saison: "2030-31", paginationOpts })).rejects.toThrow("introuvable");
@@ -152,9 +152,9 @@ describe("compétition : sécurité, saisons et concurrence", () => {
   test("conflit après preview et export périmé : aucun write partiel", async () => {
     const { t, staff } = await setup();
     const id = await staff.mutation(api.competition.create, { saison, fields, partenariatSigne: false });
-    const plans = await staff.query(api.competition.previewImport, { saison, rows: [{ ...fields, nom: "Nouveau" }, { ...fields, groupe: "B" }] });
+    const plans = await staff.query(api.competition.previewImport, { saison, rows: [{ ...fields, nom: "Nouveau" }, { ...fields, groupe: GROUPES[1] }] });
     expect(plans[1].before).toEqual({ ...fields, partenariatSigne: false });
-    expect(plans[1].row.groupe).toBe("B");
+    expect(plans[1].row.groupe).toBe(GROUPES[1]);
     await staff.mutation(api.competition.update, { saison, id, revision: 1, fields, partenariatSigne: true });
     await expect(staff.mutation(api.competition.importRows, { saison, plans })).rejects.toThrow("Conflit");
     expect((await staff.query(api.competition.list, { saison, paginationOpts })).page).toHaveLength(1);
@@ -162,6 +162,6 @@ describe("compétition : sécurité, saisons et concurrence", () => {
     const absent = await staff.query(api.competition.previewImport, { saison, rows: [{ ...fields, nom: "Concurrent" }] });
     await staff.mutation(api.competition.create, { saison, fields: { ...fields, nom: "Concurrent" }, partenariatSigne: false });
     await expect(staff.mutation(api.competition.importRows, { saison, plans: absent })).rejects.toThrow("Conflit");
-    expect(await t.run((ctx) => ctx.db.get(id))).toMatchObject({ groupe: "Groupe A", partenariatSigne: true });
+    expect(await t.run((ctx) => ctx.db.get(id))).toMatchObject({ groupe: fields.groupe, partenariatSigne: true });
   });
 });

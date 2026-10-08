@@ -2,8 +2,11 @@ import { ConvexError } from "convex/values";
 import type { Doc, Id } from "../../convex/_generated/dataModel";
 import { cleIdentite, dateValide, MAX_IMPORT, nettoyerChamps, normaliserTexte, verifierRevision, type ImportRow } from "../../convex/competitionModel";
 
-export const COLONNES = ["Nom", "Prénom", "Date de naissance", "Civilité", "Catégories", "Colonne 1", "Quels groupe", "Email"] as const;
+export const COLONNES = ["Nom", "Prénom", "Date de naissance", "Civilité", "Catégories", "Quels groupe", "Email"] as const;
 export const META_COLONNES = ["Partenariat signé", "Saison", "Identifiant", "Révision"] as const;
+// Colonne historique supprimée : acceptée à l'import mais ignorée, pour rester
+// compatible avec les anciens exports encore détenus par les utilisateurs.
+export const COLONNES_HISTORIQUES = ["Colonne 1"] as const;
 export const MAX_FILE_BYTES = 2 * 1024 * 1024;
 export const MAX_EXPORT = 2000;
 type Cell = string | number | boolean | Date | null;
@@ -40,7 +43,7 @@ function texte(value: Cell | undefined): string {
 export function lireLignesExcel(data: Cell[][], saison: string): ImportRow[] {
   if (data.length > MAX_IMPORT + 1) throw new Error("Fichier limité à 200 lignes de données.");
   const headers = (data[0] ?? []).map((cell) => normaliserTexte(texte(cell)));
-  const accepted = [...COLONNES, ...META_COLONNES].map(normaliserTexte);
+  const accepted = [...COLONNES, ...META_COLONNES, ...COLONNES_HISTORIQUES].map(normaliserTexte);
   if (headers.length > accepted.length || headers.some((h) => !accepted.includes(h)) || new Set(headers).size !== headers.length) throw new Error("Colonnes inconnues ou dupliquées.");
   for (const header of COLONNES) if (!headers.includes(normaliserTexte(header))) throw new Error(`Colonne obligatoire absente : ${header}.`);
   const index = (header: string) => headers.indexOf(normaliserTexte(header));
@@ -53,7 +56,7 @@ export function lireLignesExcel(data: Cell[][], saison: string): ImportRow[] {
     try {
       if (cells.length > headers.length) throw new Error("Données sans en-tête.");
       const get = (header: string) => cells[index(header)];
-      const fields = nettoyerChamps({ nom: texte(get("Nom")), prenom: texte(get("Prénom")), dateNaissance: dateExcel(get("Date de naissance") ?? null), civilite: texte(get("Civilité")), categories: texte(get("Catégories")), colonne1: texte(get("Colonne 1")), groupe: texte(get("Quels groupe")), email: texte(get("Email")) });
+      const fields = nettoyerChamps({ nom: texte(get("Nom")), prenom: texte(get("Prénom")), dateNaissance: dateExcel(get("Date de naissance") ?? null), civilite: texte(get("Civilité")), categories: texte(get("Catégories")), groupe: texte(get("Quels groupe")), email: texte(get("Email")) });
       const row: ImportRow = { ...fields };
       if (index("Saison") >= 0) {
         row.saison = texte(get("Saison")).trim();
@@ -89,7 +92,7 @@ export function lireLignesExcel(data: Cell[][], saison: string): ImportRow[] {
 /** Toutes les cellules sont des chaînes explicites : aucune formule Excel exécutée. */
 export function lignesExportExcel(rows: readonly Doc<"competition_ambassadeurs">[]): string[][] {
   if (rows.length > MAX_IMPORT) throw new Error("Export réimportable limité à 200 fiches. Filtrez ou exportez par pages.");
-  return [[...COLONNES, ...META_COLONNES], ...rows.map((r) => [r.nom, r.prenom, r.dateNaissance, r.civilite, r.categories, r.colonne1, r.groupe, r.email, r.partenariatSigne ? "Oui" : "Non", r.saison, r._id, String(r.revision)])];
+  return [[...COLONNES, ...META_COLONNES], ...rows.map((r) => [r.nom, r.prenom, r.dateNaissance, r.civilite, r.categories, r.groupe, r.email, r.partenariatSigne ? "Oui" : "Non", r.saison, r._id, String(r.revision)])];
 }
 
 /** Chargement ponctuel borné, jamais un abonnement à la saison entière. */
