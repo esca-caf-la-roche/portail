@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useAction, useConvex, useMutation, useQuery } from "convex/react";
-import { Pencil, Trash2 } from "lucide-react";
+import { Download, Eye, EyeOff, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import type { Infer } from "convex/values";
 import { api } from "../../convex/_generated/api";
 import type { Doc, Id } from "../../convex/_generated/dataModel";
@@ -66,10 +66,13 @@ function CompetitionSeason({ saison }: { saison: string }) {
   const synchroniserArkose = useAction(api.competitionArkoseWebhook.synchroniser);
   const lierSignatureArkose = useMutation(api.competition.lierSignatureArkose);
   const delierSignatureArkose = useMutation(api.competition.delierSignatureArkose);
+  const masquerSignatureArkose = useMutation(api.competition.masquerSignatureArkose);
+  const afficherSignatureArkose = useMutation(api.competition.afficherSignatureArkose);
   const [cursor, setCursor] = useState<string | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
   const page = useQuery(api.competition.list, saison ? { saison, paginationOpts: { cursor, numItems: 50, maximumRowsRead: 100 } } : "skip");
-  const signaturesArkose = useQuery(api.competition.listSignaturesArkose, saison ? { saison } : "skip");
+  const [showHiddenSignatures, setShowHiddenSignatures] = useState(false);
+  const signaturesArkose = useQuery(api.competition.listSignaturesArkose, saison ? { saison, inclureMasquees: showHiddenSignatures } : "skip");
   const ambassadeursArkose = useQuery(api.competition.listAmbassadeursArkose, saison ? { saison } : "skip");
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("");
@@ -173,28 +176,29 @@ function CompetitionSeason({ saison }: { saison: string }) {
           });
         }} />
       </label>
-      <button type="button" className="btn-secondary" disabled={busy} onClick={() => void operation(async () => {
+      <button type="button" className="btn-secondary competition-action-button" disabled={busy} onClick={() => void operation(async () => {
         const rows = await chargerToutesLesFiches((cursor) => convex.query(api.competition.list, { saison, paginationOpts: { cursor, numItems: 50, maximumRowsRead: 100 } }));
         exporterCompetitionCsv(rows, saison);
         const limiteImport = rows.length > MAX_IMPORT ? ` Au-delà de ${MAX_IMPORT} fiches, découpez le fichier pour le réimport.` : "";
         setMessage(`${rows.length} fiche(s) exportée(s) en CSV, saison entière ${saison}.${limiteImport}`);
-      })}>Exporter la saison en CSV (max. 2000)</button>
-      <button type="button" className="btn-secondary" disabled={busy} onClick={() => void operation(async () => {
+      })}><Download size={18} aria-hidden="true" /><span><strong>Exporter la saison</strong><small>CSV Excel · jusqu’à 2 000 fiches</small></span></button>
+      <button type="button" className="btn-secondary competition-action-button" disabled={busy} onClick={() => void operation(async () => {
         const result = await synchroniserArkose({ saison });
         setMessage(`Arkose : ${result.recus} signature(s) reçue(s), ${result.autoLinked} rapprochée(s) automatiquement, ${result.queued} à relier, ${result.ignored} déjà connue(s).`);
-      })}>Importer les signatures Arkose</button>
+      })}><RefreshCw size={18} aria-hidden="true" className={busy ? "competition-spin" : undefined} /><span><strong>Importer les signatures Arkose</strong><small>Synchronisation à la demande · aucune donnée envoyée</small></span></button>
     </div>
 
     <section className="competition-panel" aria-labelledby="competition-arkose-title">
       <h2 id="competition-arkose-title">Signatures Arkose à rapprocher</h2>
-      <p>Une signature sans correspondance unique reste ici. Sélectionnez un ou plusieurs ambassadeurs : un adulte peut signer pour plusieurs enfants.</p>
+      <p>Une signature sans correspondance unique reste ici. Sélectionnez un ou plusieurs ambassadeurs : un adulte peut signer pour plusieurs enfants. Une signature de test peut être masquée sans être supprimée.</p>
+      <label className="competition-check competition-hidden-toggle"><input type="checkbox" checked={showHiddenSignatures} onChange={(event) => setShowHiddenSignatures(event.target.checked)} /> Afficher les signatures masquées</label>
       {signaturesArkose === undefined || ambassadeursArkose === undefined ? <p role="status">Chargement des signatures…</p> : signaturesArkose.length === 0 ? <p className="competition-empty">Aucune signature Arkose importée.</p> : <div className="competition-scroll"><table><caption>Signatures Arkose de la saison</caption><thead><tr><th>Signataire reçu</th><th>Ambassadeurs à relier</th><th>Action</th></tr></thead><tbody>{signaturesArkose.map((signatureArkose) => {
         const selection = selectionArkose[signatureArkose._id] ?? [];
-        return <tr key={signatureArkose._id}><td>{signatureArkose.prenom} {signatureArkose.nom}<br /><StatutSignature signe={signatureArkose.statut === "lie"} /></td><td>{signatureArkose.liens.length > 0 && <p>{signatureArkose.liens.map((lien) => <span key={lien.ambassadeurId} className="competition-arkose-link">{lien.prenom} {lien.nom} <button type="button" className="btn-text" disabled={busy} onClick={() => void operation(async () => { await delierSignatureArkose({ saison, signatureId: signatureArkose._id, ambassadeurId: lien.ambassadeurId }); setMessage("Liaison Arkose retirée : vous pouvez corriger ou supprimer la fiche."); })}>Retirer</button></span>)}</p>}<fieldset disabled={busy} className="competition-arkose-options"><legend className="sr-only">Ambassadeurs pour {signatureArkose.prenom} {signatureArkose.nom}</legend>{ambassadeursArkose.map((ambassadeur) => <label key={ambassadeur._id} className="competition-check"><input type="checkbox" checked={selection.includes(ambassadeur._id)} onChange={(event) => setSelectionArkose((current) => ({ ...current, [signatureArkose._id]: event.target.checked ? [...selection, ambassadeur._id] : selection.filter((id) => id !== ambassadeur._id) }))} />{ambassadeur.prenom} {ambassadeur.nom} · {formatDate(ambassadeur.dateNaissance)}</label>)}</fieldset></td><td><button type="button" className="btn-primary" disabled={busy || selection.length === 0} onClick={() => void operation(async () => {
+        return <tr key={signatureArkose._id}><td>{signatureArkose.prenom} {signatureArkose.nom}<br />{signatureArkose.statut === "masquee" ? <span className="competition-action competition-action--masquee">Masquée</span> : <StatutSignature signe={signatureArkose.statut === "lie"} />}</td><td>{signatureArkose.statut !== "masquee" && <>{signatureArkose.liens.length > 0 && <p>{signatureArkose.liens.map((lien) => <span key={lien.ambassadeurId} className="competition-arkose-link">{lien.prenom} {lien.nom} <button type="button" className="btn-text" disabled={busy} onClick={() => void operation(async () => { await delierSignatureArkose({ saison, signatureId: signatureArkose._id, ambassadeurId: lien.ambassadeurId }); setMessage("Liaison Arkose retirée : vous pouvez corriger ou supprimer la fiche."); })}>Retirer</button></span>)}</p>}<fieldset disabled={busy} className="competition-arkose-options"><legend className="sr-only">Ambassadeurs pour {signatureArkose.prenom} {signatureArkose.nom}</legend>{ambassadeursArkose.map((ambassadeur) => <label key={ambassadeur._id} className="competition-check"><input type="checkbox" checked={selection.includes(ambassadeur._id)} onChange={(event) => setSelectionArkose((current) => ({ ...current, [signatureArkose._id]: event.target.checked ? [...selection, ambassadeur._id] : selection.filter((id) => id !== ambassadeur._id) }))} />{ambassadeur.prenom} {ambassadeur.nom} · {formatDate(ambassadeur.dateNaissance)}</label>)}</fieldset></>}</td><td>{signatureArkose.statut === "masquee" ? <button type="button" className="btn-secondary competition-inline-action" disabled={busy} onClick={() => void operation(async () => { await afficherSignatureArkose({ saison, signatureId: signatureArkose._id }); setMessage("Signature Arkose réaffichée."); })}><Eye size={16} aria-hidden="true" /> Réafficher</button> : <><button type="button" className="btn-primary" disabled={busy || selection.length === 0} onClick={() => void operation(async () => {
           const result = await lierSignatureArkose({ saison, signatureId: signatureArkose._id, ambassadeurIds: selection });
           setSelectionArkose((current) => ({ ...current, [signatureArkose._id]: [] }));
           setMessage(`${result.lies} liaison(s) Arkose enregistrée(s).`);
-        })}>Relier la signature</button></td></tr>;
+        })}>Relier la signature</button>{signatureArkose.statut === "a_rapprocher" && <button type="button" className="btn-text competition-inline-action" disabled={busy} onClick={() => void operation(async () => { await masquerSignatureArkose({ saison, signatureId: signatureArkose._id }); setMessage("Signature Arkose masquée. Elle sera ignorée lors des prochains imports."); })}><EyeOff size={16} aria-hidden="true" /> Masquer</button>}</>}</td></tr>;
       })}</tbody></table></div>}
     </section>
 

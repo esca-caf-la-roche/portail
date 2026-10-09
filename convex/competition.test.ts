@@ -39,6 +39,17 @@ describe("compétition : sécurité, saisons et concurrence", () => {
     expect(await t.run((ctx) => ctx.db.get(childOne))).toMatchObject({ partenariatSigne: true });
     expect(await t.run((ctx) => ctx.db.get(childTwo))).toMatchObject({ partenariatSigne: true });
   });
+  test("signature Arkose sans correspondance : masquage persistant et réaffichage", async () => {
+    const { t, staff, operatorId } = await setup();
+    await t.mutation(internal.competitionArkoseWebhook.enregistrerLot, { saison, userId: operatorId, items: [{ nom: "Test", prenom: "Signature" }] });
+    const [signature] = await staff.query(api.competition.listSignaturesArkose, { saison });
+    await staff.mutation(api.competition.masquerSignatureArkose, { saison, signatureId: signature._id });
+    expect(await staff.query(api.competition.listSignaturesArkose, { saison })).toEqual([]);
+    expect(await staff.query(api.competition.listSignaturesArkose, { saison, inclureMasquees: true })).toMatchObject([{ _id: signature._id, statut: "masquee" }]);
+    expect(await t.mutation(internal.competitionArkoseWebhook.enregistrerLot, { saison, userId: operatorId, items: [{ nom: "TEST", prenom: "signature" }] })).toEqual({ queued: 0, autoLinked: 0, ignored: 1 });
+    await staff.mutation(api.competition.afficherSignatureArkose, { saison, signatureId: signature._id });
+    expect(await staff.query(api.competition.listSignaturesArkose, { saison })).toMatchObject([{ _id: signature._id, statut: "a_rapprocher" }]);
+  });
 
   test("webhook Arkose : une correspondance unique est automatiquement signée, les rejouements sont sans écriture", async () => {
     const { t, staff, operatorId } = await setup();
@@ -126,6 +137,8 @@ describe("compétition : sécurité, saisons et concurrence", () => {
       await expect(denied.mutation(api.competition.setPartenariatSigne, { saison, id: fakeId, revision: 1, partenariatSigne: true })).rejects.toThrow();
       await expect(denied.mutation(api.competition.remove, { saison, id: fakeId, revision: 1 })).rejects.toThrow();
       await expect(denied.mutation(api.competition.importRows, { saison, plans: [] })).rejects.toThrow();
+      await expect(denied.mutation(api.competition.masquerSignatureArkose, { saison, signatureId: fakeId as never })).rejects.toThrow();
+      await expect(denied.mutation(api.competition.afficherSignatureArkose, { saison, signatureId: fakeId as never })).rejects.toThrow();
     }
   });
 

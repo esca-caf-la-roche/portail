@@ -37,7 +37,7 @@ export default defineSchema({
     nom: v.string(),
     prenom: v.string(),
     nomPrenomNormalise: v.string(),
-    statut: v.union(v.literal("a_rapprocher"), v.literal("lie")),
+    statut: v.union(v.literal("a_rapprocher"), v.literal("lie"), v.literal("masquee")),
     firstSeenAt: v.number(),
   })
     .index("by_saison", ["saison"])

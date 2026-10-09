@@ -20,9 +20,12 @@ Un nom/prénom normalisé qui correspond à un unique ambassadeur de la saison l
 marque signé automatiquement. Une absence de correspondance ou un homonyme est
 placé dans la file **Signatures Arkose à rapprocher**. Le staff peut alors lier
 une signature à un ou plusieurs ambassadeurs, notamment lorsqu'un adulte signe
-pour plusieurs enfants. Les imports rejoués sont idempotents. Les signatures et
-leurs liaisons sont des données dérivées supprimées en cascade avec la saison,
-après retrait obligatoire des ambassadeurs.
+ pour plusieurs enfants. Les imports rejoués sont idempotents. Une signature sans
+ correspondance (par exemple un test) peut être **masquée** : elle sort de la file
+ par défaut et les imports suivants l'ignorent sans la supprimer. Le staff peut
+ afficher les signatures masquées puis les réafficher ; une signature liée doit
+ d'abord être déliée. Les signatures et leurs liaisons sont des données dérivées
+ supprimées en cascade avec la saison, après retrait obligatoire des ambassadeurs.
 
 ## Données et opérations
 

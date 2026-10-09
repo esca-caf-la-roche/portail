@@ -25,6 +25,11 @@
 .competition-notice--error { background: var(--danger); color: #fff; }
 .competition-notice--info { background: var(--info); }
 .competition-toolbar--principal { padding: 0.85rem; background: var(--card); border: 3px solid var(--foreground); box-shadow: 4px 4px 0 var(--foreground); }
+.competition-action-button { display: inline-flex; align-items: center; gap: 0.65rem; text-align: left; }
+.competition-action-button span { display: grid; gap: 0.1rem; }
+.competition-action-button small { font-size: 0.75rem; font-weight: 600; text-transform: none; }
+.competition-spin { animation: competition-spin 0.9s linear infinite; }
+@keyframes competition-spin { to { transform: rotate(360deg); } }
 
 /* Champs de formulaire et filtres */
 .competition-fields, .competition-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 1rem; margin-bottom: 1rem; }
@@ -35,6 +40,8 @@
 .competition-check input { width: 1.3rem; height: 1.3rem; flex-shrink: 0; }
 .competition-arkose-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 0.2rem 1rem; border: 0; padding: 0; margin: 0; }
 .competition-arkose-link { display: inline-flex; align-items: center; gap: 0.3rem; margin: 0 0.4rem 0.35rem 0; padding: 0.2rem 0.4rem; border: 1px solid var(--foreground); }
+.competition-hidden-toggle { margin: 0; font-size: 0.9rem; }
+.competition-inline-action { display: inline-flex; align-items: center; gap: 0.35rem; margin-top: 0.5rem; }
 
 /* Import */
 .competition-file { max-width: 100%; }
@@ -82,6 +89,7 @@
 .competition-action--creation { background: var(--info); }
 .competition-action--modification { background: var(--orange); }
 .competition-action--identique { background: #e6e6e6; }
+.competition-action--masquee { background: #d9d9d9; }
 
 /* Pagination et boutons */
 .competition-pagination { justify-content: center; margin-top: 0.5rem; }
