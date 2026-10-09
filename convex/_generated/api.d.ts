@@ -52,6 +52,7 @@ import type * as auth from "../auth.js";
 import type * as bootstrap from "../bootstrap.js";
 import type * as budgetRecettes from "../budgetRecettes.js";
 import type * as competition from "../competition.js";
+import type * as competitionArkoseWebhook from "../competitionArkoseWebhook.js";
 import type * as competitionModel from "../competitionModel.js";
 import type * as contactsCours from "../contactsCours.js";
 import type * as cours from "../cours.js";
@@ -147,6 +148,7 @@ declare const fullApi: ApiFromModules<{
   bootstrap: typeof bootstrap;
   budgetRecettes: typeof budgetRecettes;
   competition: typeof competition;
+  competitionArkoseWebhook: typeof competitionArkoseWebhook;
   competitionModel: typeof competitionModel;
   contactsCours: typeof contactsCours;
   cours: typeof cours;

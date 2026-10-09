@@ -12,6 +12,7 @@ async function verifierSaison(ctx: QueryCtx | MutationCtx, saison: string) {
   if (!/^\d{4}-\d{2}$/.test(saison) || Number(saison.slice(5)) !== (start + 1) % 100) throw new ConvexError("Saison invalide.");
   if (!await ctx.db.query("saisons").withIndex("by_nom", (q) => q.eq("nom", saison)).first()) throw new ConvexError("Saison introuvable.");
 }
+export { verifierSaison };
 
 async function trouver(ctx: QueryCtx | MutationCtx, saison: string, key: string) {
   return ctx.db.query("competition_ambassadeurs").withIndex("by_saison_and_cleIdentite", (q) => q.eq("saison", saison).eq("cleIdentite", key)).unique();
@@ -88,7 +89,79 @@ export const remove = authenticatedMutation({
     await requireTile(ctx, ctx.userId, "competition");
     await verifierSaison(ctx, args.saison);
     await fiche(ctx, args.saison, args.id, args.revision);
+    const lien = await ctx.db.query("competition_signatures_arkose_liens").withIndex("by_ambassadeurId", (q) => q.eq("ambassadeurId", args.id)).first();
+    if (lien) throw new ConvexError("Cette fiche est liée à une signature Arkose : retirez d'abord la liaison.");
     await ctx.db.delete(args.id);
+    return null;
+  },
+});
+
+const signatureArkoseValidator = v.object({
+  _id: v.id("competition_signatures_arkose"), nom: v.string(), prenom: v.string(),
+  statut: v.union(v.literal("a_rapprocher"), v.literal("lie")),
+  liens: v.array(v.object({ ambassadeurId: v.id("competition_ambassadeurs"), nom: v.string(), prenom: v.string() })),
+});
+
+export const listSignaturesArkose = authenticatedQuery({
+  args: { saison: v.string() }, returns: v.array(signatureArkoseValidator),
+  handler: async (ctx, args) => {
+    await requireTile(ctx, ctx.userId, "competition"); await verifierSaison(ctx, args.saison);
+    // IO-BOUNDED: le webhook accepte au plus 1 000 signatures par saison ; la
+    // file entière reste donc accessible sans pagination cachée.
+    const signatures = await ctx.db.query("competition_signatures_arkose").withIndex("by_saison", (q) => q.eq("saison", args.saison)).take(1_001);
+    if (signatures.length > 1_000) throw new ConvexError("Plus de 1 000 signatures Arkose dans cette saison : contactez un administrateur.");
+    return Promise.all(signatures.map(async (signature) => {
+      const liens = await ctx.db.query("competition_signatures_arkose_liens").withIndex("by_signatureId", (q) => q.eq("signatureId", signature._id)).take(20);
+      const ambassadeurs = await Promise.all(liens.map((lien) => ctx.db.get(lien.ambassadeurId)));
+      return { _id: signature._id, nom: signature.nom, prenom: signature.prenom, statut: signature.statut, liens: ambassadeurs.filter((a): a is Doc<"competition_ambassadeurs"> => a !== null).map((a) => ({ ambassadeurId: a._id, nom: a.nom, prenom: a.prenom })) };
+    }));
+  },
+});
+
+export const listAmbassadeursArkose = authenticatedQuery({
+  args: { saison: v.string() }, returns: v.array(v.object({ _id: v.id("competition_ambassadeurs"), nom: v.string(), prenom: v.string(), dateNaissance: v.string() })),
+  handler: async (ctx, args) => {
+    await requireTile(ctx, ctx.userId, "competition"); await verifierSaison(ctx, args.saison);
+    // IO-BOUNDED: le registre Arkose est limité opérationnellement à 200 ambassadeurs par saison.
+    const rows = await ctx.db.query("competition_ambassadeurs").withIndex("by_saison", (q) => q.eq("saison", args.saison)).take(201);
+    if (rows.length > 200) throw new ConvexError("Le registre contient plus de 200 ambassadeurs : rapprochez les signatures avec un export avant de synchroniser.");
+    return rows.map(({ _id, nom, prenom, dateNaissance }) => ({ _id, nom, prenom, dateNaissance }));
+  },
+});
+
+export const lierSignatureArkose = authenticatedMutation({
+  args: { saison: v.string(), signatureId: v.id("competition_signatures_arkose"), ambassadeurIds: v.array(v.id("competition_ambassadeurs")) },
+  returns: v.object({ lies: v.number() }),
+  handler: async (ctx, args) => {
+    await requireTile(ctx, ctx.userId, "competition"); await verifierSaison(ctx, args.saison);
+    if (!args.ambassadeurIds.length || args.ambassadeurIds.length > 20 || new Set(args.ambassadeurIds).size !== args.ambassadeurIds.length) throw new ConvexError("Sélectionnez entre 1 et 20 ambassadeurs différents.");
+    const signature = await ctx.db.get(args.signatureId);
+    if (!signature || signature.saison !== args.saison) throw new ConvexError("Signature Arkose introuvable dans cette saison.");
+    let lies = 0;
+    for (const ambassadeurId of args.ambassadeurIds) {
+      const ambassadeur = await ctx.db.get(ambassadeurId);
+      if (!ambassadeur || ambassadeur.saison !== args.saison) throw new ConvexError("Ambassadeur introuvable dans cette saison.");
+      const existant = await ctx.db.query("competition_signatures_arkose_liens").withIndex("by_signatureId_and_ambassadeurId", (q) => q.eq("signatureId", signature._id).eq("ambassadeurId", ambassadeurId)).unique();
+      if (!existant) { await ctx.db.insert("competition_signatures_arkose_liens", { saison: args.saison, signatureId: signature._id, ambassadeurId, origine: "manuelle", liePar: ctx.userId, lieLe: Date.now() }); lies++; }
+      if (!ambassadeur.partenariatSigne) await ctx.db.patch(ambassadeurId, { partenariatSigne: true, revision: ambassadeur.revision + 1, updatedAt: Date.now(), updatedBy: ctx.userId });
+    }
+    if (signature.statut !== "lie") await ctx.db.patch(signature._id, { statut: "lie" });
+    return { lies };
+  },
+});
+
+export const delierSignatureArkose = authenticatedMutation({
+  args: { saison: v.string(), signatureId: v.id("competition_signatures_arkose"), ambassadeurId: v.id("competition_ambassadeurs") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requireTile(ctx, ctx.userId, "competition"); await verifierSaison(ctx, args.saison);
+    const signature = await ctx.db.get(args.signatureId);
+    if (!signature || signature.saison !== args.saison) throw new ConvexError("Signature Arkose introuvable dans cette saison.");
+    const lien = await ctx.db.query("competition_signatures_arkose_liens").withIndex("by_signatureId_and_ambassadeurId", (q) => q.eq("signatureId", args.signatureId).eq("ambassadeurId", args.ambassadeurId)).unique();
+    if (!lien || lien.saison !== args.saison) throw new ConvexError("Liaison Arkose introuvable dans cette saison.");
+    await ctx.db.delete(lien._id);
+    const restant = await ctx.db.query("competition_signatures_arkose_liens").withIndex("by_signatureId", (q) => q.eq("signatureId", args.signatureId)).first();
+    if (!restant) await ctx.db.patch(signature._id, { statut: "a_rapprocher" });
     return null;
   },
 });

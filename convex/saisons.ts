@@ -225,6 +225,9 @@ export const remove = mutation({
     await deleteBySaison(ctx, "planning_salaries_google_operations", saison.nom);
     await deleteBySaison(ctx, "planning_salaries_sync", saison.nom);
     await deleteBySaison(ctx, "planning_salaries_creneaux", saison.nom);
+    // Imports Arkose et leurs liaisons sont des données dérivées de la saison.
+    await deleteBySaison(ctx, "competition_signatures_arkose_liens", saison.nom);
+    await deleteBySaison(ctx, "competition_signatures_arkose", saison.nom);
 
     await ctx.db.delete(args.id);
   },
@@ -243,7 +246,9 @@ type SaisonTable =
   | "planning_salaries_creneaux"
   | "planning_salaries_sync"
   | "planning_salaries_google_operations"
-  | "planning_salaries_alertes";
+  | "planning_salaries_alertes"
+  | "competition_signatures_arkose"
+  | "competition_signatures_arkose_liens";
 
 async function cancelPlanningSalariesAlerts(ctx: MutationCtx, saison: string) {
   // IO-BOUNDED: une alerte par créneau, soit ~53 samedis × quelques groupes.

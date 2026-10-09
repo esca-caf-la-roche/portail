@@ -49,7 +49,9 @@ Pour Compétition Arkose, voir [15-competition-arkose.md](15-competition-arkose.
 couvre les droits, saisons, CRUD, conflits, imports atomiques, bootstrap strict
 27 fiches uniques depuis 29 lignes source, l'export CSV saison entier borné et le
 roundtrip CSV (injection de formule, échappement), ainsi que la lecture d'un vrai
-XLSX en mémoire (cellule date, texte commençant par `=`).
+XLSX en mémoire (cellule date, texte commençant par `=`). Il couvre aussi le
+contrat, le dédoublonnage, le rapprochement automatique et la liaison manuelle
+une-à-plusieurs des signatures Arkose.
 Le navigateur et l'import PROD ne sont
 pas exécutés par ces tests.
 

@@ -89,6 +89,10 @@ export function cleIdentite(champs: AmbassadeurFields): string {
   return JSON.stringify([normaliserTexte(champs.nom), normaliserTexte(champs.prenom), champs.dateNaissance]);
 }
 
+export function cleNomPrenom(nom: string, prenom: string): string {
+  return JSON.stringify([normaliserTexte(nom), normaliserTexte(prenom)]);
+}
+
 export function verifierRevision(value: number): void {
   if (!Number.isSafeInteger(value) || value < 1) throw new ConvexError("Révision invalide.");
 }

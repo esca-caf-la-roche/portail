@@ -1,9 +1,26 @@
 # Compétition · Arkose
 
 Le module staff `/competition` suit les ambassadeurs par saison et leur case
-**Partenariat signé**, purement manuelle : aucun envoi, signature électronique
-ou synchronisation externe. L'accès nécessite `allowedTiles: competition`,
-y compris pour un administrateur. Aucune attribution automatique n'est faite.
+**Partenariat signé**. L'accès nécessite `allowedTiles: competition`, y compris
+pour un administrateur.
+
+## Signatures Arkose
+
+Le bouton **Importer les signatures Arkose** appelle à la demande le webhook
+`https://n8n.jpcloudkit.fr/webhook/partenariat-arkose` en GET, avec les mêmes
+identifiants Basic Auth Convex que les règlements DocuSeal
+(`ABO_REGLEMENTS_WEBHOOK_USER` et `ABO_REGLEMENTS_WEBHOOK_PASSWORD`). Aucun
+secret ne passe au navigateur, aucune synchronisation automatique ni cron n'est
+créé. La réponse attend un tableau JSON d'objets `{ NOM, Prénom }`, limité à
+1 000 entrées et 1 Mo.
+
+Un nom/prénom normalisé qui correspond à un unique ambassadeur de la saison le
+marque signé automatiquement. Une absence de correspondance ou un homonyme est
+placé dans la file **Signatures Arkose à rapprocher**. Le staff peut alors lier
+une signature à un ou plusieurs ambassadeurs, notamment lorsqu'un adulte signe
+pour plusieurs enfants. Les imports rejoués sont idempotents. Les signatures et
+leurs liaisons sont des données dérivées supprimées en cascade avec la saison,
+après retrait obligatoire des ambassadeurs.
 
 ## Données et opérations
 

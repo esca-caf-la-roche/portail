@@ -4,6 +4,7 @@ import { describe, expect, test } from "vitest";
 import { api, internal } from "./_generated/api";
 import schema from "./schema";
 import { GROUPES, type AmbassadeurFields, type ImportRow } from "./competitionModel";
+import { validerReponseArkose } from "./competitionArkoseWebhook";
 
 const modules = import.meta.glob("./**/*.ts");
 const fields: AmbassadeurFields = { nom: "Exemple", prenom: "Camille", dateNaissance: "2005-02-03", civilite: "Homme", categories: "Compétiteur", groupe: "Groupe Perf.", email: "camille@example.test" };
@@ -23,6 +24,31 @@ async function setup() {
 }
 
 describe("compétition : sécurité, saisons et concurrence", () => {
+  test("webhook Arkose : contrat NOM/Prénom, dédoublonnage et rapprochement un-à-plusieurs", async () => {
+    expect(validerReponseArkose([{ NOM: " DUPONT ", Prénom: " Claire " }, { NOM: "DUPONT", Prénom: "Claire" }])).toEqual([{ nom: "DUPONT", prenom: "Claire" }]);
+    expect(() => validerReponseArkose([{ NOM: "DUPONT" }])).toThrow("nom et un prénom");
+    const { t, staff, operatorId } = await setup();
+    const childOne = await staff.mutation(api.competition.create, { saison, fields: { ...fields, nom: "Enfant", prenom: "Lina" }, partenariatSigne: false });
+    const childTwo = await staff.mutation(api.competition.create, { saison, fields: { ...fields, nom: "Enfant", prenom: "Noah", dateNaissance: "2007-02-03" }, partenariatSigne: false });
+    expect(await t.mutation(internal.competitionArkoseWebhook.enregistrerLot, { saison, userId: operatorId, items: [{ nom: "Parent", prenom: "Camille" }] })).toEqual({ queued: 1, autoLinked: 0, ignored: 0 });
+    const pending = await staff.query(api.competition.listSignaturesArkose, { saison });
+    expect(pending).toHaveLength(1);
+    expect(await staff.mutation(api.competition.lierSignatureArkose, { saison, signatureId: pending[0]._id, ambassadeurIds: [childOne, childTwo] })).toEqual({ lies: 2 });
+    expect(await staff.query(api.competition.listSignaturesArkose, { saison })).toMatchObject([{ statut: "lie", liens: [{ ambassadeurId: childOne }, { ambassadeurId: childTwo }] }]);
+    expect(await t.run((ctx) => ctx.db.get(childOne))).toMatchObject({ partenariatSigne: true });
+    expect(await t.run((ctx) => ctx.db.get(childTwo))).toMatchObject({ partenariatSigne: true });
+  });
+
+  test("webhook Arkose : une correspondance unique est automatiquement signée, les rejouements sont sans écriture", async () => {
+    const { t, staff, operatorId } = await setup();
+    const id = await staff.mutation(api.competition.create, { saison, fields, partenariatSigne: false });
+    const args = { saison, userId: operatorId, items: [{ nom: " exemple ", prenom: "CAMILLE" }] };
+    expect(await t.mutation(internal.competitionArkoseWebhook.enregistrerLot, args)).toEqual({ queued: 0, autoLinked: 1, ignored: 0 });
+    const signed = await t.run((ctx) => ctx.db.get(id));
+    expect(signed).toMatchObject({ partenariatSigne: true, revision: 2 });
+    expect(await t.mutation(internal.competitionArkoseWebhook.enregistrerLot, args)).toEqual({ queued: 0, autoLinked: 0, ignored: 1 });
+    expect(await t.run((ctx) => ctx.db.get(id))).toEqual(signed);
+  });
   test("bootstrap sans aucun compte applicatif : provenance technique uniquement", async () => {
     const t = convexTest(schema, modules);
     await t.run((ctx) => ctx.db.insert("saisons", { nom: saison, isDefault: true }));

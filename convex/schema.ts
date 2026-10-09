@@ -32,6 +32,31 @@ export default defineSchema({
     .index("by_saison", ["saison"])
     .index("by_saison_and_cleIdentite", ["saison", "cleIdentite"]),
 
+  competition_signatures_arkose: defineTable({
+    saison: v.string(),
+    nom: v.string(),
+    prenom: v.string(),
+    nomPrenomNormalise: v.string(),
+    statut: v.union(v.literal("a_rapprocher"), v.literal("lie")),
+    firstSeenAt: v.number(),
+  })
+    .index("by_saison", ["saison"])
+    .index("by_saison_and_nomPrenomNormalise", ["saison", "nomPrenomNormalise"])
+    .index("by_saison_and_statut", ["saison", "statut"]),
+
+  competition_signatures_arkose_liens: defineTable({
+    saison: v.string(),
+    signatureId: v.id("competition_signatures_arkose"),
+    ambassadeurId: v.id("competition_ambassadeurs"),
+    origine: v.union(v.literal("automatique"), v.literal("manuelle")),
+    liePar: v.optional(v.id("users")),
+    lieLe: v.number(),
+  })
+    .index("by_saison", ["saison"])
+    .index("by_signatureId", ["signatureId"])
+    .index("by_ambassadeurId", ["ambassadeurId"])
+    .index("by_signatureId_and_ambassadeurId", ["signatureId", "ambassadeurId"]),
+
   previsionnels: defineTable({
     nom: v.string(),
     montant: v.number(),

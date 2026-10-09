@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { useConvex, useMutation, useQuery } from "convex/react";
+import { useAction, useConvex, useMutation, useQuery } from "convex/react";
 import { Pencil, Trash2 } from "lucide-react";
 import type { Infer } from "convex/values";
 import { api } from "../../convex/_generated/api";
-import type { Doc } from "../../convex/_generated/dataModel";
+import type { Doc, Id } from "../../convex/_generated/dataModel";
 import {
   CATEGORIES,
   CIVILITES,
@@ -63,9 +63,14 @@ function CompetitionSeason({ saison }: { saison: string }) {
   const setSigne = useMutation(api.competition.setPartenariatSigne);
   const remove = useMutation(api.competition.remove);
   const importRows = useMutation(api.competition.importRows);
+  const synchroniserArkose = useAction(api.competitionArkoseWebhook.synchroniser);
+  const lierSignatureArkose = useMutation(api.competition.lierSignatureArkose);
+  const delierSignatureArkose = useMutation(api.competition.delierSignatureArkose);
   const [cursor, setCursor] = useState<string | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
   const page = useQuery(api.competition.list, saison ? { saison, paginationOpts: { cursor, numItems: 50, maximumRowsRead: 100 } } : "skip");
+  const signaturesArkose = useQuery(api.competition.listSignaturesArkose, saison ? { saison } : "skip");
+  const ambassadeursArkose = useQuery(api.competition.listAmbassadeursArkose, saison ? { saison } : "skip");
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("");
   const [group, setGroup] = useState("");
@@ -79,6 +84,7 @@ function CompetitionSeason({ saison }: { saison: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [selectionArkose, setSelectionArkose] = useState<Record<string, Id<"competition_ambassadeurs">[]>>({});
   const formRef = useRef<HTMLHeadingElement>(null);
   const deleteModalRef = useRef<HTMLDivElement>(null);
   const deleteCancelRef = useRef<HTMLButtonElement>(null);
@@ -149,7 +155,7 @@ function CompetitionSeason({ saison }: { saison: string }) {
         <span className="competition-stat competition-stat--attente"><strong>{visible.length - signes}</strong> non signé(s)</span>
       </div>
     </header>
-    <p className="competition-hint">La case « Partenariat signé » est un suivi manuel, sans envoi ni signature électronique. Civilité, catégorie et groupe sont des valeurs choisies dans des listes.</p>
+    <p className="competition-hint">Les signatures peuvent être suivies manuellement ou importées depuis Arkose. Civilité, catégorie et groupe sont des valeurs choisies dans des listes.</p>
     {error && !deleting && <p className="competition-notice competition-notice--error" role="alert">{error}</p>}
     {message && <p className="competition-notice competition-notice--info" role="status">{message}</p>}
 
@@ -173,7 +179,24 @@ function CompetitionSeason({ saison }: { saison: string }) {
         const limiteImport = rows.length > MAX_IMPORT ? ` Au-delà de ${MAX_IMPORT} fiches, découpez le fichier pour le réimport.` : "";
         setMessage(`${rows.length} fiche(s) exportée(s) en CSV, saison entière ${saison}.${limiteImport}`);
       })}>Exporter la saison en CSV (max. 2000)</button>
+      <button type="button" className="btn-secondary" disabled={busy} onClick={() => void operation(async () => {
+        const result = await synchroniserArkose({ saison });
+        setMessage(`Arkose : ${result.recus} signature(s) reçue(s), ${result.autoLinked} rapprochée(s) automatiquement, ${result.queued} à relier, ${result.ignored} déjà connue(s).`);
+      })}>Importer les signatures Arkose</button>
     </div>
+
+    <section className="competition-panel" aria-labelledby="competition-arkose-title">
+      <h2 id="competition-arkose-title">Signatures Arkose à rapprocher</h2>
+      <p>Une signature sans correspondance unique reste ici. Sélectionnez un ou plusieurs ambassadeurs : un adulte peut signer pour plusieurs enfants.</p>
+      {signaturesArkose === undefined || ambassadeursArkose === undefined ? <p role="status">Chargement des signatures…</p> : signaturesArkose.length === 0 ? <p className="competition-empty">Aucune signature Arkose importée.</p> : <div className="competition-scroll"><table><caption>Signatures Arkose de la saison</caption><thead><tr><th>Signataire reçu</th><th>Ambassadeurs à relier</th><th>Action</th></tr></thead><tbody>{signaturesArkose.map((signatureArkose) => {
+        const selection = selectionArkose[signatureArkose._id] ?? [];
+        return <tr key={signatureArkose._id}><td>{signatureArkose.prenom} {signatureArkose.nom}<br /><StatutSignature signe={signatureArkose.statut === "lie"} /></td><td>{signatureArkose.liens.length > 0 && <p>{signatureArkose.liens.map((lien) => <span key={lien.ambassadeurId} className="competition-arkose-link">{lien.prenom} {lien.nom} <button type="button" className="btn-text" disabled={busy} onClick={() => void operation(async () => { await delierSignatureArkose({ saison, signatureId: signatureArkose._id, ambassadeurId: lien.ambassadeurId }); setMessage("Liaison Arkose retirée : vous pouvez corriger ou supprimer la fiche."); })}>Retirer</button></span>)}</p>}<fieldset disabled={busy} className="competition-arkose-options"><legend className="sr-only">Ambassadeurs pour {signatureArkose.prenom} {signatureArkose.nom}</legend>{ambassadeursArkose.map((ambassadeur) => <label key={ambassadeur._id} className="competition-check"><input type="checkbox" checked={selection.includes(ambassadeur._id)} onChange={(event) => setSelectionArkose((current) => ({ ...current, [signatureArkose._id]: event.target.checked ? [...selection, ambassadeur._id] : selection.filter((id) => id !== ambassadeur._id) }))} />{ambassadeur.prenom} {ambassadeur.nom} · {formatDate(ambassadeur.dateNaissance)}</label>)}</fieldset></td><td><button type="button" className="btn-primary" disabled={busy || selection.length === 0} onClick={() => void operation(async () => {
+          const result = await lierSignatureArkose({ saison, signatureId: signatureArkose._id, ambassadeurIds: selection });
+          setSelectionArkose((current) => ({ ...current, [signatureArkose._id]: [] }));
+          setMessage(`${result.lies} liaison(s) Arkose enregistrée(s).`);
+        })}>Relier la signature</button></td></tr>;
+      })}</tbody></table></div>}
+    </section>
 
     {editing && <section className="competition-panel" aria-labelledby="competition-form-title">
       <h2 id="competition-form-title" ref={formRef} tabIndex={-1}>{editing === "new" ? "Nouvel ambassadeur" : "Modifier l’ambassadeur"}</h2>
