@@ -25,9 +25,6 @@
 .competition-notice--error { background: var(--danger); color: #fff; }
 .competition-notice--info { background: var(--info); }
 .competition-toolbar--principal { padding: 0.85rem; background: var(--card); border: 3px solid var(--foreground); box-shadow: 4px 4px 0 var(--foreground); }
-.competition-action-button { display: inline-flex; align-items: center; gap: 0.65rem; text-align: left; }
-.competition-action-button span { display: grid; gap: 0.1rem; }
-.competition-action-button small { font-size: 0.75rem; font-weight: 600; text-transform: none; }
 .competition-spin { animation: competition-spin 0.9s linear infinite; }
 @keyframes competition-spin { to { transform: rotate(360deg); } }
 
@@ -42,6 +39,16 @@
 .competition-arkose-link { display: inline-flex; align-items: center; gap: 0.3rem; margin: 0 0.4rem 0.35rem 0; padding: 0.2rem 0.4rem; border: 1px solid var(--foreground); }
 .competition-hidden-toggle { margin: 0; font-size: 0.9rem; }
 .competition-inline-action { display: inline-flex; align-items: center; gap: 0.35rem; margin-top: 0.5rem; }
+.competition-arkose-sync { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.85rem; border: 3px solid var(--foreground); background: var(--info); box-shadow: 3px 3px 0 var(--foreground); }
+.competition-arkose-sync > div { display: grid; gap: 0.2rem; }
+.competition-arkose-sync span { font-size: 0.85rem; }
+.competition-arkose-sync-button, .competition-export-button { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; min-height: 44px; font-family: var(--font-sans); font-weight: 800; text-transform: uppercase; cursor: pointer; border: 3px solid var(--foreground); box-shadow: 3px 3px 0 var(--foreground); }
+.competition-arkose-sync-button { flex: 0 0 auto; padding: 0.7rem 1rem; color: var(--foreground); background: var(--card); }
+.competition-export-button { padding: 0.45rem 0.7rem; color: var(--foreground); background: #e0e0e0; }
+.competition-arkose-sync-button:hover:not(:disabled), .competition-export-button:hover:not(:disabled) { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--foreground); }
+.competition-arkose-sync-button:hover:not(:disabled) { background: var(--warning); }
+.competition-export-button:hover:not(:disabled) { background: #d0d0d0; }
+.competition-arkose-sync-button:disabled, .competition-export-button:disabled { opacity: 0.6; cursor: not-allowed; }
 
 /* Import */
 .competition-file { max-width: 100%; }
@@ -69,6 +76,7 @@
 /* En-tête de liste, filtres, divers */
 .competition-list-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem; }
 .competition-list-head h2 { margin: 0; }
+.competition-list-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; }
 .competition-reset { font-weight: 700; }
 .competition-scope { font-size: 0.88rem; margin: 0 0 0.5rem; }
 .competition-empty { margin: 0.5rem 0; }
@@ -113,4 +121,11 @@
   .competition-toolbar > button, .competition-toolbar--principal > *, .competition-file--button { width: 100%; justify-content: center; }
   .competition-panel { padding: 0.75rem; }
   .competition-stats { width: 100%; }
+  .competition-arkose-sync { align-items: stretch; flex-direction: column; }
+  .competition-arkose-sync-button, .competition-export-button { width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .competition-spin { animation: none; }
+  .competition-arkose-sync-button, .competition-export-button { transition: none; }
 }

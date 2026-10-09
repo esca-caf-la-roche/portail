@@ -85,6 +85,7 @@ function CompetitionSeason({ saison }: { saison: string }) {
   const [plans, setPlans] = useState<Plan[] | null>(null);
   const [confirmation, setConfirmation] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [busyAction, setBusyAction] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [selectionArkose, setSelectionArkose] = useState<Record<string, Id<"competition_ambassadeurs">[]>>({});
@@ -126,10 +127,10 @@ function CompetitionSeason({ saison }: { saison: string }) {
     requestAnimationFrame(() => formRef.current?.focus());
   }
 
-  async function operation(fn: () => Promise<void>) {
-    setBusy(true); setError(""); setMessage("");
+  async function operation(fn: () => Promise<void>, action = "operation") {
+    setBusy(true); setBusyAction(action); setError(""); setMessage("");
     try { await fn(); } catch (err) { setError(erreurCompetition(err)); }
-    finally { setBusy(false); }
+    finally { setBusy(false); setBusyAction(null); }
   }
 
   function save(event: FormEvent) {
@@ -176,21 +177,19 @@ function CompetitionSeason({ saison }: { saison: string }) {
           });
         }} />
       </label>
-      <button type="button" className="btn-secondary competition-action-button" disabled={busy} onClick={() => void operation(async () => {
-        const rows = await chargerToutesLesFiches((cursor) => convex.query(api.competition.list, { saison, paginationOpts: { cursor, numItems: 50, maximumRowsRead: 100 } }));
-        exporterCompetitionCsv(rows, saison);
-        const limiteImport = rows.length > MAX_IMPORT ? ` Au-delà de ${MAX_IMPORT} fiches, découpez le fichier pour le réimport.` : "";
-        setMessage(`${rows.length} fiche(s) exportée(s) en CSV, saison entière ${saison}.${limiteImport}`);
-      })}><Download size={18} aria-hidden="true" /><span><strong>Exporter la saison</strong><small>CSV Excel · jusqu’à 2 000 fiches</small></span></button>
-      <button type="button" className="btn-secondary competition-action-button" disabled={busy} onClick={() => void operation(async () => {
-        const result = await synchroniserArkose({ saison });
-        setMessage(`Arkose : ${result.recus} signature(s) reçue(s), ${result.autoLinked} rapprochée(s) automatiquement, ${result.queued} à relier, ${result.ignored} déjà connue(s).`);
-      })}><RefreshCw size={18} aria-hidden="true" className={busy ? "competition-spin" : undefined} /><span><strong>Importer les signatures Arkose</strong><small>Synchronisation à la demande · aucune donnée envoyée</small></span></button>
     </div>
 
     <section className="competition-panel" aria-labelledby="competition-arkose-title">
       <h2 id="competition-arkose-title">Signatures Arkose à rapprocher</h2>
       <p>Une signature sans correspondance unique reste ici. Sélectionnez un ou plusieurs ambassadeurs : un adulte peut signer pour plusieurs enfants. Une signature de test peut être masquée sans être supprimée.</p>
+      <div className="competition-arkose-sync">
+        <div><strong>Synchronisation Arkose</strong><span>Récupère les signatures disponibles pour cette saison. Aucune donnée n’est envoyée.</span></div>
+        <button type="button" className="competition-arkose-sync-button" disabled={busy} onClick={() => void operation(async () => {
+          const result = await synchroniserArkose({ saison });
+          setMessage(`Arkose : ${result.recus} signature(s) reçue(s), ${result.autoLinked} rapprochée(s) automatiquement, ${result.queued} à relier, ${result.ignored} déjà connue(s).`);
+        }, "arkose")} aria-describedby="competition-arkose-sync-description"><RefreshCw size={18} aria-hidden="true" className={busyAction === "arkose" ? "competition-spin" : undefined} />{busyAction === "arkose" ? "Synchronisation Arkose…" : "Synchroniser avec Arkose"}</button>
+        <span id="competition-arkose-sync-description" className="sr-only">Cette action interroge Arkose à la demande et peut ajouter des signatures à la file ci-dessous.</span>
+      </div>
       <label className="competition-check competition-hidden-toggle"><input type="checkbox" checked={showHiddenSignatures} onChange={(event) => setShowHiddenSignatures(event.target.checked)} /> Afficher les signatures masquées</label>
       {signaturesArkose === undefined || ambassadeursArkose === undefined ? <p role="status">Chargement des signatures…</p> : signaturesArkose.length === 0 ? <p className="competition-empty">Aucune signature Arkose importée.</p> : <div className="competition-scroll"><table><caption>Signatures Arkose de la saison</caption><thead><tr><th>Signataire reçu</th><th>Ambassadeurs à relier</th><th>Action</th></tr></thead><tbody>{signaturesArkose.map((signatureArkose) => {
         const selection = selectionArkose[signatureArkose._id] ?? [];
@@ -259,7 +258,15 @@ function CompetitionSeason({ saison }: { saison: string }) {
     <section className="competition-panel" aria-label="Liste des ambassadeurs">
       <div className="competition-list-head">
         <h2>Liste des ambassadeurs</h2>
-        {filtresActifs && <button type="button" className="btn-text competition-reset" disabled={busy} onClick={resetFiltres}>Réinitialiser les filtres</button>}
+        <div className="competition-list-actions">
+          <button type="button" className="competition-export-button" disabled={busy} onClick={() => void operation(async () => {
+            const rows = await chargerToutesLesFiches((cursor) => convex.query(api.competition.list, { saison, paginationOpts: { cursor, numItems: 50, maximumRowsRead: 100 } }));
+            exporterCompetitionCsv(rows, saison);
+            const limiteImport = rows.length > MAX_IMPORT ? ` Au-delà de ${MAX_IMPORT} fiches, découpez le fichier pour le réimport.` : "";
+            setMessage(`${rows.length} fiche(s) exportée(s) en CSV, saison entière ${saison}.${limiteImport}`);
+          }, "export")}><Download size={18} aria-hidden="true" />{busyAction === "export" ? "Préparation du CSV…" : "Exporter le CSV"}</button>
+          {filtresActifs && <button type="button" className="btn-text competition-reset" disabled={busy} onClick={resetFiltres}>Réinitialiser les filtres</button>}
+        </div>
       </div>
       <div className="competition-filters">
         <label>Rechercher (nom, email, catégorie)<input type="search" value={search} onChange={(e) => setSearch(e.target.value)} /></label>
@@ -267,7 +274,7 @@ function CompetitionSeason({ saison }: { saison: string }) {
         <label>Groupe<select value={group} onChange={(e) => setGroup(e.target.value)}><option value="">Tous les groupes</option>{GROUPES.map((g) => <option key={g} value={g}>{g}</option>)}</select></label>
         <label>Partenariat signé<select value={signed} onChange={(e) => setSigned(e.target.value)}><option value="">Tous</option><option value="oui">Signé</option><option value="non">Non signé</option></select></label>
       </div>
-      <p className="competition-scope">Recherche et filtres portent sur la page affichée (50 fiches maximum). L’export inclut toute la saison, sans ces filtres, et se réimporte par fichiers de {MAX_IMPORT} fiches maximum. {visible.length} résultat(s).</p>
+      <p className="competition-scope">Recherche et filtres portent sur la page affichée (50 fiches maximum). L’export inclut toute la saison, sans ces filtres, au format CSV compatible Excel. Pour réimporter, utilisez des fichiers de {MAX_IMPORT} fiches maximum. {visible.length} résultat(s).</p>
       {page === undefined ? <p role="status">Chargement…</p> : visible.length === 0 ? <p className="competition-empty">Aucun ambassadeur sur cette page pour ces critères.</p> : <div className="competition-scroll"><table>
         <caption>Ambassadeurs · {saison}</caption>
         <thead><tr>{CHAMPS.map((champ) => <th key={champ.cle}>{champ.label}</th>)}<th>Partenariat signé</th><th>Actions</th></tr></thead>

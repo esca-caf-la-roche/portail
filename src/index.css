@@ -1341,7 +1341,7 @@ a.btn-primary {
   transition: transform 0.1s, box-shadow 0.1s;
 }
 
-.btn-secondary:hover {
+.btn-secondary:hover:not(:disabled) {
   background-color: #d0d0d0;
   transform: translate(2px, 2px);
   box-shadow: 1px 1px 0px 0px var(--border-color);
