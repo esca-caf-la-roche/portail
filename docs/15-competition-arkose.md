@@ -12,7 +12,9 @@ identifiants Basic Auth Convex que les règlements DocuSeal
 (`ABO_REGLEMENTS_WEBHOOK_USER` et `ABO_REGLEMENTS_WEBHOOK_PASSWORD`). Aucun
 secret ne passe au navigateur, aucune synchronisation automatique ni cron n'est
 créé. La réponse attend un tableau JSON d'objets `{ NOM, Prénom }`, limité à
-1 000 entrées et 1 Mo.
+1 000 entrées et 1 Mo. Les clés sont reconnues sans différence de casse ni
+d'accent (`NOM`/`Nom`/`nom`, `Prénom`/`PRENOM`/`prenom`) ; un objet qui fournit
+plus d'un alias pour le même champ est refusé.
 
 Un nom/prénom normalisé qui correspond à un unique ambassadeur de la saison le
 marque signé automatiquement. Une absence de correspondance ou un homonyme est

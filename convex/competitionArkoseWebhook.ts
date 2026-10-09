@@ -17,8 +17,9 @@ type Item = { nom: string; prenom: string };
 function invalid(message: string): never { throw new ConvexError({ code: "ARKOSE_WEBHOOK_JSON_INVALIDE", message }); }
 
 function lireIdentite(row: Record<string, unknown>, field: "nom" | "prenom"): string {
-  const key = Object.keys(row).find((candidate) => normaliserTexte(candidate) === field);
-  const value = key === undefined ? undefined : row[key];
+  const keys = Object.keys(row).filter((candidate) => normaliserTexte(candidate) === field);
+  if (keys.length > 1) invalid(`Le webhook Arkose contient plusieurs champs pour « ${field === "nom" ? "nom" : "prénom"} ».`);
+  const value = keys.length === 1 ? row[keys[0]] : undefined;
   return typeof value === "string" ? value.trim() : "";
 }
 
