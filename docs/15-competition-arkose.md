@@ -71,6 +71,26 @@ signature existante est conservée ; une colonne Oui/Non présente la remplace
 explicitement. Aucun import ne supprime de fiche. Saison étrangère, doublon,
 export périmé ou conflit depuis la prévisualisation refusent l'ensemble.
 
+## Affichage responsive
+
+La page s'adapte à deux points de rupture alignés sur `src/index.css` :
+
+- **768px** : en-tête, statistiques (grille), barre d'outils, en-tête de liste,
+  bloc de synchronisation Arkose et pagination passent en pile, et les boutons
+  prennent toute la largeur.
+- **680px** : les trois tableaux (liste, file Arkose, prévisualisation d'import)
+  deviennent des fiches empilées. Chaque cellule porte son libellé dans un
+  attribut `data-label` repris par `td::before`, et le `<thead>` est masqué
+  visuellement sans quitter l'arbre d'accessibilité.
+
+Comme `display: block` fait disparaître les rôles implicites de tableau, les
+éléments portent des rôles ARIA explicites (`table`, `rowgroup`, `row`,
+`columnheader` avec `scope="col"`, `cell`) : les en-têtes de colonne restent
+annoncés en mode fiche. `min-width: 0` sur les enfants de `.competition-page`
+fait défiler les tableaux larges dans `.competition-scroll` au lieu de faire
+défiler la page, et le champ de fichier fantôme est exclu de la règle de largeur
+générale des inputs pour ne pas créer de défilement horizontal.
+
 ## Import initial technique (29 lignes source, 27 fiches uniques, 2026-27)
 
 Après déploiement, le bootstrap est une opération technique authentifiée par les
