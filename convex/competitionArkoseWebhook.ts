@@ -3,7 +3,7 @@ import { authenticatedAction } from "./customFunctions";
 import { internalMutation, internalQuery } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { requireTile } from "./access";
-import { cleNomPrenom } from "./competitionModel";
+import { cleNomPrenom, normaliserTexte } from "./competitionModel";
 import { verifierSaison } from "./competition";
 
 const WEBHOOK_URL = "https://n8n.jpcloudkit.fr/webhook/partenariat-arkose";
@@ -16,6 +16,12 @@ type Item = { nom: string; prenom: string };
 
 function invalid(message: string): never { throw new ConvexError({ code: "ARKOSE_WEBHOOK_JSON_INVALIDE", message }); }
 
+function lireIdentite(row: Record<string, unknown>, field: "nom" | "prenom"): string {
+  const key = Object.keys(row).find((candidate) => normaliserTexte(candidate) === field);
+  const value = key === undefined ? undefined : row[key];
+  return typeof value === "string" ? value.trim() : "";
+}
+
 export function validerReponseArkose(value: unknown): Item[] {
   for (let depth = 0; depth < 3 && typeof value === "string"; depth++) {
     if (!value.trim()) return [];
@@ -27,8 +33,8 @@ export function validerReponseArkose(value: unknown): Item[] {
   value.forEach((entry, index) => {
     if (!entry || typeof entry !== "object" || Array.isArray(entry)) invalid(`L'élément ${index + 1} doit être un objet JSON.`);
     const row = entry as Record<string, unknown>;
-    const nom = typeof row.NOM === "string" ? row.NOM.trim() : "";
-    const prenom = typeof row.Prénom === "string" ? row.Prénom.trim() : "";
+    const nom = lireIdentite(row, "nom");
+    const prenom = lireIdentite(row, "prenom");
     if (!nom || !prenom || nom.length > 100 || prenom.length > 100) invalid(`L'élément ${index + 1} doit contenir un nom et un prénom de 100 caractères maximum.`);
     uniques.set(cleNomPrenom(nom, prenom), { nom, prenom });
   });

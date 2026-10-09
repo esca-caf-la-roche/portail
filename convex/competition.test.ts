@@ -25,7 +25,7 @@ async function setup() {
 
 describe("compétition : sécurité, saisons et concurrence", () => {
   test("webhook Arkose : contrat NOM/Prénom, dédoublonnage et rapprochement un-à-plusieurs", async () => {
-    expect(validerReponseArkose([{ NOM: " DUPONT ", Prénom: " Claire " }, { NOM: "DUPONT", Prénom: "Claire" }])).toEqual([{ nom: "DUPONT", prenom: "Claire" }]);
+    expect(validerReponseArkose([{ NOM: " DUPONT ", Prénom: " Claire " }, { nom: "DUPONT", PRENOM: "Claire" }])).toEqual([{ nom: "DUPONT", prenom: "Claire" }]);
     expect(() => validerReponseArkose([{ NOM: "DUPONT" }])).toThrow("nom et un prénom");
     const { t, staff, operatorId } = await setup();
     const childOne = await staff.mutation(api.competition.create, { saison, fields: { ...fields, nom: "Enfant", prenom: "Lina" }, partenariatSigne: false });
