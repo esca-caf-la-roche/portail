@@ -78,12 +78,13 @@ La page s'adapte à la largeur de l'écran et à celle de ses panneaux :
 - **768px** : en-tête, statistiques (grille), barre d'outils, en-tête de liste,
   bloc de synchronisation Arkose et pagination passent en pile, et les boutons
   prennent toute la largeur.
-- **1000px de largeur disponible dans le panneau** : les trois tableaux
+- **62,5em de largeur disponible dans le panneau** (1000px à taille normale) : les trois tableaux
   (liste, file Arkose, prévisualisation d'import)
   deviennent des fiches empilées. Chaque cellule porte son libellé dans un
   attribut `data-label` repris par `td::before`, et le `<thead>` est masqué
   visuellement sans quitter l'arbre d'accessibilité. Une container query tient
-  compte des marges et du padding, même sur un écran de bureau.
+  compte des marges et du padding, même sur un écran de bureau. Le seuil en
+  `em` augmente avec la taille du texte pour conserver des fiches lisibles.
 
 Comme `display: block` fait disparaître les rôles implicites de tableau, les
 éléments portent des rôles ARIA explicites (`table`, `rowgroup`, `row`,
