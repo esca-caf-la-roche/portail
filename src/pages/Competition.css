@@ -1,7 +1,5 @@
-.competition-page { display: grid; gap: 1rem; }
-/* Les enfants d'une grille ont une taille minimale automatique (min-content) :
-   sans min-width:0, le contenu large d'un tableau déborde la page au lieu de
-   faire défiler .competition-scroll. */
+.competition-page { display: grid; gap: 1rem; overflow-wrap: anywhere; }
+/* Autoriser les panneaux à rétrécir avec la zone de contenu. */
 .competition-page > * { min-width: 0; }
 
 /* En-tête */
@@ -24,6 +22,7 @@
 /* Panneaux génériques */
 .competition-toolbar, .competition-row-actions { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; }
 .competition-panel, .competition-notice { padding: 1rem; border: 3px solid var(--foreground); background: var(--card); box-shadow: 4px 4px 0 var(--foreground); }
+.competition-panel { container-type: inline-size; }
 .competition-panel > h2 { margin-top: 0; }
 .competition-notice { padding: 0.8rem 1rem; font-weight: 600; overflow-wrap: anywhere; }
 .competition-notice--error { background: var(--danger); color: #fff; }
@@ -68,10 +67,12 @@
 .competition-file--button input { width: 1px; height: 1px; padding: 0; opacity: 0; position: absolute; }
 
 /* Tableau */
-.competition-scroll { overflow-x: auto; margin: 1rem 0; border: 3px solid var(--foreground); box-shadow: 4px 4px 0 var(--foreground); }
-.competition-scroll table { width: 100%; border-collapse: collapse; background: var(--card); }
+.competition-scroll { margin: 1rem 0; border: 3px solid var(--foreground); box-shadow: 4px 4px 0 var(--foreground); }
+.competition-scroll table { width: 100%; table-layout: fixed; border-collapse: collapse; background: var(--card); }
 .competition-scroll caption { text-align: left; padding: 0.7rem 0.85rem; font-weight: bold; background: var(--background); }
-.competition-scroll th, .competition-scroll td { text-align: left; padding: 0.65rem 0.75rem; border: 1px solid var(--foreground); vertical-align: top; }
+.competition-scroll th, .competition-scroll td { text-align: left; padding: 0.65rem 0.75rem; border: 1px solid var(--foreground); vertical-align: top; overflow-wrap: anywhere; }
+.competition-scroll button, .competition-arkose-link { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.competition-arkose-options, .competition-arkose-options > label { min-width: 0; }
 .competition-scroll th { background: var(--warning); text-transform: uppercase; font-size: 0.82rem; letter-spacing: 0.02em; }
 .competition-scroll tbody tr:nth-child(even) { background: rgba(0, 0, 0, 0.03); }
 .competition-scroll tbody tr:hover { background: var(--info); }
@@ -89,7 +90,7 @@
 /* Badges de statut et d'action */
 .competition-badge {
   display: inline-flex; align-items: center; padding: 0.25rem 0.6rem;
-  font-size: 0.78rem; font-weight: 800; text-transform: uppercase; white-space: nowrap;
+  font-size: 0.78rem; font-weight: 800; text-transform: uppercase; white-space: normal; max-width: 100%;
   border: 2px solid var(--foreground); box-shadow: 2px 2px 0 var(--foreground);
 }
 .competition-badge--signe { background: var(--success); }
@@ -139,9 +140,10 @@
   .competition-modal { padding: 1rem; }
 }
 
-/* Tableaux en fiches empilées : chaque cellule porte son propre libellé (data-label) */
-@media (max-width: 680px) {
-  .competition-scroll { overflow-x: visible; border: 0; box-shadow: none; }
+/* Se baser sur le panneau, pas l'écran : marges et padding réduisent l'espace.
+   62.5em = 1000px à taille normale ; le seuil suit aussi le texte agrandi. */
+@container (max-width: 62.5em) {
+  .competition-scroll { border: 0; box-shadow: none; }
   .competition-scroll table, .competition-scroll tbody { display: block; width: 100%; }
   .competition-scroll caption { display: block; margin-bottom: 0.9rem; border: 3px solid var(--foreground); box-shadow: 4px 4px 0 var(--foreground); }
   .competition-scroll thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

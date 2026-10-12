@@ -73,23 +73,27 @@ export périmé ou conflit depuis la prévisualisation refusent l'ensemble.
 
 ## Affichage responsive
 
-La page s'adapte à deux points de rupture alignés sur `src/index.css` :
+La page s'adapte à la largeur de l'écran et à celle de ses panneaux :
 
 - **768px** : en-tête, statistiques (grille), barre d'outils, en-tête de liste,
   bloc de synchronisation Arkose et pagination passent en pile, et les boutons
   prennent toute la largeur.
-- **680px** : les trois tableaux (liste, file Arkose, prévisualisation d'import)
+- **62,5em de largeur disponible dans le panneau** (1000px à taille normale) : les trois tableaux
+  (liste, file Arkose, prévisualisation d'import)
   deviennent des fiches empilées. Chaque cellule porte son libellé dans un
   attribut `data-label` repris par `td::before`, et le `<thead>` est masqué
-  visuellement sans quitter l'arbre d'accessibilité.
+  visuellement sans quitter l'arbre d'accessibilité. Une container query tient
+  compte des marges et du padding, même sur un écran de bureau. Le seuil en
+  `em` augmente avec la taille du texte pour conserver des fiches lisibles.
 
 Comme `display: block` fait disparaître les rôles implicites de tableau, les
 éléments portent des rôles ARIA explicites (`table`, `rowgroup`, `row`,
 `columnheader` avec `scope="col"`, `cell`) : les en-têtes de colonne restent
-annoncés en mode fiche. `min-width: 0` sur les enfants de `.competition-page`
-fait défiler les tableaux larges dans `.competition-scroll` au lieu de faire
-défiler la page, et le champ de fichier fantôme est exclu de la règle de largeur
-générale des inputs pour ne pas créer de défilement horizontal.
+annoncés en mode fiche. Les tableaux conservés sur les grands panneaux utilisent
+`table-layout: fixed` et leurs textes longs reviennent à la ligne : aucun
+conteneur de défilement horizontal n'est utilisé. `min-width: 0` sur les enfants
+de `.competition-page` autorise leur rétrécissement, et le champ de fichier
+fantôme est exclu de la règle de largeur générale des inputs.
 
 ## Import initial technique (29 lignes source, 27 fiches uniques, 2026-27)
 
