@@ -122,17 +122,21 @@ function TachesSaison({ saison }: { saison: string }) {
           const enRetard = !!tache.echeance && tache.echeance < aujourdHui && tache.statut !== "terminee";
           return <li key={tache._id} className={`taches-item taches-item--${tache.statut}`}>
             <article aria-labelledby={`titre-${tache._id}`}>
-              <div className="taches-item-heading"><h2 id={`titre-${tache._id}`}>{tache.titre}</h2><span className={`taches-statut taches-statut--${tache.statut}`}><Icone size={16} aria-hidden="true" />{STATUTS[tache.statut]}</span></div>
+              <header className="taches-item-head">
+                <h2 id={`titre-${tache._id}`} className="taches-titre">{tache.titre}</h2>
+                <div className="taches-item-tools">
+                  {canChange
+                    ? <select className={`taches-statut taches-statut--${tache.statut} taches-statut--action`} aria-label={`Statut de ${tache.titre}`} value={tache.statut} disabled={busy || !!editing} onChange={(e) => void changeStatus(tache, e.target.value as Statut)}>{Object.entries(STATUTS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+                    : <span className={`taches-statut taches-statut--${tache.statut}`}><Icone size={14} aria-hidden="true" />{STATUTS[tache.statut]}</span>}
+                  {isCreator && <><button type="button" className="btn-icon" disabled={busy || !!editing} title="Modifier" onClick={() => openForm(tache)} aria-label={`Modifier ${tache.titre}`}><Pencil size={18} aria-hidden="true" /></button><button type="button" className="btn-icon danger" disabled={busy || !!editing} title="Supprimer" onClick={() => { setError(""); setDeleting(tache); }} aria-label={`Supprimer ${tache.titre}`}><Trash2 size={18} aria-hidden="true" /></button></>}
+                </div>
+              </header>
               {tache.description && <p className="taches-description">{tache.description}</p>}
               <dl className="taches-details">
-                <div><dt>Assignée à</dt><dd className="taches-assignees">{tache.assigneIds.map((id) => { const libelle = nom(id); return <span key={id} className="taches-assigne"><span className="taches-assigne-initiales" aria-hidden="true">{initiales(libelle)}</span>{libelle}</span>; })}</dd></div>
-                <div><dt>Échéance</dt><dd>{tache.echeance ? <time className={`taches-echeance${enRetard ? " taches-echeance--retard" : ""}`} dateTime={tache.echeance}>{tache.echeance.split("-").reverse().join("/")}{enRetard ? " · en retard" : ""}</time> : "Sans échéance"}</dd></div>
-                <div><dt>Créée par</dt><dd>{nom(tache.createurId)}</dd></div>
+                <div className="taches-detail"><dt>Assigné·es</dt><dd className="taches-assignees">{tache.assigneIds.map((id) => { const libelle = nom(id); return <span key={id} className="taches-assigne"><span className="taches-assigne-initiales" aria-hidden="true">{initiales(libelle)}</span>{libelle}</span>; })}</dd></div>
+                <div className="taches-detail"><dt>Échéance</dt><dd>{tache.echeance ? <time className={`taches-echeance${enRetard ? " taches-echeance--retard" : ""}`} dateTime={tache.echeance}>{tache.echeance.split("-").reverse().join("/")}{enRetard ? " · en retard" : ""}</time> : "Sans échéance"}</dd></div>
+                <div className="taches-detail"><dt>Créée par</dt><dd>{nom(tache.createurId)}</dd></div>
               </dl>
-              <div className="taches-actions">
-                {canChange && <label>Changer le statut<select className="input-field" aria-label={`Statut de ${tache.titre}`} value={tache.statut} disabled={busy || !!editing} onChange={(e) => void changeStatus(tache, e.target.value as Statut)}>{Object.entries(STATUTS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>}
-                {isCreator && <><button type="button" className="btn-secondary" disabled={busy || !!editing} onClick={() => openForm(tache)} aria-label={`Modifier ${tache.titre}`}><Pencil size={16} aria-hidden="true" /> Modifier</button><button type="button" className="btn-secondary" disabled={busy || !!editing} onClick={() => { setError(""); setDeleting(tache); }} aria-label={`Supprimer ${tache.titre}`}><Trash2 size={16} aria-hidden="true" /> Supprimer</button></>}
-              </div>
             </article>
           </li>;
         })}
