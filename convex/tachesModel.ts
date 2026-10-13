@@ -1,4 +1,16 @@
 import { v } from "convex/values";
+import type { Id } from "./_generated/dataModel";
+
+// Personnes à notifier lors d'une création/assignation : uniquement les
+// nouveaux assignés, en excluant l'auteur (on ne s'auto-notifie jamais).
+export function destinatairesNotifies(
+  anciens: readonly Id<"users">[],
+  nouveaux: readonly Id<"users">[],
+  acteur: Id<"users">,
+): Id<"users">[] {
+  const anciensSet = new Set(anciens);
+  return nouveaux.filter((id) => !anciensSet.has(id) && id !== acteur);
+}
 
 // INVARIANT D'ASSIGNATION (doit rester vrai après CHAQUE mutation) :
 //   - `taches.assigneIds` et l'ensemble des `taches_assignations.userId`

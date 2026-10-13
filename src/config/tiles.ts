@@ -14,6 +14,20 @@ export const TILE_OPTIONS = [
 
 export type TileId = (typeof TILE_OPTIONS)[number]["id"];
 
+// Tuiles obligatoires pour tout le staff (utilisateurs et administrateurs).
+// Elles sont imposées côté serveur (convex/users.ts) et ne peuvent pas être
+// retirées ; le front les affiche toujours comme attribuées pour rester cohérent
+// avec la case verrouillée de l'éditeur d'accès.
+export const MANDATORY_TILE_IDS = ["taches"] as const;
+
+export function isMandatoryTile(tileId: string): boolean {
+  return (MANDATORY_TILE_IDS as readonly string[]).includes(tileId);
+}
+
+export function withMandatoryTiles(tileIds: readonly string[]): string[] {
+  return Array.from(new Set([...tileIds, ...MANDATORY_TILE_IDS]));
+}
+
 const KNOWN_TILE_IDS = new Set<string>(TILE_OPTIONS.map(({ id }) => id));
 
 export function isKnownTileId(tileId: string): tileId is TileId {

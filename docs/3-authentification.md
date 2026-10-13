@@ -137,6 +137,13 @@ titre que les autres membres du staff. Les droits sur chaque tâche dépendent
 ensuite du créateur et des assignés, jamais du rôle administrateur. Voir le
 [guide Tâches](16-taches.md).
 
+Dans Configurations > Utilisateurs et Accès, la tuile Tâches est affichée comme
+« Obligatoire » pour tous les comptes. Ce tableau reflète la **règle** (tuile
+obligatoire, non révocable), tandis que l'autorisation serveur lit toujours le
+`allowedTiles` persisté : pour un compte historique non encore réparé, l'accès
+reste accordé dès la première ouverture du portail via `ensureMandatoryTiles`, et
+`requireTile` refuse tout appel direct tant que la réparation n'a pas eu lieu.
+
 ### Autres modules staff
 
 Pour les samedis, `allowedTiles` contenant `samedis` définit le rôle de

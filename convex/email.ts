@@ -194,6 +194,40 @@ export const sendSamediEmail = action({
   },
 });
 
+// Notification d'assignation d'une tâche du staff. Réutilise la boîte du
+// portail staff (comme Samedis), sans exposer d'endpoint d'envoi arbitraire.
+export const sendTacheEmail = action({
+  args: {
+    to: v.string(),
+    sujet: v.string(),
+    texte: v.string(),
+  },
+  returns: v.null(),
+  handler: async (_ctx, args) => {
+    const destinataire = canoniserEmailUnique(args.to);
+    const senderEmail = process.env.EMAIL_SENDER;
+    const senderPassword = process.env.EMAIL_PASSWORD;
+    if (!senderEmail || !senderPassword) {
+      console.warn("[Taches] Configuration SMTP indisponible.");
+      throw new Error("L'envoi de la notification de tâche est temporairement indisponible.");
+    }
+    try {
+      await envoyerEmail(
+        senderEmail,
+        senderPassword,
+        `Tâches Escalade CAF LRB <${senderEmail}>`,
+        destinataire,
+        args.sujet,
+        args.texte,
+      );
+      return null;
+    } catch {
+      console.error("[Taches] Échec de l'envoi SMTP.");
+      throw new Error("L'envoi de la notification de tâche est temporairement indisponible.");
+    }
+  },
+});
+
 // Envoi dédié au planning des salariés du samedi. Il réutilise la boîte du
 // portail staff, comme la tuile Samedis, sans exposer d'endpoint arbitraire.
 export const sendPlanningSalariesEmail = action({

@@ -2,7 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { Check, ShieldCheck, X } from "lucide-react";
 import type { FunctionReturnType } from "convex/server";
 import { api } from "../../../convex/_generated/api";
-import { TILE_OPTIONS, unknownTileIds } from "../../config/tiles";
+import {
+  isMandatoryTile,
+  TILE_OPTIONS,
+  unknownTileIds,
+  withMandatoryTiles,
+} from "../../config/tiles";
 
 type ListedUser = FunctionReturnType<typeof api.users.listUsers>[number];
 
@@ -48,7 +53,7 @@ export default function EditUserDialog({
 
     setName(user.name || "");
     setRole(user.settings?.role || "user");
-    const initialTiles = Array.from(new Set([...(user.settings?.allowedTiles || []), "taches"]));
+    const initialTiles = withMandatoryTiles(user.settings?.allowedTiles || []);
     setAllowedTiles(
       initialTiles.includes("budget") && !initialTiles.includes("compta")
         ? [...initialTiles, "compta"]
@@ -68,7 +73,7 @@ export default function EditUserDialog({
   const canManageAboConfig = allowedTiles.includes("abonnements");
 
   const toggleTile = (tileId: string) => {
-    if (tileId === "taches") return;
+    if (isMandatoryTile(tileId)) return;
     setAccessNotice("");
     const isEnabled = allowedTiles.includes(tileId);
 
@@ -100,7 +105,7 @@ export default function EditUserDialog({
     if (!enabled) setCanManageAboConfiguration(false);
     setAllowedTiles([
       ...unknownTiles,
-      ...(enabled ? TILE_OPTIONS.map(({ id }) => id) : ["taches"]),
+      ...(enabled ? TILE_OPTIONS.map(({ id }) => id) : withMandatoryTiles([])),
     ]);
   };
 
@@ -251,12 +256,12 @@ export default function EditUserDialog({
                     <input
                       type="checkbox"
                       checked={checked}
-                      disabled={tile.id === "taches"}
+                      disabled={isMandatoryTile(tile.id)}
                       onChange={() => toggleTile(tile.id)}
                     />
                     <span>
                       <strong>{tile.label}</strong>
-                      <small>{tile.id === "taches" ? "Obligatoire pour tout le staff" : checked ? "Autorisé" : "Non autorisé"}</small>
+                      <small>{isMandatoryTile(tile.id) ? "Obligatoire pour tout le staff" : checked ? "Autorisé" : "Non autorisé"}</small>
                     </span>
                   </label>
                 );

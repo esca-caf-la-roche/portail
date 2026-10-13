@@ -1,7 +1,9 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
 import { expect, test } from "vitest";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
+import { destinatairesNotifies } from "./tachesModel";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
@@ -12,8 +14,10 @@ async function setup() {
   const t = convexTest(schema, modules);
   const ids = await t.run(async ctx => {
     const result = [];
-    for (const name of ["Créateur", "Assigné", "Observateur", "Historique", "Public"]) {
-      const id = await ctx.db.insert("users", { name, email: `${name}@example.test` });
+    const noms = ["Créateur", "Assigné", "Observateur", "Historique", "Public"];
+    for (const [index, name] of noms.entries()) {
+      // Adresses ASCII : `canoniserEmailUnique` refuse un point local accentué.
+      const id = await ctx.db.insert("users", { name, email: `staff${index}@example.test` });
       if (name !== "Public") await ctx.db.insert("userSettings", { userId: id, role: "admin", allowedTiles: name === "Historique" ? [] : ["taches"] });
       result.push(id);
     }
@@ -92,4 +96,51 @@ test("pagination 25 et filtres combinés sans perte", async () => {
   const second = await staff.query(api.taches.list, { saison, paginationOpts: { ...paginationOpts, cursor: first.continueCursor }, assigneId: assigne, statut: "a_faire" });
   expect(second.page).toHaveLength(2);
   expect(new Set([...first.page, ...second.page].map(row => row._id)).size).toBe(27);
+});
+
+test("sélection des destinataires notifiés : nouveaux seulement, jamais l'auteur", () => {
+  const a = "u1" as Id<"users">;
+  const b = "u2" as Id<"users">;
+  const c = "u3" as Id<"users">;
+  expect(destinatairesNotifies([], [a, b], a)).toEqual([b]);
+  expect(destinatairesNotifies([a], [a, b], c)).toEqual([b]);
+  expect(destinatairesNotifies([a, b], [a, b], c)).toEqual([]);
+  expect(destinatairesNotifies([], [a], a)).toEqual([]);
+});
+
+test("planifie un e-mail par nouvel assigné et aucun pour une auto-assignation", async () => {
+  const { t, staff, createur, assigne, autre, historique } = await setup();
+  const planifies = () => t.run(async (ctx) => await ctx.db.system.query("_scheduled_functions").collect());
+  // Création assignée à deux autres membres : deux notifications.
+  const id = await staff.mutation(api.taches.create, { saison, titre: "Partagée", assigneIds: [assigne, autre] });
+  expect(await planifies()).toHaveLength(2);
+  // Réenregistrement sans changement d'assignation : aucune notification.
+  await staff.mutation(api.taches.update, { saison, id, titre: "Partagée", assigneIds: [assigne, autre] });
+  expect(await planifies()).toHaveLength(2);
+  // Auto-assignation du créateur seul : aucune notification.
+  await staff.mutation(api.taches.create, { saison, titre: "Solo", assigneIds: [createur] });
+  expect(await planifies()).toHaveLength(2);
+  // Ajout du créateur lui-même (auto-assignation) : aucune notification.
+  await staff.mutation(api.taches.update, { saison, id, titre: "Partagée", assigneIds: [assigne, autre, createur] });
+  expect(await planifies()).toHaveLength(2);
+  // Ajout d'un autre membre : une notification supplémentaire.
+  await staff.mutation(api.taches.update, { saison, id, titre: "Partagée", assigneIds: [assigne, autre, createur, historique] });
+  expect(await planifies()).toHaveLength(3);
+  // Un assigné sans adresse e-mail valide est ignoré sans échec de la mutation.
+  const sansEmail = await t.run(async (ctx) => {
+    const userId = await ctx.db.insert("users", { name: "Sans email" });
+    await ctx.db.insert("userSettings", { userId, role: "user", allowedTiles: ["taches"] });
+    return userId;
+  });
+  await staff.mutation(api.taches.create, { saison, titre: "Sans adresse", assigneIds: [sansEmail] });
+  expect(await planifies()).toHaveLength(3);
+});
+
+test("le sink e-mail des tâches refuse un destinataire invalide sans réseau", async () => {
+  const t = convexTest(schema, modules);
+  await expect(t.action(internal.email.sendTacheEmail, {
+    to: "Nom <victime@example.test>",
+    sujet: "Test",
+    texte: "Test",
+  })).rejects.toThrow("Adresse email invalide");
 });

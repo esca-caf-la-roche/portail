@@ -38,6 +38,17 @@ ou assigné est également bloquée. Il faut d'abord résoudre ces références 
 retirer une assignation en conservant au moins un assigné, ou faire supprimer la
 tâche par son créateur. Aucune purge implicite ne contourne ces droits.
 
+## Notifications par e-mail
+
+Lorsqu'une tâche est créée ou que de nouveaux assignés sont ajoutés, chaque
+personne **nouvellement assignée** reçoit un e-mail de notification
+(`internal.email.sendTacheEmail`, boîte du portail staff). L'auteur d'une tâche
+n'est **jamais** notifié pour une auto-assignation. Réenregistrer une tâche sans
+changer ses assignés n'envoie aucun e-mail ; un assigné sans adresse valide est
+ignoré sans faire échouer l'enregistrement. L'envoi est planifié après la
+transaction (jamais bloquant) et n'est pas rejoué automatiquement en cas
+d'échec SMTP.
+
 ## Repères techniques et validation
 
 `src/pages/Taches.tsx` utilise la saison sélectionnée ; `convex/taches.ts`
