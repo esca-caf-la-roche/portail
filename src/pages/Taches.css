@@ -22,7 +22,10 @@
 
 .taches-item article { display: grid; gap: .75rem; }
 .taches-item-head { display: flex; align-items: flex-start; gap: .5rem .75rem; flex-wrap: wrap; }
-.taches-titre { flex: 1 1 12rem; min-width: 0; padding: .2rem .6rem; border: 2px solid var(--border-color); background: var(--lime); font-size: 1.15rem; line-height: 1.3; overflow-wrap: anywhere; }
+.taches-titre { flex: 1 1 12rem; min-width: 0; padding: .2rem .6rem; border: 2px solid var(--border-color); font-size: 1.15rem; line-height: 1.3; overflow-wrap: anywhere; }
+.taches-item--a_faire .taches-titre { background: var(--warning); }
+.taches-item--en_cours .taches-titre { background: var(--info); }
+.taches-item--terminee .taches-titre { background: var(--success); }
 .taches-item-tools { display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
 .taches-item-tools .btn-icon { min-width: 2.75rem; }
 .taches-description { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 70ch; line-height: 1.5; }
