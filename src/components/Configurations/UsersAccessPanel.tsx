@@ -128,8 +128,8 @@ export default function UsersAccessPanel() {
           </button>
         </form>
         <p className="user-add-note">
-          Aucun module n'est autorisé à la création. Attribuez explicitement
-          les tuiles nécessaires au rôle réel de la personne.
+          La tuile Tâches est attribuée à tout le staff. Attribuez explicitement
+          les autres tuiles nécessaires au rôle réel de la personne.
         </p>
         {addError && (
           <p className="user-edit-error" role="alert" aria-live="assertive">

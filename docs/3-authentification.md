@@ -119,6 +119,26 @@ est redirigé vers `/login`.
 ce contrôle côté backend. Le rôle administrateur n'accorde pas automatiquement
 les tuiles : il est réservé à la page Configurations.
 
+### Tuile obligatoire Tâches
+
+`taches` est attribuée à tous les comptes staff, actuels et futurs, par une
+valeur persistée dans `userSettings.allowedTiles`. Les mutations d'ajout et de
+mise à jour des utilisateurs, ainsi que le bootstrap, imposent cette tuile même
+si la sélection reçue l'omet. Elle ne peut donc pas être retirée au staff.
+
+Pour les comptes historiques, `Layout` appelle `ensureMandatoryTiles` : cette
+mutation idempotente complète les droits manquants sans réécrire un compte déjà
+conforme. Elle ne crée pas de `userSettings` pour un compte public ou isolé.
+Le tableau de bord, `RequireAccess` et `requireTile` continuent à lire les droits
+persistés ; aucun passe-droit admin ou public n'est introduit.
+
+Un administrateur sans tuile facultative possède donc toujours `taches`, au même
+titre que les autres membres du staff. Les droits sur chaque tâche dépendent
+ensuite du créateur et des assignés, jamais du rôle administrateur. Voir le
+[guide Tâches](16-taches.md).
+
+### Autres modules staff
+
 Pour les samedis, `allowedTiles` contenant `samedis` définit le rôle de
 gestionnaire. Le rôle `admin` seul ne constitue pas un passe-droit. La route
 `/#/gestion-samedis`, les queries, mutations et actions Convex répètent cette

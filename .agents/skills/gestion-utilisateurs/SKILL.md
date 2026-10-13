@@ -42,7 +42,7 @@ lors du reset annuel.
 ## 2. RÈGLE D'OR : les tuiles, rien que les tuiles
 
 **L'accès à un module (tuile) vient UNIQUEMENT de
-`userSettings.allowedTiles`, cochées dans Configurations > Utilisateurs.
+`userSettings.allowedTiles`, persistées côté serveur.
 Le rôle `admin` ne donne AUCUN passe-droit sur les tuiles.**
 
 - Interdit : `settings.role === "admin" || settings.allowedTiles.includes(...)`
@@ -50,11 +50,15 @@ Le rôle `admin` ne donne AUCUN passe-droit sur les tuiles.**
 - Le rôle `admin` sert exclusivement à administrer l'application : page
   `/configurations` (gestion des utilisateurs/accès + saisons) et bouton
   Configurations du Dashboard.
-- Un admin sans tuile cochée ne voit aucune tuile — c'est voulu.
+- Les tuiles facultatives se choisissent dans Configurations > Utilisateurs.
+  `taches` est obligatoire pour tout staff, y compris un admin sans tuile
+  facultative. L'attribution et le rattrapage idempotent sont décrits dans
+  `docs/3-authentification.md` (section « Tuile obligatoire Tâches ») : conserver
+  ce contrat lors de toute modification des utilisateurs, du bootstrap ou du Layout.
 
 Tuiles existantes : `compta`, `paiements`, `budget`, `abonnements`,
 `licences_cours`, `contacts_cours`, `remboursements_eleves`, `samedis`,
-`planning_salaries_samedis`
+`planning_salaries_samedis`, `taches`
 (source de vérité : `TILES` dans `convex/access.ts`, alignée avec
 `TILE_OPTIONS` dans `src/pages/Configurations.tsx`).
 
@@ -86,8 +90,10 @@ l'export, sinon le hook bloque. Existants : `users.current`,
 - Vérifier l'autorisation dans CHAQUE endpoint, même si le front cache déjà la
   page : les fonctions publiques Convex sont appelables directement.
 - `userSettings` se lit via l'index `by_userId` (pas de `.filter`).
-- Toute donnée renvoyée doit être filtrée par propriétaire (`owner_id`) sauf
-  pour les admins du module (cf. `requireOwnedDossier`).
+- Dans Abonnements, filtrer les données par propriétaire sauf pour les admins du
+  module (cf. `requireOwnedDossier`). Les autres modules suivent leur contrat :
+  toutes les tâches de la saison sont visibles par tout le staff ; leurs
+  mutations restent limitées selon `docs/16-taches.md`, sans bypass admin.
 
 ## 5. Checklist : ajouter un nouveau module / une nouvelle tuile
 
@@ -99,13 +105,15 @@ l'export, sinon le hook bloque. Existants : `users.current`,
    `userSettings.allowedTiles?.includes("<tuile>")` (sans condition de rôle).
 4. Garder la route dans `App.tsx` : `<RequireAccess tile="<tuile>">…`.
 5. Cocher la tuile pour les comptes concernés dans Configurations >
-   Utilisateurs (y compris les admins qui en ont besoin).
+   Utilisateurs (y compris les admins qui en ont besoin), sauf `taches`, imposée
+   côté serveur pour tout staff.
 
 ## 6. Checklist : modifier les rôles / la page Configurations
 
 - Toute mutation d'administration commence par `requireAdmin(ctx, ctx.userId)`.
 - `listUsers` est admin-only (expose les emails de tout le staff).
 - La suppression d'un utilisateur supprime aussi son `userSettings`
-  (`users.removeUser`).
+  (`users.removeUser`), mais doit être refusée s'il est encore référencé comme
+  créateur ou assigné d'une tâche, même terminée.
 - Ne pas introduire de nouveau rôle sans mettre à jour ce skill, `access.ts`
   et le hook.

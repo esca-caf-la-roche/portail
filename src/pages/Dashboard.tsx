@@ -12,6 +12,7 @@ import {
   CalendarCheck,
   Route,
   Trophy,
+  ListChecks,
   type LucideIcon,
 } from "lucide-react";
 import { useQuery } from "convex/react";
@@ -23,6 +24,7 @@ import {
 } from "../config/tiles";
 
 const TILE_DETAILS: Record<TileId, { icon: LucideIcon; to: string }> = {
+  taches: { icon: ListChecks, to: "/taches" },
   compta: { icon: Calculator, to: "/compta" },
   paiements: { icon: CreditCard, to: "/paiements" },
   budget: { icon: PiggyBank, to: "/budget" },

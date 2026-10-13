@@ -77,6 +77,11 @@ L'accès à un module staff vient exclusivement de
 `userSettings.allowedTiles`. Le rôle `admin` n'accorde aucun passe-droit sur les
 tuiles ; il sert à l'administration des utilisateurs et des saisons.
 
+La tuile `taches` est obligatoire pour tout staff actuel ou futur : elle doit
+être persistée dans `allowedTiles`, jamais accordée par un bypass de rôle.
+Le contrat d'attribution et de rattrapage des comptes historiques est décrit dans
+`docs/3-authentification.md`.
+
 Une tuile doit être protégée aux trois niveaux :
 
 1. visibilité dans `src/pages/Dashboard.tsx` ;

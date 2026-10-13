@@ -88,7 +88,9 @@ Quelle que soit la réponse saison, une nouvelle tuile exige aussi :
 3. la tuile dans `Dashboard.tsx` (`allowedTiles?.includes("<tuile>")`, sans
    condition de rôle) ;
 4. la route gardée dans `App.tsx` (`<RequireAccess tile="<tuile>">…`) ;
-5. cocher la tuile pour les comptes concernés dans Configurations.
+5. cocher la tuile pour les comptes concernés dans Configurations. Pour la
+   tuile obligatoire `taches`, l'attribution est persistée automatiquement pour
+   tout le staff selon `docs/3-authentification.md` ; elle n'est pas révocable.
 6. **si la tuile rafraîchit des données externes** (scrap, API, import
    récurrent) : synchro **on-demand throttlée** (`convex/abo/sync.ts` : verrou
    partagé dans `abo_app_config`, TTL ~1 h), **jamais** un cron horaire ; et

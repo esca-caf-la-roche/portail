@@ -4,6 +4,7 @@ export type SaisonDisponible = {
 };
 
 const MODULES_SAISONNIERS = [
+  "/taches",
   "/compta",
   "/competition",
   "/budget",

@@ -114,6 +114,7 @@ describe("protections de la tuile Paiements", () => {
 
 describe("saisons et administration globale", () => {
   const tiles = [
+    ["taches", "bg-lime"],
     ["compta", "bg-info"], ["paiements", "bg-success"], ["budget", "bg-warning"],
     ["abonnements", "bg-primary"], ["licences_cours", "bg-danger"], ["contacts_cours", "bg-orange"],
     ["remboursements_eleves", "bg-pink"],
@@ -273,7 +274,9 @@ describe("saisons et administration globale", () => {
         .withIndex("by_userId", (q) => q.eq("userId", userId))
         .first(),
     );
-    expect(settings?.allowedTiles).toEqual([]);
+    // La tuile Tâches est obligatoire : la création l'attribue, les autres
+    // modules restent à cocher explicitement.
+    expect(settings?.allowedTiles).toEqual(["taches"]);
     await expect(admin.mutation(api.users.addUser, {
       email: "nouveau.staff@example.test",
       name: "Doublon",
