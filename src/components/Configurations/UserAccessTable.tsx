@@ -2,8 +2,10 @@ import { Edit2, Trash2 } from "lucide-react";
 import type { FunctionReturnType } from "convex/server";
 import { api } from "../../../convex/_generated/api";
 import {
+  isMandatoryTile,
   type DashboardTile,
   unknownTileIds,
+  withMandatoryTiles,
 } from "../../config/tiles";
 
 type ListedUser = FunctionReturnType<typeof api.users.listUsers>[number];
@@ -53,7 +55,9 @@ export default function UserAccessTable({
         </thead>
         <tbody>
           {users.map((user) => {
-            const allowedTiles = user.settings?.allowedTiles || [];
+            const allowedTiles = withMandatoryTiles(
+              user.settings?.allowedTiles || [],
+            );
             const unknownTiles = unknownTileIds(allowedTiles);
             const isDeleting = deletingUserId === user._id;
 
@@ -93,7 +97,11 @@ export default function UserAccessTable({
                           <span>
                             <strong>{tile.label}</strong>
                             <small>
-                              {isAllowed ? "Autorisé" : "Non autorisé"}
+                              {isMandatoryTile(tile.id)
+                                ? "Obligatoire"
+                                : isAllowed
+                                  ? "Autorisé"
+                                  : "Non autorisé"}
                             </small>
                           </span>
                         </div>

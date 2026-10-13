@@ -3,7 +3,9 @@ import { ConvexError, v } from "convex/values";
 import { authenticatedMutation, authenticatedQuery } from "./customFunctions";
 import { getUserSettings, requireTile } from "./access";
 import { champsModifies } from "./dbUtils";
-import { contenuTache, statutTache, tacheDoc } from "./tachesModel";
+import { canoniserEmailUnique } from "./emailValidation";
+import { contenuTache, destinatairesNotifies, statutTache, tacheDoc } from "./tachesModel";
+import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 
@@ -48,6 +50,40 @@ async function assignations(ctx: QueryCtx, id: Id<"taches">) {
   const rows = await ctx.db.query("taches_assignations").withIndex("by_tacheId", q => q.eq("tacheId", id)).take(51);
   if (rows.length > 50) throw new ConvexError("Trop d'assignations pour cette tâche.");
   return rows;
+}
+
+// Prévient par e-mail les personnes nouvellement assignées. L'appelant a déjà
+// retiré l'auteur de la tâche : on ne notifie jamais quelqu'un qui s'assigne
+// lui-même. Les envois sont planifiés (jamais bloquants) et chaque destinataire
+// sans adresse est simplement ignoré.
+async function notifierNouveauxAssignes(
+  ctx: MutationCtx,
+  tache: { createurId: Id<"users">; titre: string; description?: string; echeance?: string; saison: string },
+  destinataires: Id<"users">[],
+) {
+  if (destinataires.length === 0) return;
+  const createur = await ctx.db.get(tache.createurId);
+  const nomCreateur = createur?.name?.trim() || "Un membre du staff";
+  const parties = [`${nomCreateur} vous a assigné la tâche « ${tache.titre} » (saison ${tache.saison}).`];
+  if (tache.echeance) parties.push(`Échéance : ${tache.echeance.split("-").reverse().join("/")}.`);
+  if (tache.description) parties.push(`Description :\n${tache.description}`);
+  const texte = `${parties.join("\n")}\n\nConnectez-vous au portail, tuile Tâches, pour la consulter et suivre son avancement.`;
+  const titreSujet = tache.titre.replace(/[\r\n]+/g, " ").trim();
+  for (const userId of destinataires) {
+    const user = await ctx.db.get(userId);
+    let email: string;
+    try {
+      email = canoniserEmailUnique(user?.email ?? "");
+    } catch {
+      // Adresse historique non canonique : on n'planifie pas d'envoi condamné.
+      continue;
+    }
+    await ctx.scheduler.runAfter(0, internal.email.sendTacheEmail, {
+      to: email,
+      sujet: `Nouvelle tâche assignée : ${titreSujet}`,
+      texte,
+    });
+  }
 }
 
 export const list = authenticatedQuery({
@@ -95,6 +131,11 @@ export const create = authenticatedMutation({
     const contenu = await validerContenu(ctx, args);
     const id = await ctx.db.insert("taches", { ...contenu, saison: args.saison, createurId: ctx.userId, statut: "a_faire", updatedAt: Date.now() });
     for (const userId of contenu.assigneIds) await ctx.db.insert("taches_assignations", { saison: args.saison, tacheId: id, userId, statut: "a_faire" });
+    await notifierNouveauxAssignes(
+      ctx,
+      { createurId: ctx.userId, titre: contenu.titre, description: contenu.description, echeance: contenu.echeance, saison: args.saison },
+      destinatairesNotifies([], contenu.assigneIds, ctx.userId),
+    );
     return id;
   },
 });
@@ -115,6 +156,11 @@ export const update = authenticatedMutation({
       }
     }
     if (champsModifies(tache, contenu, ["assigneIds"]) || changedAssignments) await ctx.db.patch(tache._id, { ...contenu, updatedAt: Date.now() });
+    await notifierNouveauxAssignes(
+      ctx,
+      { createurId: tache.createurId, titre: contenu.titre, description: contenu.description, echeance: contenu.echeance, saison: tache.saison },
+      destinatairesNotifies(tache.assigneIds, contenu.assigneIds, ctx.userId),
+    );
     return null;
   },
 });

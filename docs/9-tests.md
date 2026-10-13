@@ -93,6 +93,13 @@ Contrat métier : [16-taches.md](16-taches.md). Appliquer les commandes de la
 section « Contrôles disponibles » ; les scénarios ci-dessous restent à exécuter
 sur un jeu de données de test.
 
+```bash
+npm test -- convex/taches.test.ts convex/emailValidation.test.ts
+npm run check:convex
+npm run lint
+npm run build
+```
+
 1. ouvrir le portail avec un ancien compte staff sans `taches` : vérifier son
    ajout persisté par `ensureMandatoryTiles`, puis l'absence de nouvelle écriture
    lors d'appels répétés ; vérifier aussi un nouveau compte, une mise à jour
@@ -116,7 +123,12 @@ sur un jeu de données de test.
    et un assigné : chaque suppression doit être refusée. Faire supprimer la
    tâche par son créateur et vérifier la disparition des assignations ;
 8. contrôler sur mobile et au clavier le formulaire, les filtres, les messages
-   d'erreur et la pagination.
+   d'erreur et la pagination ;
+9. notifier par e-mail les nouveaux assignés : créer une tâche pour un autre
+   membre (il reçoit un e-mail), s'auto-assigner (aucun e-mail), réenregistrer
+   sans changer les assignés (aucun e-mail), ajouter un nouvel assigné (un seul
+   e-mail), et un assigné sans adresse valide est ignoré sans échec de la
+   mutation.
 
 ### Scénarios ciblés — Répartition des recettes du Budget
 
