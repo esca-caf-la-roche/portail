@@ -2,9 +2,24 @@ import { defineSchema, defineTable } from "convex/server";
 import { authTables } from "@convex-dev/auth/server";
 import { v } from "convex/values";
 import { ambassadeurFields } from "./competitionModel";
+import { tacheFields, statutTache } from "./tachesModel";
 
 export default defineSchema({
   ...authTables,
+
+  taches: defineTable(tacheFields)
+    .index("by_saison", ["saison"])
+    .index("by_saison_and_statut", ["saison", "statut"])
+    .index("by_createurId", ["createurId"]),
+
+  taches_assignations: defineTable({
+    saison: v.string(), tacheId: v.id("taches"), userId: v.id("users"), statut: statutTache,
+  })
+    .index("by_saison", ["saison"])
+    .index("by_tacheId", ["tacheId"])
+    .index("by_userId", ["userId"])
+    .index("by_saison_and_userId", ["saison", "userId"])
+    .index("by_saison_and_userId_and_statut", ["saison", "userId", "statut"]),
 
   tiers: defineTable({
     nom: v.string(),
@@ -203,6 +218,7 @@ export default defineSchema({
     tiles: v.array(
       v.object({
         id: v.union(
+          v.literal("taches"),
           v.literal("compta"),
           v.literal("paiements"),
           v.literal("budget"),

@@ -1,4 +1,5 @@
 export const TILE_OPTIONS = [
+  { id: "taches", label: "Tâches", description: "Organisez le travail du club et suivez les tâches partagées de la saison.", defaultColor: "bg-lime" },
   { id: "compta", label: "Comptabilité", description: "Gérez les transactions, prévisionnels et analyses.", defaultColor: "bg-info" },
   { id: "paiements", label: "Paiements Escalade", description: "Suivi des paiements pour les cours d'escalade.", defaultColor: "bg-success" },
   { id: "budget", label: "Budget prévisionnel", description: "Masse salariale et simulation d'augmentations.", defaultColor: "bg-warning" },

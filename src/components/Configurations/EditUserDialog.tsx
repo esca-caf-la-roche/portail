@@ -48,7 +48,7 @@ export default function EditUserDialog({
 
     setName(user.name || "");
     setRole(user.settings?.role || "user");
-    const initialTiles = user.settings?.allowedTiles || [];
+    const initialTiles = Array.from(new Set([...(user.settings?.allowedTiles || []), "taches"]));
     setAllowedTiles(
       initialTiles.includes("budget") && !initialTiles.includes("compta")
         ? [...initialTiles, "compta"]
@@ -68,6 +68,7 @@ export default function EditUserDialog({
   const canManageAboConfig = allowedTiles.includes("abonnements");
 
   const toggleTile = (tileId: string) => {
+    if (tileId === "taches") return;
     setAccessNotice("");
     const isEnabled = allowedTiles.includes(tileId);
 
@@ -99,7 +100,7 @@ export default function EditUserDialog({
     if (!enabled) setCanManageAboConfiguration(false);
     setAllowedTiles([
       ...unknownTiles,
-      ...(enabled ? TILE_OPTIONS.map(({ id }) => id) : []),
+      ...(enabled ? TILE_OPTIONS.map(({ id }) => id) : ["taches"]),
     ]);
   };
 
@@ -233,7 +234,7 @@ export default function EditUserDialog({
                 className="user-tool-button"
                 onClick={() => setKnownTiles(false)}
               >
-                Retirer les six modules
+                Retirer les accès facultatifs
               </button>
             </div>
             <div className="user-permission-editor">
@@ -250,11 +251,12 @@ export default function EditUserDialog({
                     <input
                       type="checkbox"
                       checked={checked}
+                      disabled={tile.id === "taches"}
                       onChange={() => toggleTile(tile.id)}
                     />
                     <span>
                       <strong>{tile.label}</strong>
-                      <small>{checked ? "Autorisé" : "Non autorisé"}</small>
+                      <small>{tile.id === "taches" ? "Obligatoire pour tout le staff" : checked ? "Autorisé" : "Non autorisé"}</small>
                     </span>
                   </label>
                 );
@@ -298,7 +300,7 @@ export default function EditUserDialog({
             <aside className="user-unknown-tiles">
               <strong>Accès inconnus conservés</strong>
               <p>
-                Ces identifiants ne correspondent pas aux six modules actuels et
+                Ces identifiants ne correspondent pas aux modules actuels et
                 seront conservés à l'enregistrement.
               </p>
               <ul>

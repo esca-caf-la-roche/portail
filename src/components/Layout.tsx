@@ -1,5 +1,6 @@
 import { Outlet, Navigate, Link, useLocation } from "react-router-dom";
-import { useConvexAuth, useQuery } from "convex/react";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
+import { useEffect, useRef } from "react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { api } from "../../convex/_generated/api";
 import { useSeason } from "../contexts/SeasonContext";
@@ -105,8 +106,33 @@ export default function Layout() {
       </header>
 
       <main className="content-area">
-        <Outlet />
+        <StaffAccessReady />
       </main>
     </div>
   );
+}
+
+function StaffAccessReady() {
+  const settings = useQuery(api.users.getCurrentUserSettings);
+  const ensureMandatoryTiles = useMutation(api.users.ensureMandatoryTiles);
+  const attempted = useRef(false);
+  const needsUpdate =
+    settings !== undefined &&
+    "userId" in settings &&
+    !settings.allowedTiles?.includes("taches");
+
+  // Réparation en arrière-plan : la tuile Tâches est rendue persistée dès
+  // l'ouverture d'une page du portail, sans jamais bloquer les autres routes.
+  // Une erreur transitoire ne remonte donc pas au portail : la mutation sera
+  // retentée au prochain montage. Un compte sans userSettings (public) n'a
+  // aucun `userId` dans la réponse et n'est jamais promu ici.
+  useEffect(() => {
+    if (!needsUpdate || attempted.current) return;
+    attempted.current = true;
+    void ensureMandatoryTiles({}).catch(() => {
+      attempted.current = false;
+    });
+  }, [needsUpdate, ensureMandatoryTiles]);
+
+  return <Outlet />;
 }

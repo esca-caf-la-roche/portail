@@ -92,6 +92,8 @@ import type * as samedis_notifications from "../samedis/notifications.js";
 import type * as samedis_reservations from "../samedis/reservations.js";
 import type * as samedis_sync from "../samedis/sync.js";
 import type * as staffOtp from "../staffOtp.js";
+import type * as taches from "../taches.js";
+import type * as tachesModel from "../tachesModel.js";
 import type * as tiers from "../tiers.js";
 import type * as transactions from "../transactions.js";
 import type * as typesDocuments from "../typesDocuments.js";
@@ -188,6 +190,8 @@ declare const fullApi: ApiFromModules<{
   "samedis/reservations": typeof samedis_reservations;
   "samedis/sync": typeof samedis_sync;
   staffOtp: typeof staffOtp;
+  taches: typeof taches;
+  tachesModel: typeof tachesModel;
   tiers: typeof tiers;
   transactions: typeof transactions;
   typesDocuments: typeof typesDocuments;

@@ -208,6 +208,10 @@ export const remove = mutation({
     }
 
     // Données dérivées, générées automatiquement (createNext / planning des cours) :
+    const tache = await ctx.db.query("taches").withIndex("by_saison", q => q.eq("saison", saison.nom)).first();
+    const assignation = await ctx.db.query("taches_assignations").withIndex("by_saison", q => q.eq("saison", saison.nom)).first();
+    if (tache || assignation) throw new ConvexError("Cette saison contient des tâches : supprimez-les d'abord.");
+
     // on les nettoie en cascade pour ne pas laisser d'orphelins.
     await deleteBySaison(ctx, "previsionnels", saison.nom); // lignes auto restantes
     await deleteBySaison(ctx, "parametresPaie", saison.nom);

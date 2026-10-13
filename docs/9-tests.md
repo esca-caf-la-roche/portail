@@ -87,6 +87,37 @@ Pour le planning salarié, la checklist de
 [13-planning-salaries-samedis.md](13-planning-salaries-samedis.md) couvre les
 deux populations, la saison, Google Calendar, les reprises et le rappel du lundi.
 
+### Scénarios ciblés — Tâches du staff
+
+Contrat métier : [16-taches.md](16-taches.md). Appliquer les commandes de la
+section « Contrôles disponibles » ; les scénarios ci-dessous restent à exécuter
+sur un jeu de données de test.
+
+1. ouvrir le portail avec un ancien compte staff sans `taches` : vérifier son
+   ajout persisté par `ensureMandatoryTiles`, puis l'absence de nouvelle écriture
+   lors d'appels répétés ; vérifier aussi un nouveau compte, une mise à jour
+   omettant cette tuile et le bootstrap ;
+2. vérifier qu'un admin sans tuile facultative dispose de Tâches et qu'un compte
+   public ou isolé ne reçoit aucun `userSettings` ni accès à la route ou aux
+   endpoints ; un appel direct avec des droits historiques non réparés doit
+   rester refusé par la garde de tuile ;
+3. créer une tâche puis vérifier les limites : titre vide, 160/161 caractères,
+   description 4 000/4 001 caractères, échéance absente ou date invalide,
+   0/1/50/51 assignés et assigné non-staff ;
+4. avec le créateur, un assigné et un tiers staff (également admin), vérifier la
+   visibilité commune, les modifications de contenu et d'assignations réservées
+   au créateur, et le changement de statut réservé au créateur ou aux assignés ;
+5. parcourir plusieurs pages avec les filtres statut/personne combinés, changer
+   de filtre et de saison : vérifier l'absence de mélange, de doublons ou de
+   résultats conservés de la sélection précédente ;
+6. changer le statut depuis un second compte et vérifier la restitution temps
+   réel du statut global, puis recharger pour contrôler la persistance ;
+7. essayer de supprimer une saison contenant une tâche terminée, son créateur
+   et un assigné : chaque suppression doit être refusée. Faire supprimer la
+   tâche par son créateur et vérifier la disparition des assignations ;
+8. contrôler sur mobile et au clavier le formulaire, les filtres, les messages
+   d'erreur et la pagination.
+
 ### Scénarios ciblés — Répartition des recettes du Budget
 
 Les règles métier et les formules sont décrites dans

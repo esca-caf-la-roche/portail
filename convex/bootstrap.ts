@@ -35,7 +35,7 @@ export const bootstrapAdmins = internalMutation({
         .withIndex("by_userId", (q) => q.eq("userId", user!._id))
         .first();
 
-      const allowedTiles = ["compta", "paiements", "budget"];
+      const allowedTiles = ["compta", "paiements", "budget", "taches"];
       if (settings) {
         await ctx.db.patch(settings._id, {
           role: "admin",

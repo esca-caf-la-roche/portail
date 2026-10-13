@@ -14,6 +14,7 @@ import Compteur from "./abonnements/Compteur";
 
 const Compta = lazy(() => import("./pages/Compta"));
 const Competition = lazy(() => import("./pages/Competition"));
+const Taches = lazy(() => import("./pages/Taches"));
 const MasseSalariale = lazy(() => import("./pages/Budget/MasseSalariale"));
 const ParametresPaie = lazy(() => import("./pages/Budget/ParametresPaie"));
 const PaiementsLayout = lazy(() => import("./pages/Paiements/Layout"));
@@ -110,6 +111,7 @@ function App() {
               <Route path="/" element={<Dashboard />} />
               <Route path="/compta" element={<RequireAccess tile="compta"><LazyRoute><Compta /></LazyRoute></RequireAccess>} />
               <Route path="/competition" element={<RequireAccess tile="competition"><LazyRoute><Competition /></LazyRoute></RequireAccess>} />
+              <Route path="/taches" element={<RequireAccess tile="taches"><LazyRoute><Taches /></LazyRoute></RequireAccess>} />
               <Route path="/budget" element={<RequireAccess tile="budget"><LazyRoute><MasseSalariale /></LazyRoute></RequireAccess>} />
               <Route path="/budget/parametres" element={<RequireAccess tile="budget"><LazyRoute><ParametresPaie /></LazyRoute></RequireAccess>} />
               <Route path="/configurations" element={<RequireAccess admin><Configurations /></RequireAccess>} />

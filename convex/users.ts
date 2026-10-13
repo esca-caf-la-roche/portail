@@ -107,6 +107,7 @@ function emailCanoniqueSiValide(email: unknown): string | null {
 }
 
 const dashboardTileValidator = v.union(
+  v.literal("taches"),
   v.literal("compta"),
   v.literal("paiements"),
   v.literal("budget"),
@@ -155,6 +156,7 @@ type DashboardTile = {
  * tuiles ajoutées avant une mise à jour du client) sont conservés tels quels.
  */
 function ensureBudgetIncludesCompta(allowedTiles: readonly string[]): string[] {
+  allowedTiles = [...new Set([...allowedTiles, "taches"])];
   if (
     allowedTiles.includes("budget") &&
     !allowedTiles.includes("compta")
@@ -262,6 +264,19 @@ export const getCurrentUserSettings = authenticatedQuery({
   },
 });
 
+// Réparation progressive, uniquement du staff déjà administré ; jamais de création.
+export const ensureMandatoryTiles = authenticatedMutation({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    const settings = await getUserSettings(ctx, ctx.userId);
+    if (!settings || settings.allowedTiles.includes("taches")) return null;
+    const allowedTiles = ensureBudgetIncludesCompta(settings.allowedTiles);
+    if (champsModifies(settings, { allowedTiles })) await ctx.db.patch(settings._id, { allowedTiles });
+    return null;
+  },
+});
+
 export const addUser = authenticatedMutation({
   args: { email: v.string(), name: v.string() },
   returns: v.id("users"),
@@ -313,7 +328,7 @@ export const addUser = authenticatedMutation({
     
     await ctx.db.insert("userSettings", {
       userId: newUserId,
-      allowedTiles: [],
+      allowedTiles: ["taches"],
       role: "user",
       canResetAboSeason: false,
       canManageAboConfiguration: false,
@@ -329,6 +344,10 @@ export const removeUser = authenticatedMutation({
     await requireAdmin(ctx, ctx.userId);
     const settings = await exigerMembreStaff(ctx, args.userId);
     await exigerAucunCreneauAboFutur(ctx, args.userId);
+
+    const created = await ctx.db.query("taches").withIndex("by_createurId", q => q.eq("createurId", args.userId)).first();
+    const assigned = await ctx.db.query("taches_assignations").withIndex("by_userId", q => q.eq("userId", args.userId)).first();
+    if (created || assigned) throw new ConvexError("Ce membre est référencé par des tâches : seul le créateur d'une tâche peut la supprimer ou retirer une assignation. Demandez-lui de le faire d'abord.");
 
     await ctx.db.delete(settings._id);
     await ctx.db.delete(args.userId);

@@ -52,7 +52,7 @@ tâches internes. Il n'existe pas de serveur HTTP applicatif séparé.
 | Ensemble | Routes principales | Protection |
 |---|---|---|
 | Public ou isolé | `/login`, `/abonnements`, `/compteur`, `/samedis`, `/planning-salaries-samedis` | Selon le parcours et le provider OTP |
-| Staff | `/`, `/compta`, `/competition`, `/paiements`, `/budget`, `/licences-cours`, `/contacts-cours`, `/contacts-cours/copier`, `/remboursements-eleves`, `/gestion-samedis`, `/gestion-planning-salaries-samedis` | `Layout` puis `RequireAccess` |
+| Staff | `/`, `/compta`, `/competition`, `/taches`, `/paiements`, `/budget`, `/licences-cours`, `/contacts-cours`, `/contacts-cours/copier`, `/remboursements-eleves`, `/gestion-samedis`, `/gestion-planning-salaries-samedis` | `Layout` puis `RequireAccess` |
 | Administration | `/configurations`, `/gestion-abonnements` | Rôle admin ou tuile dédiée |
 
 Le routage par hash permet de servir toutes les routes depuis GitHub Pages sans
@@ -72,9 +72,10 @@ design n'est donc plus contenu dans un fichier CSS unique.
 ## Backend Convex
 
 `convex/schema.ts` définit les tables d'authentification et les tables métier,
-réparties en cinq domaines :
+réparties en plusieurs domaines :
 
 - référentiels, saisons et utilisateurs ;
+- tâches collaboratives du staff ;
 - comptabilité et prévisionnels ;
 - cours, masse salariale et paiements ;
 - synchronisations et intégrations externes ;
@@ -112,6 +113,15 @@ Voir [3-authentification.md](3-authentification.md) pour les populations et
 endpoints.
 
 ## Données et saisonnalité
+
+La tuile Tâches `/taches` suit la saison globale. `taches` stocke les tâches et
+`taches_assignations` leurs assignés staff ; les deux tables sont saisonnières
+et indexées. `convex/taches.ts` fournit les lectures paginées, filtrées par statut
+et personne assignée, ainsi que les mutations autorisées par tâche. Une tâche
+empêche la suppression de sa saison et des utilisateurs qu'elle référence.
+Voir [16-taches.md](16-taches.md) pour le contrat métier et
+[3-authentification.md](3-authentification.md#tuile-obligatoire-tâches) pour son
+attribution obligatoire au staff.
 
 La tuile Compétition `/competition` suit les ambassadeurs Arkose par saison.
 Elle ne synchronise aucune source externe ; sa signature est un suivi manuel.

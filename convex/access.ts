@@ -16,6 +16,7 @@ import { ConvexError, v } from "convex/values";
 // Identifiants des tuiles/modules. Doit rester aligné avec TILE_OPTIONS
 // (src/pages/Configurations.tsx) et les tuiles du Dashboard.
 export const TILES = [
+  "taches",
   "compta",
   "paiements",
   "budget",
@@ -65,6 +66,7 @@ export async function requireAdmin(
 }
 
 const tileValidator = v.union(
+  v.literal("taches"),
   v.literal("compta"),
   v.literal("paiements"),
   v.literal("budget"),
