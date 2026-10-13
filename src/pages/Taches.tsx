@@ -1,7 +1,7 @@
 import { Component, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { CheckCircle2, Circle, Pencil, Plus, Timer, Trash2, type LucideIcon } from "lucide-react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { useSeason } from "../contexts/SeasonContext";
@@ -11,6 +11,21 @@ type Tache = FunctionReturnType<typeof api.taches.list>["page"][number];
 type Staff = FunctionReturnType<typeof api.taches.annuaireStaff>;
 type Statut = "a_faire" | "en_cours" | "terminee";
 const STATUTS: Record<Statut, string> = { a_faire: "À faire", en_cours: "En cours", terminee: "Terminée" };
+const STATUT_ICONES: Record<Statut, LucideIcon> = { a_faire: Circle, en_cours: Timer, terminee: CheckCircle2 };
+
+function dateLocaleISO(date = new Date()): string {
+  const mois = String(date.getMonth() + 1).padStart(2, "0");
+  const jour = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${mois}-${jour}`;
+}
+
+function initiales(nom: string): string {
+  const mots = nom.trim().split(/\s+/).filter(Boolean);
+  if (mots.length === 0) return "?";
+  const premiere = mots[0]?.[0] ?? "";
+  const seconde = mots.length > 1 ? mots[mots.length - 1]?.[0] ?? "" : "";
+  return (premiere + seconde).toUpperCase();
+}
 
 function messageErreur(error: unknown): string {
   const data = (error as { data?: unknown })?.data;
@@ -81,6 +96,7 @@ function TachesSaison({ saison }: { saison: string }) {
     finally { setBusy(false); }
   }
   const nom = (id: Id<"users">) => staff?.find((personne) => personne.userId === id)?.nom ?? "Ancien membre du staff";
+  const aujourdHui = dateLocaleISO();
 
   return <div className="taches-page">
     <header className="taches-header">
@@ -102,11 +118,17 @@ function TachesSaison({ saison }: { saison: string }) {
         {results.map((tache) => {
           const isCreator = current?._id === tache.createurId;
           const canChange = isCreator || !!current && tache.assigneIds.includes(current._id);
-          return <li key={tache._id} className="taches-item">
+          const Icone = STATUT_ICONES[tache.statut];
+          const enRetard = !!tache.echeance && tache.echeance < aujourdHui && tache.statut !== "terminee";
+          return <li key={tache._id} className={`taches-item taches-item--${tache.statut}`}>
             <article aria-labelledby={`titre-${tache._id}`}>
-              <div className="taches-item-heading"><h2 id={`titre-${tache._id}`}>{tache.titre}</h2><span className={`taches-statut taches-statut--${tache.statut}`}>{STATUTS[tache.statut]}</span></div>
+              <div className="taches-item-heading"><h2 id={`titre-${tache._id}`}>{tache.titre}</h2><span className={`taches-statut taches-statut--${tache.statut}`}><Icone size={16} aria-hidden="true" />{STATUTS[tache.statut]}</span></div>
               {tache.description && <p className="taches-description">{tache.description}</p>}
-              <dl className="taches-details"><div><dt>Assignée à</dt><dd>{tache.assigneIds.map(nom).join(", ")}</dd></div><div><dt>Échéance</dt><dd>{tache.echeance ? <time dateTime={tache.echeance}>{tache.echeance.split("-").reverse().join("/")}</time> : "Sans échéance"}</dd></div><div><dt>Créée par</dt><dd>{nom(tache.createurId)}</dd></div></dl>
+              <dl className="taches-details">
+                <div><dt>Assignée à</dt><dd className="taches-assignees">{tache.assigneIds.map((id) => { const libelle = nom(id); return <span key={id} className="taches-assigne"><span className="taches-assigne-initiales" aria-hidden="true">{initiales(libelle)}</span>{libelle}</span>; })}</dd></div>
+                <div><dt>Échéance</dt><dd>{tache.echeance ? <time className={`taches-echeance${enRetard ? " taches-echeance--retard" : ""}`} dateTime={tache.echeance}>{tache.echeance.split("-").reverse().join("/")}{enRetard ? " · en retard" : ""}</time> : "Sans échéance"}</dd></div>
+                <div><dt>Créée par</dt><dd>{nom(tache.createurId)}</dd></div>
+              </dl>
               <div className="taches-actions">
                 {canChange && <label>Changer le statut<select className="input-field" aria-label={`Statut de ${tache.titre}`} value={tache.statut} disabled={busy || !!editing} onChange={(e) => void changeStatus(tache, e.target.value as Statut)}>{Object.entries(STATUTS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>}
                 {isCreator && <><button type="button" className="btn-secondary" disabled={busy || !!editing} onClick={() => openForm(tache)} aria-label={`Modifier ${tache.titre}`}><Pencil size={16} aria-hidden="true" /> Modifier</button><button type="button" className="btn-secondary" disabled={busy || !!editing} onClick={() => { setError(""); setDeleting(tache); }} aria-label={`Supprimer ${tache.titre}`}><Trash2 size={16} aria-hidden="true" /> Supprimer</button></>}
