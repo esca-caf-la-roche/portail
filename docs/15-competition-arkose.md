@@ -26,12 +26,12 @@ n'efface jamais une adresse connue. Deux emails différents pour la même identi
 dans une réponse sont refusés comme ambigus.
 
 Le lien optionnel est l'URL **Google Drive** du PDF signé déposé par n8n
-(`lien`, alias `lien_pdf`). Il doit être une URL `https://`. n8n partage le
+(accepte `lien`, `lienPdf` ou `lien_pdf`). Il doit être une URL `https://`. n8n partage le
 fichier en **lecteur** pour toute personne disposant du lien (non indexable) puis
 renvoie `webViewLink`. Le portail affiche « Ouvrir le PDF signé » sous le nom du
 signataire. Le partage s'applique au fichier de la saison courante et seulement
 aux signatures importées après l'ajout de cette étape : les signatures déjà
-présentes n'ont pas de lien. Une adresse non vide remplace le lien stocké ;
+présentes n'ont pas de lien. Un lien non vide remplace le lien stocké ;
 l'absence n'efface jamais un lien connu.
 
 Un nom/prénom normalisé qui correspond à un unique ambassadeur de la saison le
