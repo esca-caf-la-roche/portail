@@ -2,6 +2,7 @@
 import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
 import { api, internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 import schema from "./schema";
 import { GROUPES, type AmbassadeurFields, type ImportRow } from "./competitionModel";
 import { validerReponseArkose } from "./competitionArkoseWebhook";
@@ -24,6 +25,57 @@ async function setup() {
 }
 
 describe("compétition : sécurité, saisons et concurrence", () => {
+  test("email Arkose : alias, absences, limites et doublons", () => {
+    const identity = { nom: "Parent", prenom: "Camille" };
+    for (const alias of ["email", "Email", "EMAIL"]) {
+      expect(validerReponseArkose([{ ...identity, [alias]: " Parent@Example.test " }])).toEqual([{ ...identity, email: "parent@example.test" }]);
+      for (const empty of [null, "", "   "]) expect(validerReponseArkose([{ ...identity, [alias]: empty }])).toEqual([identity]);
+    }
+    expect(validerReponseArkose([identity])).toEqual([identity]);
+    expect(validerReponseArkose([{ ...identity, " email ": " parent@example.test " }])).toEqual([{ ...identity, email: "parent@example.test" }]);
+    expect(validerReponseArkose([{ ...identity, "Émail": "Parent@Example.test" }])).toEqual([{ ...identity, email: "parent@example.test" }]);
+    expect(() => validerReponseArkose([{ ...identity, email: "a@b.test", " email ": "a@b.test" }])).toThrow("plusieurs champs");
+    const withEmail = { ...identity, email: "parent@example.test" };
+    for (const rows of [[withEmail, identity], [identity, withEmail], [withEmail, { ...identity, Email: " PARENT@EXAMPLE.TEST " }]]) expect(validerReponseArkose(rows)).toEqual([withEmail]);
+    expect(() => validerReponseArkose([withEmail, { ...identity, email: "other@example.test" }])).toThrow("emails différents");
+    expect(() => validerReponseArkose([{ ...identity, email: null, EMAIL: "" }])).toThrow("plusieurs champs");
+    for (const email of [12, {}, [], "a b@c.test", "a@b", "a@@b.test", "a@b.test,c@d.test", `${"a".repeat(248)}@b.test`]) expect(() => validerReponseArkose([{ ...identity, email }])).toThrow("email invalide");
+    expect(validerReponseArkose([{ ...identity, email: `${"a".repeat(247)}@b.test` }])[0].email).toHaveLength(254);
+  });
+
+  test("Arkose : filtres indépendants et enrichissement sans modifier les décisions", async () => {
+    const { t, staff, operatorId } = await setup();
+    const child = await staff.mutation(api.competition.create, { saison, fields, partenariatSigne: false });
+    await t.mutation(internal.competitionArkoseWebhook.enregistrerLot, { saison, userId: operatorId, items: [{ nom: "Exemple", prenom: "Camille", email: "initial@example.test" }, { nom: "Parent", prenom: "Autre" }, { nom: "Masque", prenom: "Autre" }] });
+    const all = await staff.query(api.competition.listSignaturesArkose, { saison, inclureLiees: true });
+    const linked = all.find((s) => s.statut === "lie")!;
+    const hidden = all.find((s) => s.nom === "Masque")!;
+    await staff.mutation(api.competition.masquerSignatureArkose, { saison, signatureId: hidden._id });
+    for (const inclureLiees of [undefined, false, true]) for (const inclureMasquees of [undefined, false, true]) {
+      const rows = await staff.query(api.competition.listSignaturesArkose, { saison, inclureLiees, inclureMasquees });
+      expect(rows.map((s) => s.statut).sort()).toEqual(["a_rapprocher", ...(inclureLiees ? ["lie"] : []), ...(inclureMasquees ? ["masquee"] : [])].sort());
+    }
+    for (const signature of [linked, hidden]) {
+      const before = await t.run((ctx) => ctx.db.get(signature._id));
+      const linksBefore = await t.run((ctx) => ctx.db.query("competition_signatures_arkose_liens").collect());
+      const childBefore = await t.run((ctx) => ctx.db.get(child));
+      const args = { saison, userId: operatorId, items: [{ nom: signature.nom, prenom: signature.prenom, email: "new@example.test" }] };
+      expect(await t.mutation(internal.competitionArkoseWebhook.enregistrerLot, args)).toEqual({ queued: 0, autoLinked: 0, ignored: 1 });
+      const enriched = await t.run((ctx) => ctx.db.get(signature._id));
+      expect(enriched).toEqual({ ...before, email: "new@example.test" });
+      await t.mutation(internal.competitionArkoseWebhook.enregistrerLot, args);
+      await t.mutation(internal.competitionArkoseWebhook.enregistrerLot, { ...args, items: [{ nom: signature.nom, prenom: signature.prenom }] });
+      await t.mutation(internal.competitionArkoseWebhook.enregistrerLot, { ...args, items: [{ nom: signature.nom, prenom: signature.prenom, email: "" }] });
+      expect(await t.run((ctx) => ctx.db.get(signature._id))).toEqual(enriched);
+      expect(await t.run((ctx) => ctx.db.query("competition_signatures_arkose_liens").collect())).toEqual(linksBefore);
+      expect(await t.run((ctx) => ctx.db.get(child))).toEqual(childBefore);
+    }
+    await expect(staff.mutation(api.competition.delierSignatureArkose, { saison: "2025-26", signatureId: linked._id, ambassadeurId: child })).rejects.toThrow("cette saison");
+    await staff.mutation(api.competition.delierSignatureArkose, { saison, signatureId: linked._id, ambassadeurId: child });
+    expect(await staff.query(api.competition.listSignaturesArkose, { saison })).toContainEqual({ ...linked, email: "new@example.test", statut: "a_rapprocher", liens: [] });
+    expect(await staff.query(api.competition.listSignaturesArkose, { saison: "2025-26", inclureLiees: true, inclureMasquees: true })).toEqual([]);
+    for (const invalidSeason of ["2026-28", "2030-31"]) await expect(staff.query(api.competition.listSignaturesArkose, { saison: invalidSeason, inclureLiees: true })).rejects.toThrow();
+  });
   test("webhook Arkose : contrat NOM/Prénom, dédoublonnage et rapprochement un-à-plusieurs", async () => {
     expect(validerReponseArkose([{ NOM: " DUPONT ", Prénom: " Claire " }, { nom: "DUPONT", PRENOM: "Claire" }])).toEqual([{ nom: "DUPONT", prenom: "Claire" }]);
     expect(() => validerReponseArkose([{ NOM: "DUPONT" }])).toThrow("nom et un prénom");
@@ -35,9 +87,26 @@ describe("compétition : sécurité, saisons et concurrence", () => {
     const pending = await staff.query(api.competition.listSignaturesArkose, { saison });
     expect(pending).toHaveLength(1);
     expect(await staff.mutation(api.competition.lierSignatureArkose, { saison, signatureId: pending[0]._id, ambassadeurIds: [childOne, childTwo] })).toEqual({ lies: 2 });
-    expect(await staff.query(api.competition.listSignaturesArkose, { saison })).toMatchObject([{ statut: "lie", liens: [{ ambassadeurId: childOne }, { ambassadeurId: childTwo }] }]);
+    expect(await staff.query(api.competition.listSignaturesArkose, { saison })).toEqual([]);
+    expect(await staff.query(api.competition.listSignaturesArkose, { saison, inclureLiees: true })).toMatchObject([{ statut: "lie", liens: [{ ambassadeurId: childOne }, { ambassadeurId: childTwo }] }]);
     expect(await t.run((ctx) => ctx.db.get(childOne))).toMatchObject({ partenariatSigne: true });
     expect(await t.run((ctx) => ctx.db.get(childTwo))).toMatchObject({ partenariatSigne: true });
+  });
+  test("Arkose : plafond total de 20 liaisons après plusieurs appels, refus atomique et rejouement", async () => {
+    const { t, staff, operatorId } = await setup();
+    const ids: Id<"competition_ambassadeurs">[] = [];
+    for (let i = 0; i < 21; i++) ids.push(await staff.mutation(api.competition.create, { saison, fields: { ...fields, nom: `Eleve ${i}` }, partenariatSigne: false }));
+    await t.mutation(internal.competitionArkoseWebhook.enregistrerLot, { saison, userId: operatorId, items: [{ nom: "Parent", prenom: "Limite" }] });
+    const [signature] = await staff.query(api.competition.listSignaturesArkose, { saison });
+    const args = { saison, signatureId: signature._id };
+    expect(await staff.mutation(api.competition.lierSignatureArkose, { ...args, ambassadeurIds: ids.slice(0, 19) })).toEqual({ lies: 19 });
+    expect(await staff.mutation(api.competition.lierSignatureArkose, { ...args, ambassadeurIds: [ids[0], ids[19]] })).toEqual({ lies: 1 });
+    expect(await staff.mutation(api.competition.lierSignatureArkose, { ...args, ambassadeurIds: [ids[0]] })).toEqual({ lies: 0 });
+    await expect(staff.mutation(api.competition.lierSignatureArkose, { ...args, ambassadeurIds: [ids[20]] })).rejects.toThrow("20 ambassadeurs maximum");
+    expect((await staff.query(api.competition.listSignaturesArkose, { saison, inclureLiees: true }))[0].liens).toHaveLength(20);
+    expect(await t.run((ctx) => ctx.db.get(ids[20]))).toMatchObject({ partenariatSigne: false, revision: 1 });
+    await staff.mutation(api.competition.delierSignatureArkose, { ...args, ambassadeurId: ids[19] });
+    expect(await staff.mutation(api.competition.lierSignatureArkose, { ...args, ambassadeurIds: [ids[20]] })).toEqual({ lies: 1 });
   });
   test("signature Arkose sans correspondance : masquage persistant et réaffichage", async () => {
     const { t, staff, operatorId } = await setup();
@@ -131,6 +200,8 @@ describe("compétition : sécurité, saisons et concurrence", () => {
     const fakeId = await t.run((ctx) => ctx.db.insert("competition_ambassadeurs", { ...fields, saison, cleIdentite: "test", partenariatSigne: false, revision: 1, updatedAt: 0, updatedBy: adminId }));
     for (const denied of [t, t.withIdentity({ subject: adminId }), t.withIdentity({ subject: publicId })]) {
       await expect(denied.query(api.competition.list, { saison, paginationOpts })).rejects.toThrow();
+      await expect(denied.query(api.competition.listSignaturesArkose, { saison, inclureLiees: true, inclureMasquees: true })).rejects.toThrow();
+      await expect(denied.action(api.competitionArkoseWebhook.synchroniser, { saison })).rejects.toThrow();
       await expect(denied.query(api.competition.previewImport, { saison, rows: [fields] })).rejects.toThrow();
       await expect(denied.mutation(api.competition.create, { saison, fields, partenariatSigne: false })).rejects.toThrow();
       await expect(denied.mutation(api.competition.update, { saison, id: fakeId, revision: 1, fields, partenariatSigne: true })).rejects.toThrow();

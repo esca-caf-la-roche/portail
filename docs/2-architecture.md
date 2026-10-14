@@ -124,7 +124,8 @@ Voir [16-taches.md](16-taches.md) pour le contrat métier et
 attribution obligatoire au staff.
 
 La tuile Compétition `/competition` suit les ambassadeurs Arkose par saison.
-Elle ne synchronise aucune source externe ; sa signature est un suivi manuel.
+Elle suit les signatures manuellement ou les importe à la demande via le
+webhook Arkose n8n (identité et email optionnel du signataire).
 Les fiches bloquent la suppression de leur saison. Voir
 [15-competition-arkose.md](15-competition-arkose.md).
 

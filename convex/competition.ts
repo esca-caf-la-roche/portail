@@ -98,24 +98,27 @@ export const remove = authenticatedMutation({
 
 const signatureArkoseValidator = v.object({
   _id: v.id("competition_signatures_arkose"), nom: v.string(), prenom: v.string(),
+  email: v.optional(v.string()),
   statut: v.union(v.literal("a_rapprocher"), v.literal("lie"), v.literal("masquee")),
   liens: v.array(v.object({ ambassadeurId: v.id("competition_ambassadeurs"), nom: v.string(), prenom: v.string() })),
 });
 
 export const listSignaturesArkose = authenticatedQuery({
-  args: { saison: v.string(), inclureMasquees: v.optional(v.boolean()) }, returns: v.array(signatureArkoseValidator),
+  args: { saison: v.string(), inclureMasquees: v.optional(v.boolean()), inclureLiees: v.optional(v.boolean()) }, returns: v.array(signatureArkoseValidator),
   handler: async (ctx, args) => {
     await requireTile(ctx, ctx.userId, "competition"); await verifierSaison(ctx, args.saison);
     // IO-BOUNDED: le webhook accepte au plus 1 000 signatures par saison ; la
     // file entière reste donc accessible sans pagination cachée.
-    const statuts = args.inclureMasquees ? ["a_rapprocher", "lie", "masquee"] as const : ["a_rapprocher", "lie"] as const;
+    const statuts: Doc<"competition_signatures_arkose">["statut"][] = ["a_rapprocher"];
+    if (args.inclureLiees) statuts.push("lie");
+    if (args.inclureMasquees) statuts.push("masquee");
     const lots = await Promise.all(statuts.map((statut) => ctx.db.query("competition_signatures_arkose").withIndex("by_saison_and_statut", (q) => q.eq("saison", args.saison).eq("statut", statut)).take(1_001)));
     const signatures = lots.flat();
     if (signatures.length > 1_000) throw new ConvexError("Plus de 1 000 signatures Arkose dans cette saison : contactez un administrateur.");
     return Promise.all(signatures.map(async (signature) => {
       const liens = await ctx.db.query("competition_signatures_arkose_liens").withIndex("by_signatureId", (q) => q.eq("signatureId", signature._id)).take(20);
       const ambassadeurs = await Promise.all(liens.map((lien) => ctx.db.get(lien.ambassadeurId)));
-      return { _id: signature._id, nom: signature.nom, prenom: signature.prenom, statut: signature.statut, liens: ambassadeurs.filter((a): a is Doc<"competition_ambassadeurs"> => a !== null).map((a) => ({ ambassadeurId: a._id, nom: a.nom, prenom: a.prenom })) };
+      return { _id: signature._id, nom: signature.nom, prenom: signature.prenom, ...(signature.email === undefined ? {} : { email: signature.email }), statut: signature.statut, liens: ambassadeurs.filter((a): a is Doc<"competition_ambassadeurs"> => a !== null).map((a) => ({ ambassadeurId: a._id, nom: a.nom, prenom: a.prenom })) };
     }));
   },
 });
@@ -167,6 +170,11 @@ export const lierSignatureArkose = authenticatedMutation({
     const signature = await ctx.db.get(args.signatureId);
     if (!signature || signature.saison !== args.saison) throw new ConvexError("Signature Arkose introuvable dans cette saison.");
     let lies = 0;
+    // La borne porte sur la signature entière, même après plusieurs appels.
+    // Cette lecture indexée participe à la transaction et protège les ajouts concurrents.
+    const liensExistants = await ctx.db.query("competition_signatures_arkose_liens").withIndex("by_signatureId", (q) => q.eq("signatureId", signature._id)).take(21);
+    const idsLies = new Set([...liensExistants.map((lien) => lien.ambassadeurId), ...args.ambassadeurIds]);
+    if (liensExistants.length > 20 || idsLies.size > 20) throw new ConvexError("Une signature peut être reliée à 20 ambassadeurs maximum.");
     for (const ambassadeurId of args.ambassadeurIds) {
       const ambassadeur = await ctx.db.get(ambassadeurId);
       if (!ambassadeur || ambassadeur.saison !== args.saison) throw new ConvexError("Ambassadeur introuvable dans cette saison.");
