@@ -19,10 +19,11 @@ plus d'un alias pour le même champ est refusé.
 L'email optionnel est celui du **signataire**, extrait par n8n de l'objet du
 message DocuSeal (« complété par … »), et non celui de l'expéditeur DocuSeal.
 Il est normalisé et affiché sous l'identité dans **Signataire reçu**. Une ancienne
-signature sans email reste valide ; un import ultérieur avec une adresse fiable
-peut l'enrichir sans changer ses liaisons ni son statut. L'absence d'email dans
-un nouvel import n'efface jamais une adresse connue. Deux emails différents
-pour la même identité dans une réponse sont refusés comme ambigus.
+signature sans email reste valide ; un import ultérieur avec une adresse non vide
+remplace l'adresse stockée (elle est réputée provenir du signataire) sans changer
+les liaisons ni le statut. L'absence ou une valeur vide dans un nouvel import
+n'efface jamais une adresse connue. Deux emails différents pour la même identité
+dans une réponse sont refusés comme ambigus.
 
 Un nom/prénom normalisé qui correspond à un unique ambassadeur de la saison le
 marque signé automatiquement. Une absence de correspondance ou un homonyme est
