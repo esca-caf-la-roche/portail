@@ -38,7 +38,7 @@ export function validerReponseArkose(value: unknown): Item[] {
     const nom = lireIdentite(row, "nom");
     const prenom = lireIdentite(row, "prenom");
     if (!nom || !prenom || nom.length > 100 || prenom.length > 100) invalid(`L'élément ${index + 1} doit contenir un nom et un prénom de 100 caractères maximum.`);
-    const emailKeys = Object.keys(row).filter((candidate) => candidate.toLowerCase() === "email");
+    const emailKeys = Object.keys(row).filter((candidate) => normaliserTexte(candidate) === "email");
     if (emailKeys.length > 1) invalid("Le webhook Arkose contient plusieurs champs pour « email ».");
     const rawEmail = emailKeys.length ? row[emailKeys[0]] : undefined;
     if (rawEmail !== undefined && rawEmail !== null && typeof rawEmail !== "string") invalid(`L'élément ${index + 1} contient un email invalide.`);
@@ -68,14 +68,16 @@ export const enregistrerLot = internalMutation({
     if (ambassadeurs.length > 200) throw new ConvexError("Le registre contient plus de 200 ambassadeurs : synchronisation refusée.");
     let queued = 0; let autoLinked = 0; let ignored = 0;
     for (const item of args.items) {
+      // Une chaîne vide est traitée comme absente : jamais d'email vide persisté.
+      const email = item.email || undefined;
       const key = cleNomPrenom(item.nom, item.prenom);
       const existing = await ctx.db.query("competition_signatures_arkose").withIndex("by_saison_and_nomPrenomNormalise", (q) => q.eq("saison", args.saison).eq("nomPrenomNormalise", key)).unique();
       if (existing) {
-        if (item.email !== undefined && champsModifies(existing, { email: item.email })) await ctx.db.patch(existing._id, { email: item.email });
+        if (email !== undefined && champsModifies(existing, { email })) await ctx.db.patch(existing._id, { email });
         ignored++; continue;
       }
       const matches = ambassadeurs.filter((a) => cleNomPrenom(a.nom, a.prenom) === key);
-      const signatureId = await ctx.db.insert("competition_signatures_arkose", { saison: args.saison, nom: item.nom, prenom: item.prenom, ...(item.email === undefined ? {} : { email: item.email }), nomPrenomNormalise: key, statut: matches.length === 1 ? "lie" : "a_rapprocher", firstSeenAt: Date.now() });
+      const signatureId = await ctx.db.insert("competition_signatures_arkose", { saison: args.saison, nom: item.nom, prenom: item.prenom, ...(email === undefined ? {} : { email }), nomPrenomNormalise: key, statut: matches.length === 1 ? "lie" : "a_rapprocher", firstSeenAt: Date.now() });
       if (matches.length !== 1) { queued++; continue; }
       const ambassadeur = matches[0];
       await ctx.db.insert("competition_signatures_arkose_liens", { saison: args.saison, signatureId, ambassadeurId: ambassadeur._id, origine: "automatique", lieLe: Date.now() });

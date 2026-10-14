@@ -32,6 +32,9 @@ describe("compétition : sécurité, saisons et concurrence", () => {
       for (const empty of [null, "", "   "]) expect(validerReponseArkose([{ ...identity, [alias]: empty }])).toEqual([identity]);
     }
     expect(validerReponseArkose([identity])).toEqual([identity]);
+    expect(validerReponseArkose([{ ...identity, " email ": " parent@example.test " }])).toEqual([{ ...identity, email: "parent@example.test" }]);
+    expect(validerReponseArkose([{ ...identity, "Émail": "Parent@Example.test" }])).toEqual([{ ...identity, email: "parent@example.test" }]);
+    expect(() => validerReponseArkose([{ ...identity, email: "a@b.test", " email ": "a@b.test" }])).toThrow("plusieurs champs");
     const withEmail = { ...identity, email: "parent@example.test" };
     for (const rows of [[withEmail, identity], [identity, withEmail], [withEmail, { ...identity, Email: " PARENT@EXAMPLE.TEST " }]]) expect(validerReponseArkose(rows)).toEqual([withEmail]);
     expect(() => validerReponseArkose([withEmail, { ...identity, email: "other@example.test" }])).toThrow("emails différents");
@@ -62,6 +65,7 @@ describe("compétition : sécurité, saisons et concurrence", () => {
       expect(enriched).toEqual({ ...before, email: "new@example.test" });
       await t.mutation(internal.competitionArkoseWebhook.enregistrerLot, args);
       await t.mutation(internal.competitionArkoseWebhook.enregistrerLot, { ...args, items: [{ nom: signature.nom, prenom: signature.prenom }] });
+      await t.mutation(internal.competitionArkoseWebhook.enregistrerLot, { ...args, items: [{ nom: signature.nom, prenom: signature.prenom, email: "" }] });
       expect(await t.run((ctx) => ctx.db.get(signature._id))).toEqual(enriched);
       expect(await t.run((ctx) => ctx.db.query("competition_signatures_arkose_liens").collect())).toEqual(linksBefore);
       expect(await t.run((ctx) => ctx.db.get(child))).toEqual(childBefore);
