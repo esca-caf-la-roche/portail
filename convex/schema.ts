@@ -51,6 +51,7 @@ export default defineSchema({
     saison: v.string(),
     nom: v.string(),
     prenom: v.string(),
+    email: v.optional(v.string()),
     nomPrenomNormalise: v.string(),
     statut: v.union(v.literal("a_rapprocher"), v.literal("lie"), v.literal("masquee")),
     firstSeenAt: v.number(),

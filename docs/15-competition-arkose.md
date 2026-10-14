@@ -6,26 +6,53 @@ pour un administrateur.
 
 ## Signatures Arkose
 
-Le bouton **Importer les signatures Arkose** appelle à la demande le webhook
+Le bouton **Synchroniser avec Arkose** appelle à la demande le webhook
 `https://n8n.jpcloudkit.fr/webhook/partenariat-arkose` en GET, avec les mêmes
 identifiants Basic Auth Convex que les règlements DocuSeal
 (`ABO_REGLEMENTS_WEBHOOK_USER` et `ABO_REGLEMENTS_WEBHOOK_PASSWORD`). Aucun
 secret ne passe au navigateur, aucune synchronisation automatique ni cron n'est
-créé. La réponse attend un tableau JSON d'objets `{ NOM, Prénom }`, limité à
+créé. La réponse attend un tableau JSON d'objets `{ NOM, Prénom, email? }`, limité à
 1 000 entrées et 1 Mo. Les clés sont reconnues sans différence de casse ni
 d'accent (`NOM`/`Nom`/`nom`, `Prénom`/`PRENOM`/`prenom`) ; un objet qui fournit
 plus d'un alias pour le même champ est refusé.
+
+L'email optionnel est celui du **signataire**, extrait par n8n de l'objet du
+message DocuSeal (« complété par … »), et non celui de l'expéditeur DocuSeal.
+Il est normalisé et affiché sous l'identité dans **Signataire reçu**. Une ancienne
+signature sans email reste valide ; un import ultérieur avec une adresse fiable
+peut l'enrichir sans changer ses liaisons ni son statut. L'absence d'email dans
+un nouvel import n'efface jamais une adresse connue. Deux emails différents
+pour la même identité dans une réponse sont refusés comme ambigus.
 
 Un nom/prénom normalisé qui correspond à un unique ambassadeur de la saison le
 marque signé automatiquement. Une absence de correspondance ou un homonyme est
 placé dans la file **Signatures Arkose à rapprocher**. Le staff peut alors lier
 une signature à un ou plusieurs ambassadeurs, notamment lorsqu'un adulte signe
- pour plusieurs enfants. Les imports rejoués sont idempotents. Une signature sans
- correspondance (par exemple un test) peut être **masquée** : elle sort de la file
- par défaut et les imports suivants l'ignorent sans la supprimer. Le staff peut
- afficher les signatures masquées puis les réafficher ; une signature liée doit
- d'abord être déliée. Les signatures et leurs liaisons sont des données dérivées
- supprimées en cascade avec la saison, après retrait obligatoire des ambassadeurs.
+pour plusieurs enfants. Le choix des ambassadeurs utilise une recherche locale
+et un sélecteur compact : les élèves choisis restent visibles et peuvent être
+retirés avant confirmation. Les élèves déjà liés ne sont pas reproposés et une
+signature est limitée à 20 ambassadeurs au total, même après plusieurs ajouts.
+Les imports rejoués sont idempotents. Une signature sans correspondance (par
+exemple un test) peut être **masquée** : elle sort de la file par défaut et les
+imports suivants l'ignorent sans la supprimer. Le staff peut afficher les
+signatures masquées puis les réafficher ; une signature liée doit d'abord être
+déliée. Les signatures et leurs liaisons sont des données dérivées supprimées
+en cascade avec la saison, après retrait obligatoire des ambassadeurs.
+
+La file affiche seulement les signatures **à rapprocher** par défaut. Une
+signature reliée, automatiquement ou manuellement, disparaît de cette vue sans
+être supprimée ni passer au statut « masquée ». **Afficher les signatures
+reliées** permet de consulter et corriger les liaisons ; **Afficher les
+signatures masquées** est une option indépendante. Si la dernière liaison est
+retirée, la signature revient dans la file à rapprocher.
+
+Le workflow n8n traite au plus **5 messages non lus par appel** et répond après
+la fin du lot (ou `[]` si aucun message ne reste). S'il reste des messages,
+relancer la synchronisation. Les deux entrées de la fusion PDF/identité doivent
+provenir de la même itération. Le marquage Gmail « lu » après le dépôt Drive
+n'est pas un accusé de réception Convex : si le portail n'a pas reçu le résultat,
+un rattrapage manuel demeure nécessaire. Les emails des messages historiques
+déjà lus ne sont donc pas récupérés automatiquement par cette évolution.
 
 ## Données et opérations
 
@@ -164,7 +191,14 @@ l'import des anciens fichiers XLSX.
 4. Importer le fichier initial, contrôler la prévisualisation, exporter puis
    réimporter : aucune modification ; essayer une saison étrangère et un doublon.
 5. Changer de saison pendant une prévisualisation, recharger et vérifier
-   l'isolation et la persistance ; tester clavier, mobile et pagination.
+    l'isolation et la persistance ; tester clavier, mobile et pagination.
+6. Vérifier l'email reçu sous le nom du signataire ; une ancienne signature sans
+   email ne doit pas afficher une adresse inventée. Rechercher un ambassadeur,
+   en ajouter plusieurs, changer la recherche puis retirer un choix : la
+   sélection doit être conservée et utilisable au clavier et sur mobile.
+7. Relier une signature : elle doit sortir de la file par défaut. Afficher les
+   signatures reliées, retirer sa dernière liaison : elle doit revenir dans la
+   file. Vérifier que l'option des signatures masquées reste indépendante.
 
 Tests automatisés : `convex/competition.test.ts` (CRUD, accès, saisons,
 révisions, atomicité, idempotence, bootstrap),

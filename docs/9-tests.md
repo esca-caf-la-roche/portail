@@ -50,8 +50,14 @@ couvre les droits, saisons, CRUD, conflits, imports atomiques, bootstrap strict
 27 fiches uniques depuis 29 lignes source, l'export CSV saison entier borné et le
 roundtrip CSV (injection de formule, échappement), ainsi que la lecture d'un vrai
 XLSX en mémoire (cellule date, texte commençant par `=`). Il couvre aussi le
-contrat, le dédoublonnage, le rapprochement automatique et la liaison manuelle
-une-à-plusieurs des signatures Arkose.
+contrat (email optionnel inclus), le dédoublonnage, l'enrichissement idempotent,
+les filtres reliées/masquées indépendants, le rapprochement automatique et la
+liaison manuelle une-à-plusieurs des signatures Arkose (20 liens au total).
+`npm test -- src/components/Competition/arkoseSelection.test.tsx` couvre la
+recherche sans accents, l'exclusion des élèves déjà choisis/liés, le plafond,
+la conservation de la sélection pendant une recherche et le HTML statique
+accessible du sélecteur. Les interactions et la mise en page restent à vérifier
+au navigateur.
 Le navigateur et l'import PROD ne sont
 pas exécutés par ces tests.
 
