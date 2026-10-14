@@ -11,9 +11,9 @@ const WEBHOOK_URL = "https://n8n.jpcloudkit.fr/webhook/partenariat-arkose";
 const MAX_ITEMS = 1_000;
 const MAX_RESPONSE_BYTES = 1_000_000;
 const TIMEOUT_MS = 90_000;
-const itemValidator = v.object({ nom: v.string(), prenom: v.string(), email: v.optional(v.string()) });
+const itemValidator = v.object({ nom: v.string(), prenom: v.string(), email: v.optional(v.string()), lien: v.optional(v.string()) });
 
-type Item = { nom: string; prenom: string; email?: string };
+type Item = { nom: string; prenom: string; email?: string; lien?: string };
 
 function invalid(message: string): never { throw new ConvexError({ code: "ARKOSE_WEBHOOK_JSON_INVALIDE", message }); }
 
@@ -44,11 +44,19 @@ export function validerReponseArkose(value: unknown): Item[] {
     if (rawEmail !== undefined && rawEmail !== null && typeof rawEmail !== "string") invalid(`L'élément ${index + 1} contient un email invalide.`);
     const email = typeof rawEmail === "string" ? rawEmail.trim().toLowerCase() : "";
     if (email && (email.length > 254 || !/^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/.test(email))) invalid(`L'élément ${index + 1} contient un email invalide.`);
+    const lienKeys = Object.keys(row).filter((candidate) => ["lien", "lienpdf", "lien_pdf"].includes(normaliserTexte(candidate)));
+    if (lienKeys.length > 1) invalid("Le webhook Arkose contient plusieurs champs pour « lien ».");
+    const rawLien = lienKeys.length ? row[lienKeys[0]] : undefined;
+    if (rawLien !== undefined && rawLien !== null && typeof rawLien !== "string") invalid(`L'élément ${index + 1} contient un lien invalide.`);
+    const lien = typeof rawLien === "string" ? rawLien.trim() : "";
+    if (lien && (lien.length > 500 || !/^https:\/\/\S+$/.test(lien))) invalid(`L'élément ${index + 1} contient un lien invalide.`);
     const key = cleNomPrenom(nom, prenom);
     const existing = uniques.get(key);
     if (existing?.email && email && existing.email !== email) invalid("Le webhook Arkose contient des emails différents pour une même identité.");
+    if (existing?.lien && lien && existing.lien !== lien) invalid("Le webhook Arkose contient des liens différents pour une même identité.");
     const retainedEmail = email || existing?.email;
-    uniques.set(key, { nom, prenom, ...(retainedEmail ? { email: retainedEmail } : {}) });
+    const retainedLien = lien || existing?.lien;
+    uniques.set(key, { nom, prenom, ...(retainedEmail ? { email: retainedEmail } : {}), ...(retainedLien ? { lien: retainedLien } : {}) });
   });
   return [...uniques.values()];
 }
@@ -68,16 +76,20 @@ export const enregistrerLot = internalMutation({
     if (ambassadeurs.length > 200) throw new ConvexError("Le registre contient plus de 200 ambassadeurs : synchronisation refusée.");
     let queued = 0; let autoLinked = 0; let ignored = 0;
     for (const item of args.items) {
-      // Une chaîne vide est traitée comme absente : jamais d'email vide persisté.
+      // Une chaîne vide est traitée comme absente : jamais d'email ni de lien vides persistés.
       const email = item.email || undefined;
+      const lienPdf = item.lien || undefined;
       const key = cleNomPrenom(item.nom, item.prenom);
       const existing = await ctx.db.query("competition_signatures_arkose").withIndex("by_saison_and_nomPrenomNormalise", (q) => q.eq("saison", args.saison).eq("nomPrenomNormalise", key)).unique();
       if (existing) {
-        if (email !== undefined && champsModifies(existing, { email })) await ctx.db.patch(existing._id, { email });
+        const changes: { email?: string; lienPdf?: string } = {};
+        if (email !== undefined && existing.email !== email) changes.email = email;
+        if (lienPdf !== undefined && existing.lienPdf !== lienPdf) changes.lienPdf = lienPdf;
+        if (Object.keys(changes).length > 0 && champsModifies(existing, changes)) await ctx.db.patch(existing._id, changes);
         ignored++; continue;
       }
       const matches = ambassadeurs.filter((a) => cleNomPrenom(a.nom, a.prenom) === key);
-      const signatureId = await ctx.db.insert("competition_signatures_arkose", { saison: args.saison, nom: item.nom, prenom: item.prenom, ...(email === undefined ? {} : { email }), nomPrenomNormalise: key, statut: matches.length === 1 ? "lie" : "a_rapprocher", firstSeenAt: Date.now() });
+      const signatureId = await ctx.db.insert("competition_signatures_arkose", { saison: args.saison, nom: item.nom, prenom: item.prenom, ...(email === undefined ? {} : { email }), ...(lienPdf === undefined ? {} : { lienPdf }), nomPrenomNormalise: key, statut: matches.length === 1 ? "lie" : "a_rapprocher", firstSeenAt: Date.now() });
       if (matches.length !== 1) { queued++; continue; }
       const ambassadeur = matches[0];
       await ctx.db.insert("competition_signatures_arkose_liens", { saison: args.saison, signatureId, ambassadeurId: ambassadeur._id, origine: "automatique", lieLe: Date.now() });

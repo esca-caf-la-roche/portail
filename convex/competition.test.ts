@@ -43,6 +43,35 @@ describe("compétition : sécurité, saisons et concurrence", () => {
     expect(validerReponseArkose([{ ...identity, email: `${"a".repeat(247)}@b.test` }])[0].email).toHaveLength(254);
   });
 
+  test("lien PDF Arkose : alias, validation, absences et doublons", () => {
+    const identity = { nom: "Parent", prenom: "Camille" };
+    const url = "https://drive.google.com/file/d/abc/view";
+    for (const alias of ["lien", "Lien", "lien_pdf"]) expect(validerReponseArkose([{ ...identity, [alias]: url }])).toEqual([{ ...identity, lien: url }]);
+    for (const empty of [null, "", "   "]) expect(validerReponseArkose([{ ...identity, lien: empty }])).toEqual([identity]);
+    expect(validerReponseArkose([identity])).toEqual([identity]);
+    for (const lien of ["http://drive.google.com/x", "javascript:alert(1)", "https://a b", 12, {}, [], `https://${"a".repeat(500)}`]) expect(() => validerReponseArkose([{ ...identity, lien }])).toThrow("lien invalide");
+    expect(() => validerReponseArkose([{ ...identity, lien: url, Lien: url }])).toThrow("plusieurs champs");
+    expect(() => validerReponseArkose([{ ...identity, lien: url }, { ...identity, lien: "https://drive.google.com/file/d/other/view" }])).toThrow("liens différents");
+    expect(validerReponseArkose([{ ...identity, lien: url }, { ...identity }])).toEqual([{ ...identity, lien: url }]);
+  });
+
+  test("lien PDF Arkose : stockage, enrichissement sans effacement et exposition", async () => {
+    const { t, staff, operatorId } = await setup();
+    const url = "https://drive.google.com/file/d/abc/view";
+    const lot = (items: { nom: string; prenom: string; email?: string; lien?: string }[]) => t.mutation(internal.competitionArkoseWebhook.enregistrerLot, { saison, userId: operatorId, items });
+    await lot([{ nom: "Exemple", prenom: "Camille", lien: url }]);
+    const [signature] = await staff.query(api.competition.listSignaturesArkose, { saison });
+    expect(signature.lienPdf).toBe(url);
+    await lot([{ nom: "Exemple", prenom: "Camille" }]);
+    expect((await staff.query(api.competition.listSignaturesArkose, { saison }))[0].lienPdf).toBe(url);
+    const url2 = "https://drive.google.com/file/d/def/view";
+    await lot([{ nom: "Exemple", prenom: "Camille", lien: url2 }]);
+    expect((await t.run((ctx) => ctx.db.query("competition_signatures_arkose").collect()))[0].lienPdf).toBe(url2);
+    await lot([{ nom: "Autre", prenom: "Test", lien: "" }]);
+    const autre = (await t.run((ctx) => ctx.db.query("competition_signatures_arkose").collect())).find((row) => row.nom === "Autre");
+    expect(autre).not.toHaveProperty("lienPdf");
+  });
+
   test("Arkose : filtres indépendants et enrichissement sans modifier les décisions", async () => {
     const { t, staff, operatorId } = await setup();
     const child = await staff.mutation(api.competition.create, { saison, fields, partenariatSigne: false });

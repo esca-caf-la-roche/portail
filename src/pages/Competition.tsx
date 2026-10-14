@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useAction, useConvex, useMutation, useQuery } from "convex/react";
-import { Download, Eye, EyeOff, Pencil, RefreshCw, Trash2 } from "lucide-react";
+import { Download, ExternalLink, Eye, EyeOff, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import type { Infer } from "convex/values";
 import { api } from "../../convex/_generated/api";
 import type { Doc, Id } from "../../convex/_generated/dataModel";
@@ -202,7 +202,7 @@ function CompetitionSeason({ saison }: { saison: string }) {
         const lies = signatureArkose.liens.map((lien) => lien.ambassadeurId);
         const selection = selectionArkoseValide(selectionArkose[signatureArkose._id] ?? [], lies);
         return <tr role="row" key={signatureArkose._id}>
-          <td role="cell" data-label="Signataire reçu"><strong>{signatureArkose.prenom} {signatureArkose.nom}</strong>{signatureArkose.email && <span className="competition-signataire-email">{signatureArkose.email}</span>}<br />{signatureArkose.statut === "masquee" ? <span className="competition-action competition-action--masquee">Masquée</span> : <span className={`competition-badge competition-badge--${signatureArkose.statut === "lie" ? "signe" : "attente"}`}>{signatureArkose.statut === "lie" ? "Reliée" : "À rapprocher"}</span>}</td>
+          <td role="cell" data-label="Signataire reçu"><strong>{signatureArkose.prenom} {signatureArkose.nom}</strong>{signatureArkose.email && <span className="competition-signataire-email">{signatureArkose.email}</span>}{signatureArkose.lienPdf && <a className="competition-signataire-lien" href={signatureArkose.lienPdf} target="_blank" rel="noopener noreferrer"><ExternalLink size={14} aria-hidden="true" /> Ouvrir le PDF signé</a>}<br />{signatureArkose.statut === "masquee" ? <span className="competition-action competition-action--masquee">Masquée</span> : <span className={`competition-badge competition-badge--${signatureArkose.statut === "lie" ? "signe" : "attente"}`}>{signatureArkose.statut === "lie" ? "Reliée" : "À rapprocher"}</span>}</td>
           <td role="cell" data-label="Ambassadeurs à relier">{signatureArkose.statut !== "masquee" && <>
             {signatureArkose.liens.length > 0 && <div><p className="competition-picker-help">Déjà liés</p>{signatureArkose.liens.map((lien) => <span key={lien.ambassadeurId} className="competition-arkose-link">{lien.prenom} {lien.nom} <button type="button" className="btn-text" disabled={busy} aria-label={`Retirer la liaison de ${lien.prenom} ${lien.nom}`} onClick={() => void operation(async () => { await delierSignatureArkose({ saison, signatureId: signatureArkose._id, ambassadeurId: lien.ambassadeurId }); setMessage("Liaison Arkose retirée : vous pouvez corriger ou supprimer la fiche."); })}>Retirer</button></span>)}</div>}
             {ambassadeursArkose === undefined ? <p role="status">Chargement des ambassadeurs…</p> : <ArkoseAmbassadeurSelect ambassadeurs={ambassadeursArkose} selection={selection} lies={lies} signataire={`${signatureArkose.prenom} ${signatureArkose.nom}`} disabled={busy} onChange={(ids) => setSelectionArkose((current) => ({ ...current, [signatureArkose._id]: ids }))} />}

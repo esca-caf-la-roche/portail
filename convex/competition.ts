@@ -99,6 +99,7 @@ export const remove = authenticatedMutation({
 const signatureArkoseValidator = v.object({
   _id: v.id("competition_signatures_arkose"), nom: v.string(), prenom: v.string(),
   email: v.optional(v.string()),
+  lienPdf: v.optional(v.string()),
   statut: v.union(v.literal("a_rapprocher"), v.literal("lie"), v.literal("masquee")),
   liens: v.array(v.object({ ambassadeurId: v.id("competition_ambassadeurs"), nom: v.string(), prenom: v.string() })),
 });
@@ -118,7 +119,7 @@ export const listSignaturesArkose = authenticatedQuery({
     return Promise.all(signatures.map(async (signature) => {
       const liens = await ctx.db.query("competition_signatures_arkose_liens").withIndex("by_signatureId", (q) => q.eq("signatureId", signature._id)).take(20);
       const ambassadeurs = await Promise.all(liens.map((lien) => ctx.db.get(lien.ambassadeurId)));
-      return { _id: signature._id, nom: signature.nom, prenom: signature.prenom, ...(signature.email === undefined ? {} : { email: signature.email }), statut: signature.statut, liens: ambassadeurs.filter((a): a is Doc<"competition_ambassadeurs"> => a !== null).map((a) => ({ ambassadeurId: a._id, nom: a.nom, prenom: a.prenom })) };
+      return { _id: signature._id, nom: signature.nom, prenom: signature.prenom, ...(signature.email === undefined ? {} : { email: signature.email }), ...(signature.lienPdf === undefined ? {} : { lienPdf: signature.lienPdf }), statut: signature.statut, liens: ambassadeurs.filter((a): a is Doc<"competition_ambassadeurs"> => a !== null).map((a) => ({ ambassadeurId: a._id, nom: a.nom, prenom: a.prenom })) };
     }));
   },
 });

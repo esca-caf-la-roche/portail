@@ -43,6 +43,8 @@
 .competition-picker-help { font-size: 0.85rem; margin: 0; }
 .competition-picker-selection { display: flex; flex-wrap: wrap; gap: 0.4rem; padding: 0; margin: 0; list-style: none; }
 .competition-signataire-email { display: block; font-size: 0.9rem; overflow-wrap: anywhere; }
+.competition-signataire-lien { display: inline-flex; align-items: center; gap: 0.3rem; margin-top: 0.15rem; font-size: 0.85rem; font-weight: 700; text-transform: uppercase; color: var(--foreground); text-decoration: underline; text-decoration-thickness: 2px; overflow-wrap: anywhere; }
+.competition-signataire-lien:hover { background: var(--warning); }
 .competition-arkose-link .btn-text { margin-top: 0; flex-shrink: 0; }
 .competition-arkose-link { display: inline-flex; align-items: center; gap: 0.3rem; margin: 0 0.4rem 0.35rem 0; padding: 0.2rem 0.4rem; border: 1px solid var(--foreground); }
 .competition-hidden-toggle { margin: 0; font-size: 0.9rem; }
