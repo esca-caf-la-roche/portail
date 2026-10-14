@@ -11,7 +11,7 @@ Le bouton **Synchroniser avec Arkose** appelle à la demande le webhook
 identifiants Basic Auth Convex que les règlements DocuSeal
 (`ABO_REGLEMENTS_WEBHOOK_USER` et `ABO_REGLEMENTS_WEBHOOK_PASSWORD`). Aucun
 secret ne passe au navigateur, aucune synchronisation automatique ni cron n'est
-créé. La réponse attend un tableau JSON d'objets `{ NOM, Prénom, email? }`, limité à
+créé. La réponse attend un tableau JSON d'objets `{ NOM, Prénom, email?, lien? }`, limité à
 1 000 entrées et 1 Mo. Les clés sont reconnues sans différence de casse ni
 d'accent (`NOM`/`Nom`/`nom`, `Prénom`/`PRENOM`/`prenom`) ; un objet qui fournit
 plus d'un alias pour le même champ est refusé.
@@ -24,6 +24,15 @@ remplace l'adresse stockée (elle est réputée provenir du signataire) sans cha
 les liaisons ni le statut. L'absence ou une valeur vide dans un nouvel import
 n'efface jamais une adresse connue. Deux emails différents pour la même identité
 dans une réponse sont refusés comme ambigus.
+
+Le lien optionnel est l'URL **Google Drive** du PDF signé déposé par n8n
+(`lien`, alias `lien_pdf`). Il doit être une URL `https://`. n8n partage le
+fichier en **lecteur** pour toute personne disposant du lien (non indexable) puis
+renvoie `webViewLink`. Le portail affiche « Ouvrir le PDF signé » sous le nom du
+signataire. Le partage s'applique au fichier de la saison courante et seulement
+aux signatures importées après l'ajout de cette étape : les signatures déjà
+présentes n'ont pas de lien. Une adresse non vide remplace le lien stocké ;
+l'absence n'efface jamais un lien connu.
 
 Un nom/prénom normalisé qui correspond à un unique ambassadeur de la saison le
 marque signé automatiquement. Une absence de correspondance ou un homonyme est
