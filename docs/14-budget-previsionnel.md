@@ -109,12 +109,31 @@ Cette migration n'a reclassé aucun cours et n'a demandé aucune reprise
 manuelle : `ESC01`, `ESC02`, les tarifs et les capacités du planning restent les
 seules données métier du calcul.
 
+## Onglet Déclaration des écoles
+
+L'onglet **Déclaration des écoles** (`DeclarationEcoles.tsx`, endpoint
+`budgetRecettes.getDeclarationEcoles`) regroupe les créneaux de la saison par
+catégorie de cours (`cours.nom`) afin de préparer le copier-coller vers la
+déclaration FFCAM (hors SNE) :
+
+- **Rentrées (Part stagiaires)** : somme de `tarifAnnuel × nbElevesMax` sur les
+  créneaux de la catégorie, à capacité pleine ;
+- **Sorties (Frais Prof.)** : coût employeur annuel de chaque moniteur ventilé au
+  prorata de ses heures de cours payées dans la catégorie ;
+- **Indicateurs FFCAM** : nombre de moniteurs distincts (`Enca. Prof.`), nombre
+  de séances par semaine (`Cours / sem.`), capacité cumulée (`Nb Jeunes`) et
+  `Total` (`Cours / sem. × Nb Jeunes`).
+
+Par défaut, les cours adultes (`ESC02`) sont masqués (activables via une case à
+cocher) et les montants sont copiables à l'unité ou en tableau TSV.
+
 ## Droits et saison
 
 La fonctionnalité respecte le contrat de la tuile `budget` :
 
 - la tuile doit figurer dans `userSettings.allowedTiles` pour ouvrir la route et
-  lire les agrégats via `budgetRecettes.getRepartition` ;
+  lire les agrégats via `budgetRecettes.getRepartition` et
+  `budgetRecettes.getDeclarationEcoles` ;
 - le rôle administrateur ne donne aucun passe-droit lorsque la tuile est absente ;
 - toutes les lectures sont indexées ou rattachées à la saison sélectionnée ; un
   changement de saison ne doit jamais réutiliser le planning, le prévisionnel ou

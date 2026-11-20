@@ -26,7 +26,7 @@ le détail métier de chaque module.
 | Tâches `/taches` | `src/pages/Taches.tsx` | `convex/taches.ts`, tables `taches` et `taches_assignations` ; voir [16-taches.md](16-taches.md) |
 | Compétition `/competition` | `src/pages/Competition.tsx`, `src/utils/competitionExcel.ts` | `convex/competition.ts`, `convex/competitionModel.ts` ; voir [15-competition-arkose.md](15-competition-arkose.md) |
 | Paiements `/paiements/*` | `src/pages/Paiements/` | `convex/paiements.ts`, `convex/helloasso.ts`, `convex/drive.ts` |
-| Budget `/budget/*` | `src/pages/Budget/`, dont `RepartitionRecettes.tsx` | `convex/paie.ts`, `convex/cours.ts`, `convex/previsionnels.ts`, `convex/effectifs.ts`, `convex/budgetRecettes.ts` |
+| Budget `/budget/*` | `src/pages/Budget/`, dont `RepartitionRecettes.tsx` et `DeclarationEcoles.tsx` | `convex/paie.ts`, `convex/cours.ts`, `convex/previsionnels.ts`, `convex/effectifs.ts`, `convex/budgetRecettes.ts` |
 | Licences `/licences-cours` | `src/pages/LicencesEnCours.tsx` | `convex/abo/licencesEnCours.ts`, `convex/abo/licences.ts`, `convex/abo/sync.ts` |
 | Contacts des cours `/contacts-cours`, `/contacts-cours/copier` | `src/pages/ContactsCours.tsx`, `src/pages/ContactsCoursCopie.tsx`, `src/utils/contactsCours.ts` | `convex/contactsCours.ts`, `convex/abo/sync.ts` |
 | Remboursements élèves `/remboursements-eleves` | `src/pages/RemboursementsEleves.tsx`, `src/utils/remboursements.ts` | `convex/remboursements.ts`, `convex/remboursementsHelloAsso.ts` |

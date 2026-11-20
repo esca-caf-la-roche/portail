@@ -1,5 +1,6 @@
 import { v } from "convex/values";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
+import type { QueryCtx } from "./_generated/server";
 import { requireTile } from "./access";
 import { authenticatedQuery as query } from "./customFunctions";
 import { COEF_PREPARATION, HEURES_REUNION, toParametresPaie } from "./paie";
@@ -24,6 +25,67 @@ function categorieAnalytique(nom: string | undefined): CategorieCours {
   if (code === "ESC01") return "mineurs";
   if (code === "ESC02") return "adultes";
   return "horsPerimetre";
+}
+
+/** Calcule le coût employeur annuel de chaque salarié ayant des heures de cours. */
+async function calculerCoutsAnnuelsParSalarie(
+  ctx: QueryCtx,
+  cours: Doc<"cours">[],
+  parametres: Doc<"parametresPaie">,
+  salaires: Doc<"salairesSaison">[],
+): Promise<{
+  coutsParSalarie: Map<Id<"salaries">, number>;
+  heuresPaieParSalarie: Map<Id<"salaries">, HeuresPaie>;
+  heuresTotalesParSalarie: Map<Id<"salaries">, number>;
+}> {
+  const heuresPaieParSalarie = new Map<Id<"salaries">, HeuresPaie>();
+  const heuresTotalesParSalarie = new Map<Id<"salaries">, number>();
+
+  for (const creneau of cours) {
+    const heuresHebdomadaires = creneau.seances.reduce(
+      (total, seance) => total + seance.dureeHeures,
+      0,
+    );
+    for (const moniteur of creneau.moniteurs) {
+      const heures = heuresHebdomadaires * moniteur.nbSemaines * COEF_PREPARATION;
+      heuresTotalesParSalarie.set(
+        moniteur.salarieId,
+        (heuresTotalesParSalarie.get(moniteur.salarieId) ?? 0) + heures,
+      );
+      const heuresPaie = heuresPaieParSalarie.get(moniteur.salarieId) ?? { loisir: 0, competition: 0 };
+      heuresPaie[creneau.competition ? "competition" : "loisir"] += heures;
+      heuresPaieParSalarie.set(moniteur.salarieId, heuresPaie);
+    }
+  }
+
+  const coutsParSalarie = new Map<Id<"salaries">, number>();
+  const params = toParametresPaie(parametres);
+  for (const salaire of salaires) {
+    const heuresCoursSalarie = heuresTotalesParSalarie.get(salaire.salarieId) ?? 0;
+    if (heuresCoursSalarie <= 0) continue;
+    const salarie = await ctx.db.get(salaire.salarieId);
+    const heuresPaie = heuresPaieParSalarie.get(salaire.salarieId) ?? { loisir: 0, competition: 0 };
+    let heuresLoisir = heuresPaie.loisir + HEURES_REUNION;
+    let heuresCompetition = heuresPaie.competition;
+    for (const heuresSup of salaire.heuresSup ?? []) {
+      if (heuresSup.competition) heuresCompetition += heuresSup.nbHeures;
+      else heuresLoisir += heuresSup.nbHeures;
+    }
+    const nbHeuresAnnuel = Math.round(heuresLoisir) + Math.round(heuresCompetition);
+    const paie = computePaie(
+      {
+        nom: salarie?.nom ?? "Inconnu",
+        typeContrat: salarie?.typeContrat ?? "CDII",
+        nbHeuresAnnuel,
+        nbMois: salaire.nbMois,
+        tauxHoraireBrut: salaire.tauxHoraireBrut,
+      },
+      params,
+    );
+    coutsParSalarie.set(salaire.salarieId, paie.coutAnnuel);
+  }
+
+  return { coutsParSalarie, heuresPaieParSalarie, heuresTotalesParSalarie };
 }
 
 /** Répartition des recettes et rentabilité des cours ESC01/ESC02 à capacité pleine. */
@@ -104,32 +166,18 @@ export const getRepartition = query({
     );
     if (parametres && !moniteurCibleSansPaie) {
       couts = zeroVentilation();
-      const params = toParametresPaie(parametres);
-      for (const salaire of salaires) {
-        const ventilation = heuresParSalarie.get(salaire.salarieId) ?? zeroVentilation();
-        const heuresCoursSalarie = categories.reduce((total, cible) => total + ventilation[cible], 0);
+      const { coutsParSalarie, heuresTotalesParSalarie } = await calculerCoutsAnnuelsParSalarie(
+        ctx,
+        cours,
+        parametres,
+        salaires,
+      );
+      for (const [salarieId, coutAnnuel] of coutsParSalarie) {
+        const ventilation = heuresParSalarie.get(salarieId) ?? zeroVentilation();
+        const heuresCoursSalarie = heuresTotalesParSalarie.get(salarieId) ?? 0;
         if (heuresCoursSalarie <= 0) continue;
-        const salarie = await ctx.db.get(salaire.salarieId);
-        const heuresPaie = heuresPaieParSalarie.get(salaire.salarieId) ?? { loisir: 0, competition: 0 };
-        let heuresLoisir = heuresPaie.loisir + HEURES_REUNION;
-        let heuresCompetition = heuresPaie.competition;
-        for (const heuresSup of salaire.heuresSup ?? []) {
-          if (heuresSup.competition) heuresCompetition += heuresSup.nbHeures;
-          else heuresLoisir += heuresSup.nbHeures;
-        }
-        const nbHeuresAnnuel = Math.round(heuresLoisir) + Math.round(heuresCompetition);
-        const paie = computePaie(
-          {
-            nom: salarie?.nom ?? "Inconnu",
-            typeContrat: salarie?.typeContrat ?? "CDII",
-            nbHeuresAnnuel,
-            nbMois: salaire.nbMois,
-            tauxHoraireBrut: salaire.tauxHoraireBrut,
-          },
-          params,
-        );
         for (const cible of categories) {
-          couts[cible] += paie.coutAnnuel * (ventilation[cible] / heuresCoursSalarie);
+          couts[cible] += coutAnnuel * (ventilation[cible] / heuresCoursSalarie);
         }
       }
     }
@@ -155,6 +203,171 @@ export const getRepartition = query({
       recettes,
       totalRecettes: arrondirCentimes(recettes.reduce((total, recette) => total + recette.montant, 0)),
       cours: { mineurs: detail("mineurs"), adultes: detail("adultes") },
+    };
+  },
+});
+
+/** Synthèse par catégorie de cours pour la déclaration des écoles (FFCAM).
+ *  Calcule les rentrées (tarif × capacité) et les sorties (coût employeur ventilé
+ *  au prorata des heures de cours payées) en cohérence avec le prévisionnel. */
+export const getDeclarationEcoles = query({
+  args: { saison: v.string() },
+  handler: async (ctx, args) => {
+    await requireTile(ctx, ctx.userId, "budget");
+
+    const [cours, parametres, salaires] = await Promise.all([
+      ctx.db.query("cours").withIndex("by_saison", (q) => q.eq("saison", args.saison)).collect(),
+      ctx.db.query("parametresPaie").withIndex("by_saison", (q) => q.eq("saison", args.saison)).first(),
+      ctx.db.query("salairesSaison").withIndex("by_saison", (q) => q.eq("saison", args.saison)).collect(),
+    ]);
+
+    const analytiquesIds = new Set<Id<"analytiques">>();
+    const salariesIds = new Set<Id<"salaries">>();
+    for (const creneau of cours) {
+      if (creneau.analytiqueId) analytiquesIds.add(creneau.analytiqueId);
+      for (const moniteur of creneau.moniteurs) salariesIds.add(moniteur.salarieId);
+    }
+
+    const [analytiques, salariesDocs] = await Promise.all([
+      Promise.all([...analytiquesIds].map(async (id) => [id, await ctx.db.get(id)] as const)),
+      Promise.all([...salariesIds].map(async (id) => [id, await ctx.db.get(id)] as const)),
+    ]);
+    const analytiqueNomById = new Map(analytiques.map(([id, a]) => [id, a?.nom ?? null]));
+    const salarieNomById = new Map(salariesDocs.map(([id, s]) => [id, s?.nom ?? "Inconnu"]));
+
+    const salairesById = new Map(salaires.map((s) => [s.salarieId, s]));
+    const moniteursSansPaieIds = new Set<Id<"salaries">>();
+    for (const salarieId of salariesIds) {
+      if (!salairesById.has(salarieId)) moniteursSansPaieIds.add(salarieId);
+    }
+
+    const paieResult = parametres
+      ? await calculerCoutsAnnuelsParSalarie(ctx, cours, parametres, salaires)
+      : null;
+
+    type Agg = {
+      nom: string;
+      analytiqueNom: string | null;
+      estAdulte: boolean;
+      competition: boolean;
+      tarifAnnuel: number;
+      nbCreneaux: number;
+      nbCoursParSemaine: number;
+      nbJeunes: number;
+      recette: number;
+      heures: number;
+      moniteurIds: Set<Id<"salaries">>;
+      heuresParSalarie: Map<Id<"salaries">, number>;
+    };
+
+    const parCategorie = new Map<string, Agg>();
+
+    for (const creneau of cours) {
+      const analytiqueNom = creneau.analytiqueId
+        ? (analytiqueNomById.get(creneau.analytiqueId) ?? null)
+        : null;
+      const estAdulte = categorieAnalytique(analytiqueNom ?? undefined) === "adultes";
+      const heuresHebdomadaires = creneau.seances.reduce(
+        (total, seance) => total + seance.dureeHeures,
+        0,
+      );
+
+      let agg = parCategorie.get(creneau.nom);
+      if (!agg) {
+        agg = {
+          nom: creneau.nom,
+          analytiqueNom,
+          estAdulte,
+          competition: Boolean(creneau.competition),
+          tarifAnnuel: creneau.tarifAnnuel,
+          nbCreneaux: 0,
+          nbCoursParSemaine: creneau.seances.length,
+          nbJeunes: 0,
+          recette: 0,
+          heures: 0,
+          moniteurIds: new Set(),
+          heuresParSalarie: new Map(),
+        };
+        parCategorie.set(creneau.nom, agg);
+      } else {
+        agg.competition = agg.competition || Boolean(creneau.competition);
+        agg.estAdulte = agg.estAdulte && estAdulte;
+        if (!agg.analytiqueNom && analytiqueNom) agg.analytiqueNom = analytiqueNom;
+        if (creneau.seances.length > agg.nbCoursParSemaine) {
+          agg.nbCoursParSemaine = creneau.seances.length;
+        }
+      }
+
+      agg.nbCreneaux += 1;
+      agg.nbJeunes += creneau.nbElevesMax;
+      agg.recette += creneau.tarifAnnuel * creneau.nbElevesMax;
+
+      for (const moniteur of creneau.moniteurs) {
+        const heures = heuresHebdomadaires * moniteur.nbSemaines * COEF_PREPARATION;
+        agg.heures += heures;
+        agg.moniteurIds.add(moniteur.salarieId);
+        agg.heuresParSalarie.set(
+          moniteur.salarieId,
+          (agg.heuresParSalarie.get(moniteur.salarieId) ?? 0) + heures,
+        );
+      }
+    }
+
+    const listeCategories = [...parCategorie.values()].map((agg) => {
+      const recette = arrondirCentimes(agg.recette);
+      const aMoniteurSansPaie = [...agg.moniteurIds].some((id) => moniteursSansPaieIds.has(id));
+
+      let coutSalarial: number | null = null;
+      if (paieResult && !aMoniteurSansPaie) {
+        let sommeCout = 0;
+        for (const [salarieId, heuresCat] of agg.heuresParSalarie) {
+          const coutAnnuel = paieResult.coutsParSalarie.get(salarieId);
+          const heuresTotales = paieResult.heuresTotalesParSalarie.get(salarieId) ?? 0;
+          if (coutAnnuel !== undefined && heuresTotales > 0) {
+            sommeCout += coutAnnuel * (heuresCat / heuresTotales);
+          }
+        }
+        coutSalarial = arrondirCentimes(sommeCout);
+      }
+
+      const resultat = coutSalarial === null ? null : arrondirCentimes(recette - coutSalarial);
+      const moniteursNoms = [...agg.moniteurIds]
+        .map((id) => salarieNomById.get(id) ?? "Inconnu")
+        .sort((a, b) => a.localeCompare(b, "fr"));
+
+      return {
+        nom: agg.nom,
+        analytiqueNom: agg.analytiqueNom,
+        estAdulte: agg.estAdulte,
+        competition: agg.competition,
+        tarifAnnuel: agg.tarifAnnuel,
+        nbCreneaux: agg.nbCreneaux,
+        nbCoursParSemaine: agg.nbCoursParSemaine,
+        nbJeunes: agg.nbJeunes,
+        totalJeunesSeances: agg.nbCoursParSemaine * agg.nbJeunes,
+        nbEncadrants: agg.moniteurIds.size,
+        moniteursNoms,
+        heures: arrondirCentimes(agg.heures),
+        recette,
+        coutSalarial,
+        resultat,
+      };
+    });
+
+    listeCategories.sort(
+      (a, b) =>
+        Number(a.competition) - Number(b.competition) ||
+        a.nom.localeCompare(b.nom, "fr"),
+    );
+
+    const moniteursSansPaie = [...moniteursSansPaieIds]
+      .map((id) => salarieNomById.get(id) ?? "Inconnu")
+      .sort((a, b) => a.localeCompare(b, "fr"));
+
+    return {
+      hasParametresPaie: Boolean(parametres),
+      moniteursSansPaie,
+      categories: listeCategories,
     };
   },
 });

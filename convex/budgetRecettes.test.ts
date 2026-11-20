@@ -164,3 +164,165 @@ describe("répartition des recettes du budget", () => {
     });
   });
 });
+
+describe("déclaration des écoles", () => {
+  test("protège la lecture par la tuile budget", async () => {
+    const t = convexTest(schema, modules);
+    const userId = await t.run((ctx) => ctx.db.insert("users", { email: "sans-budget-decl@test.fr" }));
+    const sansAcces = t.withIdentity({ subject: userId });
+
+    await expect(
+      sansAcces.query(api.budgetRecettes.getDeclarationEcoles, { saison: "2026-27" }),
+    ).rejects.toThrow("Accès refusé");
+  });
+
+  test("agrège par catégorie de cours en cohérence avec la répartition des recettes", async () => {
+    const t = convexTest(schema, modules);
+    const staff = await creerStaffBudget(t);
+    await insererParametresPaie(t);
+
+    await t.run(async (ctx) => {
+      const esc01 = await ctx.db.insert("analytiques", { nom: "ESC01 : Cours mineurs" });
+      const esc02 = await ctx.db.insert("analytiques", { nom: "ESC02 : Cours adultes" });
+      const moniteurA = await ctx.db.insert("salaries", { nom: "Alice", typeContrat: "CDII" });
+      const moniteurB = await ctx.db.insert("salaries", { nom: "Bob", typeContrat: "CDII" });
+
+      for (const salarieId of [moniteurA, moniteurB]) {
+        await ctx.db.insert("salairesSaison", {
+          salarieId,
+          saison: "2026-27",
+          nbHeuresAnnuel: 0,
+          nbMois: 12,
+          tauxHoraireBrut: 20,
+        });
+      }
+
+      // 2 créneaux de "5/6 ans" (1 séance/semaine chacun, 2 moniteurs distincts au total)
+      await ctx.db.insert("cours", {
+        saison: "2026-27",
+        nom: "5/6 ans",
+        tarifAnnuel: 280,
+        nbElevesMax: 8,
+        analytiqueId: esc01,
+        moniteurs: [{ salarieId: moniteurA, nbSemaines: 10 }],
+        seances: [{ jour: 0, heureDebut: "17:30", dureeHeures: 1 }],
+      });
+      await ctx.db.insert("cours", {
+        saison: "2026-27",
+        nom: "5/6 ans",
+        tarifAnnuel: 280,
+        nbElevesMax: 10,
+        analytiqueId: esc01,
+        moniteurs: [{ salarieId: moniteurB, nbSemaines: 10 }],
+        seances: [{ jour: 2, heureDebut: "14:00", dureeHeures: 1 }],
+      });
+
+      // 1 créneau compétition avec 2 séances/semaine
+      await ctx.db.insert("cours", {
+        saison: "2026-27",
+        nom: "Groupe Perf",
+        tarifAnnuel: 400,
+        nbElevesMax: 14,
+        competition: true,
+        analytiqueId: esc01,
+        moniteurs: [{ salarieId: moniteurA, nbSemaines: 10 }],
+        seances: [
+          { jour: 1, heureDebut: "18:00", dureeHeures: 1 },
+          { jour: 3, heureDebut: "18:00", dureeHeures: 1 },
+        ],
+      });
+
+      // 1 créneau adultes (ESC02)
+      await ctx.db.insert("cours", {
+        saison: "2026-27",
+        nom: "Adultes Débutants",
+        tarifAnnuel: 300,
+        nbElevesMax: 12,
+        analytiqueId: esc02,
+        moniteurs: [{ salarieId: moniteurB, nbSemaines: 10 }],
+        seances: [{ jour: 4, heureDebut: "19:00", dureeHeures: 1 }],
+      });
+    });
+
+    const [decl, repartition] = await Promise.all([
+      staff.query(api.budgetRecettes.getDeclarationEcoles, { saison: "2026-27" }),
+      staff.query(api.budgetRecettes.getRepartition, { saison: "2026-27" }),
+    ]);
+
+    expect(decl.hasParametresPaie).toBe(true);
+    expect(decl.moniteursSansPaie).toEqual([]);
+    expect(decl.categories.map((c) => c.nom)).toEqual([
+      "5/6 ans",
+      "Adultes Débutants",
+      "Groupe Perf",
+    ]);
+
+    const cinqSix = decl.categories.find((c) => c.nom === "5/6 ans")!;
+    expect(cinqSix).toMatchObject({
+      estAdulte: false,
+      competition: false,
+      nbCreneaux: 2,
+      nbCoursParSemaine: 1,
+      nbJeunes: 18,
+      totalJeunesSeances: 18,
+      nbEncadrants: 2,
+      moniteursNoms: ["Alice", "Bob"],
+      recette: 5040,
+    });
+
+    const perf = decl.categories.find((c) => c.nom === "Groupe Perf")!;
+    expect(perf).toMatchObject({
+      estAdulte: false,
+      competition: true,
+      nbCreneaux: 1,
+      nbCoursParSemaine: 2,
+      nbJeunes: 14,
+      totalJeunesSeances: 28,
+      nbEncadrants: 1,
+      recette: 5600,
+    });
+
+    const adultes = decl.categories.find((c) => c.nom === "Adultes Débutants")!;
+    expect(adultes.estAdulte).toBe(true);
+    expect(adultes.recette).toBe(3600);
+
+    // Cohérence totale avec getRepartition pour ESC01 (mineurs)
+    const sommeRecettesMineurs = decl.categories
+      .filter((c) => !c.estAdulte)
+      .reduce((acc, c) => acc + c.recette, 0);
+    const sommeCoutsMineurs = decl.categories
+      .filter((c) => !c.estAdulte)
+      .reduce((acc, c) => acc + (c.coutSalarial ?? 0), 0);
+    expect(sommeRecettesMineurs).toBe(repartition.cours.mineurs.recette);
+    expect(Math.round(sommeCoutsMineurs * 100) / 100).toBe(repartition.cours.mineurs.coutSalarial);
+  });
+
+  test("signale un moniteur sans paie sans masquer les recettes", async () => {
+    const t = convexTest(schema, modules);
+    const staff = await creerStaffBudget(t);
+    await insererParametresPaie(t);
+
+    await t.run(async (ctx) => {
+      const esc01 = await ctx.db.insert("analytiques", { nom: "ESC01" });
+      const sansPaie = await ctx.db.insert("salaries", { nom: "Sans paie", typeContrat: "CDII" });
+      await ctx.db.insert("cours", {
+        saison: "2026-27",
+        nom: "Lycéens",
+        tarifAnnuel: 350,
+        nbElevesMax: 10,
+        analytiqueId: esc01,
+        moniteurs: [{ salarieId: sansPaie, nbSemaines: 30 }],
+        seances: [{ jour: 0, heureDebut: "18:00", dureeHeures: 1.5 }],
+      });
+    });
+
+    const decl = await staff.query(api.budgetRecettes.getDeclarationEcoles, { saison: "2026-27" });
+    expect(decl.moniteursSansPaie).toEqual(["Sans paie"]);
+    expect(decl.categories[0]).toMatchObject({
+      nom: "Lycéens",
+      recette: 3500,
+      coutSalarial: null,
+      resultat: null,
+    });
+  });
+});
