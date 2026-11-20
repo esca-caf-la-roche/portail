@@ -79,13 +79,11 @@ export default function DeclarationEcoles() {
 
   const totaux = useMemo(() => {
     let nbJeunes = 0;
-    let totalJeunesSeances = 0;
     let recette = 0;
     let coutSalarial: number | null = 0;
 
     for (const cat of visibleCategories) {
       nbJeunes += cat.nbJeunes;
-      totalJeunesSeances += cat.totalJeunesSeances;
       recette += cat.recette;
       if (cat.coutSalarial === null) {
         coutSalarial = null;
@@ -95,7 +93,7 @@ export default function DeclarationEcoles() {
     }
 
     const resultat = coutSalarial === null ? null : recette - coutSalarial;
-    return { nbJeunes, totalJeunesSeances, recette, coutSalarial, resultat };
+    return { nbJeunes, recette, coutSalarial, resultat };
   }, [visibleCategories]);
 
   const handleCopyTsv = () => {
@@ -104,7 +102,6 @@ export default function DeclarationEcoles() {
       "Enca. Prof.",
       "Nb Cours / sem",
       "Nb Jeunes",
-      "Total",
       "Frais Prof.",
       "Part Globale Stagiaires",
       "Solde",
@@ -115,7 +112,6 @@ export default function DeclarationEcoles() {
         c.nbEncadrants,
         c.nbCoursParSemaine,
         c.nbJeunes,
-        c.totalJeunesSeances,
         c.coutSalarial === null ? "" : Math.round(c.coutSalarial),
         Math.round(c.recette),
         c.resultat === null ? "" : Math.round(c.resultat),
@@ -126,7 +122,6 @@ export default function DeclarationEcoles() {
       "",
       "",
       totaux.nbJeunes,
-      totaux.totalJeunesSeances,
       totaux.coutSalarial === null ? "" : Math.round(totaux.coutSalarial),
       Math.round(totaux.recette),
       totaux.resultat === null ? "" : Math.round(totaux.resultat),
@@ -289,7 +284,6 @@ export default function DeclarationEcoles() {
                   <th style={{ padding: "0.65rem 0.5rem", textAlign: "right" }}>Enca. Prof.</th>
                   <th style={{ padding: "0.65rem 0.5rem", textAlign: "right" }}>Cours / sem.</th>
                   <th style={{ padding: "0.65rem 0.5rem", textAlign: "right" }}>Nb Jeunes</th>
-                  <th style={{ padding: "0.65rem 0.5rem", textAlign: "right" }}>Total</th>
                   <th style={{ padding: "0.65rem 0.5rem", textAlign: "right" }}>Frais Prof.</th>
                   <th style={{ padding: "0.65rem 0.5rem", textAlign: "right" }}>Part Stagiaires</th>
                   <th style={{ padding: "0.65rem 0.5rem", textAlign: "right" }}>Solde</th>
@@ -371,17 +365,6 @@ export default function DeclarationEcoles() {
                       </td>
 
                       <td className="font-mono" style={{ padding: "0.65rem 0.5rem", textAlign: "right", whiteSpace: "nowrap" }}>
-                        {cat.totalJeunesSeances}
-                        <CopyButton
-                          value={String(cat.totalJeunesSeances)}
-                          label="total"
-                          copiedKey={copiedKey}
-                          itemKey={`total-${cat.nom}`}
-                          onCopy={handleCopy}
-                        />
-                      </td>
-
-                      <td className="font-mono" style={{ padding: "0.65rem 0.5rem", textAlign: "right", whiteSpace: "nowrap" }}>
                         {coutArrondi === null ? (
                           <span style={{ color: "#9ca3af" }}>—</span>
                         ) : (
@@ -442,16 +425,6 @@ export default function DeclarationEcoles() {
                       label="total jeunes"
                       copiedKey={copiedKey}
                       itemKey="tot-jeunes"
-                      onCopy={handleCopy}
-                    />
-                  </td>
-                  <td className="font-mono" style={{ padding: "0.75rem 0.5rem", textAlign: "right", whiteSpace: "nowrap" }}>
-                    {totaux.totalJeunesSeances}
-                    <CopyButton
-                      value={String(totaux.totalJeunesSeances)}
-                      label="total séances-jeunes"
-                      copiedKey={copiedKey}
-                      itemKey="tot-seances"
                       onCopy={handleCopy}
                     />
                   </td>

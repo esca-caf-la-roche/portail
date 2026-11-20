@@ -118,14 +118,15 @@ déclaration FFCAM (hors SNE) :
 
 - **Rentrées (Part stagiaires)** : somme de `tarifAnnuel × nbElevesMax` sur les
   créneaux de la catégorie, à capacité pleine ;
-- **Sorties (Frais Prof.)** : coût employeur annuel de chaque moniteur ventilé au
-  prorata de ses heures de cours payées dans la catégorie ;
+- **Sorties (Frais Prof.)** : part du coût employeur annuel correspondant
+  uniquement aux heures de cours payées dans la catégorie (hors heures de
+  réunion et heures supplémentaires) ;
 - **Indicateurs FFCAM** : nombre de moniteurs distincts (`Enca. Prof.`), nombre
-  de séances par semaine (`Cours / sem.`), capacité cumulée (`Nb Jeunes`) et
-  `Total` (`Cours / sem. × Nb Jeunes`).
+  de séances par semaine (`Cours / sem.`) et capacité cumulée (`Nb Jeunes`).
 
 Par défaut, les cours adultes (`ESC02`) sont masqués (activables via une case à
-cocher) et les montants sont copiables à l'unité ou en tableau TSV.
+cocher) et les catégories `Autonomie` (ainsi que le SNE) sont exclues. Les
+montants sont copiables à l'unité ou en tableau TSV.
 
 ## Droits et saison
 

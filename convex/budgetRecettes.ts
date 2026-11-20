@@ -37,6 +37,7 @@ async function calculerCoutsAnnuelsParSalarie(
   coutsParSalarie: Map<Id<"salaries">, number>;
   heuresPaieParSalarie: Map<Id<"salaries">, HeuresPaie>;
   heuresTotalesParSalarie: Map<Id<"salaries">, number>;
+  heuresTotalesPayeesParSalarie: Map<Id<"salaries">, number>;
 }> {
   const heuresPaieParSalarie = new Map<Id<"salaries">, HeuresPaie>();
   const heuresTotalesParSalarie = new Map<Id<"salaries">, number>();
@@ -59,6 +60,7 @@ async function calculerCoutsAnnuelsParSalarie(
   }
 
   const coutsParSalarie = new Map<Id<"salaries">, number>();
+  const heuresTotalesPayeesParSalarie = new Map<Id<"salaries">, number>();
   const params = toParametresPaie(parametres);
   for (const salaire of salaires) {
     const heuresCoursSalarie = heuresTotalesParSalarie.get(salaire.salarieId) ?? 0;
@@ -83,9 +85,15 @@ async function calculerCoutsAnnuelsParSalarie(
       params,
     );
     coutsParSalarie.set(salaire.salarieId, paie.coutAnnuel);
+    heuresTotalesPayeesParSalarie.set(salaire.salarieId, nbHeuresAnnuel);
   }
 
-  return { coutsParSalarie, heuresPaieParSalarie, heuresTotalesParSalarie };
+  return {
+    coutsParSalarie,
+    heuresPaieParSalarie,
+    heuresTotalesParSalarie,
+    heuresTotalesPayeesParSalarie,
+  };
 }
 
 /** Répartition des recettes et rentabilité des cours ESC01/ESC02 à capacité pleine. */
@@ -313,46 +321,47 @@ export const getDeclarationEcoles = query({
       }
     }
 
-    const listeCategories = [...parCategorie.values()].map((agg) => {
-      const recette = arrondirCentimes(agg.recette);
-      const aMoniteurSansPaie = [...agg.moniteurIds].some((id) => moniteursSansPaieIds.has(id));
+    const listeCategories = [...parCategorie.values()]
+      .filter((agg) => !/autonomie/i.test(agg.nom))
+      .map((agg) => {
+        const recette = arrondirCentimes(agg.recette);
+        const aMoniteurSansPaie = [...agg.moniteurIds].some((id) => moniteursSansPaieIds.has(id));
 
-      let coutSalarial: number | null = null;
-      if (paieResult && !aMoniteurSansPaie) {
-        let sommeCout = 0;
-        for (const [salarieId, heuresCat] of agg.heuresParSalarie) {
-          const coutAnnuel = paieResult.coutsParSalarie.get(salarieId);
-          const heuresTotales = paieResult.heuresTotalesParSalarie.get(salarieId) ?? 0;
-          if (coutAnnuel !== undefined && heuresTotales > 0) {
-            sommeCout += coutAnnuel * (heuresCat / heuresTotales);
+        let coutSalarial: number | null = null;
+        if (paieResult && !aMoniteurSansPaie) {
+          let sommeCout = 0;
+          for (const [salarieId, heuresCat] of agg.heuresParSalarie) {
+            const coutAnnuel = paieResult.coutsParSalarie.get(salarieId);
+            const heuresTotalesPayees = paieResult.heuresTotalesPayeesParSalarie.get(salarieId) ?? 0;
+            if (coutAnnuel !== undefined && heuresTotalesPayees > 0) {
+              sommeCout += coutAnnuel * (heuresCat / heuresTotalesPayees);
+            }
           }
+          coutSalarial = arrondirCentimes(sommeCout);
         }
-        coutSalarial = arrondirCentimes(sommeCout);
-      }
 
-      const resultat = coutSalarial === null ? null : arrondirCentimes(recette - coutSalarial);
-      const moniteursNoms = [...agg.moniteurIds]
-        .map((id) => salarieNomById.get(id) ?? "Inconnu")
-        .sort((a, b) => a.localeCompare(b, "fr"));
+        const resultat = coutSalarial === null ? null : arrondirCentimes(recette - coutSalarial);
+        const moniteursNoms = [...agg.moniteurIds]
+          .map((id) => salarieNomById.get(id) ?? "Inconnu")
+          .sort((a, b) => a.localeCompare(b, "fr"));
 
-      return {
-        nom: agg.nom,
-        analytiqueNom: agg.analytiqueNom,
-        estAdulte: agg.estAdulte,
-        competition: agg.competition,
-        tarifAnnuel: agg.tarifAnnuel,
-        nbCreneaux: agg.nbCreneaux,
-        nbCoursParSemaine: agg.nbCoursParSemaine,
-        nbJeunes: agg.nbJeunes,
-        totalJeunesSeances: agg.nbCoursParSemaine * agg.nbJeunes,
-        nbEncadrants: agg.moniteurIds.size,
-        moniteursNoms,
-        heures: arrondirCentimes(agg.heures),
-        recette,
-        coutSalarial,
-        resultat,
-      };
-    });
+        return {
+          nom: agg.nom,
+          analytiqueNom: agg.analytiqueNom,
+          estAdulte: agg.estAdulte,
+          competition: agg.competition,
+          tarifAnnuel: agg.tarifAnnuel,
+          nbCreneaux: agg.nbCreneaux,
+          nbCoursParSemaine: agg.nbCoursParSemaine,
+          nbJeunes: agg.nbJeunes,
+          nbEncadrants: agg.moniteurIds.size,
+          moniteursNoms,
+          heures: arrondirCentimes(agg.heures),
+          recette,
+          coutSalarial,
+          resultat,
+        };
+      });
 
     listeCategories.sort(
       (a, b) =>

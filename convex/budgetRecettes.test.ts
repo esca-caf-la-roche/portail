@@ -194,6 +194,7 @@ describe("déclaration des écoles", () => {
           nbHeuresAnnuel: 0,
           nbMois: 12,
           tauxHoraireBrut: 20,
+          heuresSup: salarieId === moniteurA ? [{ designation: "Stage SNE", nbHeures: 50, competition: true }] : undefined,
         });
       }
 
@@ -232,6 +233,17 @@ describe("déclaration des écoles", () => {
         ],
       });
 
+      // 1 créneau Autonomie (doit être masqué de la déclaration mais garder ses heures au dénominateur)
+      await ctx.db.insert("cours", {
+        saison: "2026-27",
+        nom: "Autonomie",
+        tarifAnnuel: 150,
+        nbElevesMax: 20,
+        analytiqueId: esc01,
+        moniteurs: [{ salarieId: moniteurB, nbSemaines: 10 }],
+        seances: [{ jour: 5, heureDebut: "10:00", dureeHeures: 1 }],
+      });
+
       // 1 créneau adultes (ESC02)
       await ctx.db.insert("cours", {
         saison: "2026-27",
@@ -264,7 +276,6 @@ describe("déclaration des écoles", () => {
       nbCreneaux: 2,
       nbCoursParSemaine: 1,
       nbJeunes: 18,
-      totalJeunesSeances: 18,
       nbEncadrants: 2,
       moniteursNoms: ["Alice", "Bob"],
       recette: 5040,
@@ -277,24 +288,26 @@ describe("déclaration des écoles", () => {
       nbCreneaux: 1,
       nbCoursParSemaine: 2,
       nbJeunes: 14,
-      totalJeunesSeances: 28,
       nbEncadrants: 1,
       recette: 5600,
     });
+
+    // Les heures sup (50h Stage SNE) et la réunion (5h) d'Alice ne doivent pas être imputées sur ses cours :
+    // Alice : 12.5h (5/6 ans) + 25h (Perf) + 5h (réunion) + 50h (heuresSup) = 92.5h -> Math.round = 93h.
+    // Bob : 12.5h (5/6 ans) + 12.5h (Autonomie) + 12.5h (Adultes) + 5h (réunion) = 42.5h -> Math.round = 43h.
+    // Le coût de Perf = coût total d'Alice * (25 / 93), strictement inférieur au coût complet (qui inclut les 50h sup).
+    // Ici taux=20, CP=10% => 22€/h => coût Alice = 93 * 22 = 2046€, Perf = 2046 * (25 / 93) = 550€.
+    expect(perf.coutSalarial).toBe(550);
 
     const adultes = decl.categories.find((c) => c.nom === "Adultes Débutants")!;
     expect(adultes.estAdulte).toBe(true);
     expect(adultes.recette).toBe(3600);
 
-    // Cohérence totale avec getRepartition pour ESC01 (mineurs)
+    // Cohérence des recettes hors Autonomie avec getRepartition (13640 - 3000 Autonomie = 10640)
     const sommeRecettesMineurs = decl.categories
       .filter((c) => !c.estAdulte)
       .reduce((acc, c) => acc + c.recette, 0);
-    const sommeCoutsMineurs = decl.categories
-      .filter((c) => !c.estAdulte)
-      .reduce((acc, c) => acc + (c.coutSalarial ?? 0), 0);
-    expect(sommeRecettesMineurs).toBe(repartition.cours.mineurs.recette);
-    expect(Math.round(sommeCoutsMineurs * 100) / 100).toBe(repartition.cours.mineurs.coutSalarial);
+    expect(sommeRecettesMineurs).toBe(repartition.cours.mineurs.recette - 3000);
   });
 
   test("signale un moniteur sans paie sans masquer les recettes", async () => {
